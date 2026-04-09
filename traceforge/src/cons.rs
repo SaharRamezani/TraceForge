@@ -4,6 +4,8 @@ use crate::exec_graph::ExecutionGraph;
 use crate::loc::CommunicationModel;
 use crate::revisit::Revisit;
 use crate::vector_clock::VectorClock;
+use crate::Config;
+use std::collections::HashMap;
 
 // A generic consistency which will, eventually, support arbitrary
 // communication models, depending on the channel.
@@ -381,6 +383,148 @@ impl Consistency {
         porf_override: bool,
     ) -> Vec<Event> {
         self.coherent_rfs_in_view(g, None, rlab, porf_override, true)
+    }
+
+    /// Checks temporal consistency of the execution graph.
+    ///
+    /// If `focus_recv` is Some, this is an incremental check after setting the rf of that
+    /// receive. If None, this checks the full graph.
+    ///
+    /// Temporal consistency verifies that there exists a valid time assignment τ: Event → ℝ≥0
+    /// satisfying:
+    ///   - po order:       τ(e') ≥ τ(e) for consecutive events
+    ///   - sleep(d):       τ(next) ≥ τ(sleep) + d
+    ///   - rf lower bound: τ(recv) ≥ τ(send) + L
+    ///   - rf upper bound: τ(recv) ≤ τ(send) + U + sd
+    ///   - wait time:      τ(recv) ≤ τ(prev_po(recv)) + W
+    ///
+    /// We compute earliest times via forward propagation and check the upper bound constraints.
+    pub(crate) fn is_temporally_consistent(
+        &self,
+        g: &ExecutionGraph,
+        config: &Config,
+        focus_recv: Option<Event>,
+    ) -> bool {
+        if !config.is_temporal() {
+            return true;
+        }
+
+        let l = config.transit_l();
+        let u_plus_sd = config.transit_u().saturating_add(config.sd());
+
+        // Compute earliest possible time for each event via forward propagation.
+        // We traverse events in stamp order (which respects po and causality).
+        let mut earliest: HashMap<Event, u64> = HashMap::new();
+
+        // Collect all events sorted by stamp
+        let mut all_events: Vec<Event> = Vec::new();
+        for tid in g.thread_ids() {
+            let size = g.thread_size(tid);
+            for i in 0..size {
+                all_events.push(Event::new(tid, i as u32));
+            }
+        }
+        all_events.sort_by_key(|e| g.label(*e).stamp());
+
+        // Forward pass: compute earliest times
+        for &ev in &all_events {
+            let mut e_time: u64 = 0;
+
+            // po constraint: earliest(ev) >= earliest(prev_in_thread)
+            if ev.index > 0 {
+                let prev = Event::new(ev.thread, ev.index - 1);
+                if let Some(&prev_earliest) = earliest.get(&prev) {
+                    e_time = e_time.max(prev_earliest);
+
+                    // Sleep constraint: if prev is Sleep(d), add d
+                    if let LabelEnum::Sleep(slab) = g.label(prev) {
+                        e_time = e_time.max(prev_earliest.saturating_add(slab.duration()));
+                    }
+                }
+            }
+
+            // rf lower bound constraint: if ev is a receive with rf = send,
+            // then earliest(recv) >= earliest(send) + L
+            if let LabelEnum::RecvMsg(rlab) = g.label(ev) {
+                if let Some(rf) = rlab.rf() {
+                    if let Some(&send_earliest) = earliest.get(&rf) {
+                        e_time = e_time.max(send_earliest.saturating_add(l));
+                    }
+                }
+            }
+
+            // TCreate/Begin dependency: if ev is Begin with parent, inherit parent's time
+            if let LabelEnum::Begin(blab) = g.label(ev) {
+                if let Some(parent) = blab.parent() {
+                    if let Some(&parent_earliest) = earliest.get(&parent) {
+                        e_time = e_time.max(parent_earliest);
+                    }
+                }
+            }
+
+            // TJoin dependency
+            if let LabelEnum::TJoin(jlab) = g.label(ev) {
+                if let Some(last) = g.thread_last(jlab.cid()) {
+                    if let Some(&joined_earliest) = earliest.get(&last.pos()) {
+                        e_time = e_time.max(joined_earliest);
+                    }
+                }
+            }
+
+            earliest.insert(ev, e_time);
+        }
+
+        // Check upper bound constraints for receives
+        let check_recv = |recv_ev: Event| -> bool {
+            if let LabelEnum::RecvMsg(rlab) = g.label(recv_ev) {
+                if let Some(rf) = rlab.rf() {
+                    let mut recv_earliest = earliest.get(&recv_ev).copied().unwrap_or(0);
+                    let send_earliest = earliest.get(&rf).copied().unwrap_or(0);
+
+                    // Re-apply rf lower bound: in backward revisits the send is stamp-later
+                    // than the recv, so the forward pass may not have incorporated this.
+                    recv_earliest = recv_earliest.max(send_earliest.saturating_add(l));
+
+                    // rf upper bound: recv must be reachable within U + sd of send
+                    if u_plus_sd < u64::MAX && recv_earliest > send_earliest.saturating_add(u_plus_sd) {
+                        return false;
+                    }
+
+                    // Wait time: recv <= recv_ready_time + W
+                    // W is per-receive: read from the receive label itself.
+                    // If unspecified, defaults to u64::MAX (block until a feasible message arrives).
+                    // recv_ready_time is when the thread becomes ready to receive:
+                    // if prev is Sleep(d), the thread is ready at earliest(prev) + d.
+                    let w = rlab.wait_time();
+                    if w < u64::MAX && recv_ev.index > 0 {
+                        let prev = Event::new(recv_ev.thread, recv_ev.index - 1);
+                        let mut recv_ready_time = earliest.get(&prev).copied().unwrap_or(0);
+                        if let LabelEnum::Sleep(slab) = g.label(prev) {
+                            recv_ready_time = recv_ready_time.saturating_add(slab.duration());
+                        }
+                        if recv_earliest > recv_ready_time.saturating_add(w) {
+                            return false;
+                        }
+                    }
+                }
+            }
+            true
+        };
+
+        match focus_recv {
+            Some(recv_ev) => check_recv(recv_ev),
+            None => {
+                // Check all receives
+                for &ev in &all_events {
+                    if matches!(g.label(ev), LabelEnum::RecvMsg(_)) {
+                        if !check_recv(ev) {
+                            return false;
+                        }
+                    }
+                }
+                true
+            }
+        }
     }
 
     /// Returns whether the resulting execution would be consistent

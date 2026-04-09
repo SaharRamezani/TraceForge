@@ -661,6 +661,19 @@ impl Must {
         result
     }
 
+    /// Handle a sleep(d) event
+    pub(crate) fn handle_sleep(&mut self, slab: Sleep) {
+        if self.is_replay(slab.pos()) {
+            info!("| Replay Mode for {}", slab);
+            let lab = LabelEnum::Sleep(slab);
+            self.current.graph.validate_replay_event(&lab);
+            self.process_event(lab);
+            return;
+        }
+        info!("| Handle Mode for {}", slab);
+        self.add_to_graph(LabelEnum::Sleep(slab));
+    }
+
     pub(crate) fn handle_block(&mut self, blab: Block) {
         if self.is_replay(blab.pos()) {
             info!("| Replay Mode for {}", blab);
@@ -728,8 +741,14 @@ impl Must {
 
     // this checks if the current graph is consistent
     // trivially true unless the semantics is Mailbox
+    // Also checks temporal consistency when temporal Must is enabled.
     pub(crate) fn is_consistent(&self) -> bool {
         self.checker.is_consistent(&self.current.graph)
+            && self.checker.is_temporally_consistent(
+                &self.current.graph,
+                &self.config,
+                None,
+            )
     }
 
     pub(crate) fn dropped_messages(&self) -> usize {
@@ -1055,6 +1074,26 @@ impl Must {
 
         self.filter_symmetric_rfs(&mut rfs, pos);
 
+        // Filter out rf options that violate temporal consistency.
+        // Note: We only filter for non-blocking receives here. For blocking receives,
+        // we cannot prune all rfs because the runtime's unblock mechanism would
+        // infinitely retry the receive. Instead, temporal consistency for blocking
+        // receives is checked at the end of execution via is_consistent().
+        if self.config.is_temporal() && !blocking {
+            rfs.retain(|&rf| {
+                // Temporarily set rf to check temporal consistency
+                self.current.graph.change_rf(pos, Some(rf));
+                let ok = self.checker.is_temporally_consistent(
+                    &self.current.graph,
+                    &self.config,
+                    Some(pos),
+                );
+                // Reset rf
+                self.current.graph.change_rf(pos, None);
+                ok
+            });
+        }
+
         // At this point, we have handled all the cases for nonblocking receive
         // so we know blocking == true
         if !blocking {
@@ -1182,6 +1221,28 @@ impl Must {
             .take_while(|&rlab| self.is_maximal_extension(&Revisit::new(rlab.pos(), pos)))
             .map(|recv| recv.pos())
             .collect::<Vec<_>>();
+
+        // Filter backward revisits by temporal consistency for the r
+        // with the proposed new rf (r reads from the new s at pos).
+        let revs = if self.config.is_temporal() {
+            revs.into_iter()
+                .filter(|&r| {
+                    // Temporarily set rf(r) = pos to check temporal consistency
+                    let old_rf = self.current.graph.recv_label(r).unwrap().rf();
+                    self.current.graph.change_rf(r, Some(pos));
+                    let ok = self.checker.is_temporally_consistent(
+                        &self.current.graph,
+                        &self.config,
+                        Some(r),
+                    );
+                    // Restore the old rf
+                    self.current.graph.change_rf(r, old_rf);
+                    ok
+                })
+                .collect()
+        } else {
+            revs
+        };
 
         if self.config.mode == ExplorationMode::Estimation {
             self.pick_revisit(revs, pos);

@@ -198,6 +198,9 @@ pub struct Config {
     pub(crate) symmetry: bool,
     pub(crate) vr: bool,
     pub(crate) lossy_budget: usize,
+    pub(crate) transit_lower_bound: Option<u64>,
+    pub(crate) transit_upper_bound: Option<u64>,
+    pub(crate) storage_delay: Option<u64>,
     pub(crate) dot_file: Option<String>,
     pub(crate) trace_file: Option<String>,
     pub(crate) error_trace_file: Option<String>,
@@ -213,6 +216,26 @@ pub struct Config {
 impl Config {
     pub fn builder() -> ConfigBuilder {
         ConfigBuilder::new()
+    }
+
+    /// Returns true if temporal mode is enabled (any network temporal parameter is set).
+    /// Note: To enable temporal mode, set at least one of L, U, or sd via the config builder.
+    pub fn is_temporal(&self) -> bool {
+        self.transit_lower_bound.is_some()
+            || self.transit_upper_bound.is_some()
+            || self.storage_delay.is_some()
+    }
+
+    pub fn transit_l(&self) -> u64 {
+        self.transit_lower_bound.unwrap_or(0)
+    }
+
+    pub fn transit_u(&self) -> u64 {
+        self.transit_upper_bound.unwrap_or(u64::MAX)
+    }
+
+    pub fn sd(&self) -> u64 {
+        self.storage_delay.unwrap_or(0)
     }
 
     pub(crate) fn rename_files(&mut self, suffix: String) {
@@ -260,6 +283,9 @@ impl ConfigBuilder {
             symmetry: false,
             vr: false,
             lossy_budget: 0,
+            transit_lower_bound: None,
+            transit_upper_bound: None,
+            storage_delay: None,
             dot_file: None,
             trace_file: None,
             error_trace_file: None,
@@ -389,6 +415,24 @@ impl ConfigBuilder {
     /// Consider executions where up to `budget` lossy messages are dropped.
     pub fn with_lossy(mut self, budget: usize) -> Self {
         self.0.lossy_budget = budget;
+        self
+    }
+
+    /// Sets the lower bound on message transit time (L).
+    pub fn with_transit_lower_bound(mut self, l: u64) -> Self {
+        self.0.transit_lower_bound = Some(l);
+        self
+    }
+
+    /// Sets the upper bound on message transit time (U).
+    pub fn with_transit_upper_bound(mut self, u: u64) -> Self {
+        self.0.transit_upper_bound = Some(u);
+        self
+    }
+
+    /// Sets the storage delay at the receiver's mailbox (sd).
+    pub fn with_storage_delay(mut self, sd: u64) -> Self {
+        self.0.storage_delay = Some(sd);
         self
     }
 
@@ -733,7 +777,7 @@ pub(crate) fn select_val_block<'a, T: Message + 'static, U: Message + 'static>(
     let locs = iter::once(&primary.inner).chain(iter::once(&secondary.inner));
     // *Only* use main recv's communication model
     let comm = primary.comm;
-    recv_val_block_with_tag(locs, comm, None)
+    recv_val_block_with_tag(locs, comm, None, None)
 }
 
 ///
@@ -760,7 +804,7 @@ pub fn select_msg<'a, T: Message + 'static>(
     comm: CommunicationModel,
 ) -> Option<(T, usize)> {
     let locs = recvs.map(|r| &r.inner);
-    recv_msg_with_tag(locs, comm, None)
+    recv_msg_with_tag(locs, comm, None, None)
 }
 
 pub fn select_tagged_msg<'a, F, T>(
@@ -790,7 +834,7 @@ where
     let locs = recvs.map(|r| &r.inner);
     recv_msg_with_tag(locs, comm, Some(PredicateType(Arc::new(move |tid, tag| {
         f(tid, normalize_vec_tag(tag))
-    }))))
+    }))), None)
 }
 
 pub fn select_msg_block<'a, T: Message + 'static>(
@@ -798,7 +842,7 @@ pub fn select_msg_block<'a, T: Message + 'static>(
     comm: CommunicationModel,
 ) -> (T, usize) {
     let locs = recvs.map(|r| &r.inner);
-    recv_msg_block_with_tag(locs, comm, None)
+    recv_msg_block_with_tag(locs, comm, None, None)
 }
 
 pub fn select_tagged_msg_block<'a, F, T>(
@@ -828,10 +872,22 @@ where
     let locs = recvs.map(|r| &r.inner);
     recv_msg_block_with_tag(locs, comm, Some(PredicateType(Arc::new(move |tid, tag| {
         f(tid, normalize_vec_tag(tag))
-    }))))
+    }))), None)
 }
 
 // Main API
+
+/// Records a sleep event with the given duration.
+/// In non-temporal mode, this is a no-op that records the event but
+/// does not affect exploration.
+pub fn sleep(duration: u64) {
+    switch();
+    ExecutionState::with(|s| {
+        let pos = s.next_pos();
+        let slab = Sleep::new(pos, duration);
+        s.must.borrow_mut().handle_sleep(slab);
+    });
+}
 
 /// Sends to `t` the message `v`
 pub fn send_msg<T: Message + 'static>(t: ThreadId, v: T) {
@@ -948,7 +1004,18 @@ fn send_msg_with_vec_tag<T: Message + 'static>(
 /// Returns a message from the thread queue or times out
 pub fn recv_msg<T: Message + 'static>() -> Option<T> {
     let (loc, comm) = self_loc_comm();
-    recv_msg_with_tag(iter::once(&loc), comm, None).map(|x| x.0)
+    recv_msg_with_tag(iter::once(&loc), comm, None, None).map(|x| x.0)
+}
+
+/// Returns a message from the thread queue or times out, with a per-receive
+/// wait time bound.
+///
+/// This applies a temporal constraint to this specific receive and it must read a
+/// message no later than W time units after the thread becomes ready at this
+/// receive site. Without temporal mode enabled in [`Config`], `w` is ignored.
+pub fn recv_msg_with_wait<T: Message + 'static>(w: u64) -> Option<T> {
+    let (loc, comm) = self_loc_comm();
+    recv_msg_with_tag(iter::once(&loc), comm, None, Some(w)).map(|x| x.0)
 }
 
 /// Returns a tagged message from the thread queue or times out
@@ -976,6 +1043,7 @@ where
         Some(PredicateType(Arc::new(move |tid, tag| {
             f(tid, normalize_vec_tag(tag))
         }))),
+        None,
     )
     .map(|x| x.0)
 }
@@ -984,14 +1052,16 @@ fn recv_msg_with_tag<'a, T: Message + 'static>(
     locs: impl Iterator<Item = &'a Loc>,
     comm: CommunicationModel,
     tag: Option<PredicateType>,
+    wait_time: Option<u64>,
 ) -> Option<(T, usize)> {
-    recv_val_with_tag(locs, comm, tag).map(|(val, ind)| (expect_msg(val), ind))
+    recv_val_with_tag(locs, comm, tag, wait_time).map(|(val, ind)| (expect_msg(val), ind))
 }
 
 fn recv_val_with_tag<'a>(
     locs: impl Iterator<Item = &'a Loc>,
     comm: CommunicationModel,
     tag: Option<PredicateType>,
+    wait_time: Option<u64>,
 ) -> Option<(Val, usize)> {
     let locs = locs.collect::<Vec<_>>();
     validate_locs(&locs);
@@ -1002,7 +1072,7 @@ fn recv_val_with_tag<'a>(
         let (val, ind) = ExecutionState::with(|s| {
             let pos = s.next_pos();
             s.must.borrow_mut().handle_recv(
-                RecvMsg::new(pos, RecvLoc::new(locs, tag), comm, None, true),
+                RecvMsg::new(pos, RecvLoc::new(locs, tag), comm, None, true, wait_time),
                 false,
             )
         });
@@ -1022,7 +1092,17 @@ fn recv_val_with_tag<'a>(
 /// Returns a message from the queue.
 pub fn recv_msg_block<T: Message + 'static>() -> T {
     let (loc, comm) = self_loc_comm();
-    recv_msg_block_with_tag(iter::once(&loc), comm, None).0
+    recv_msg_block_with_tag(iter::once(&loc), comm, None, None).0
+}
+
+/// Returns a message from the queue, with a per-receive wait time bound
+///
+/// This applies a temporal constraint to this specific receive and it must read a
+/// message no later than W time units after the thread becomes ready at this
+/// receive site. Without temporal mode enabled in [`Config`], `w` is ignored.
+pub fn recv_msg_block_with_wait<T: Message + 'static>(w: u64) -> T {
+    let (loc, comm) = self_loc_comm();
+    recv_msg_block_with_tag(iter::once(&loc), comm, None, Some(w)).0
 }
 
 /// Returns a message from the queue that matches `tag`
@@ -1050,6 +1130,7 @@ where
         Some(PredicateType(Arc::new(move |tid, tag| {
             f(tid, normalize_vec_tag(tag))
         }))),
+        None,
     )
     .0
 }
@@ -1059,8 +1140,9 @@ fn recv_msg_block_with_tag<'a, T: Message + 'static>(
     locs: impl Iterator<Item = &'a Loc>,
     comm: CommunicationModel,
     tag: Option<PredicateType>,
+    wait_time: Option<u64>,
 ) -> (T, usize) {
-    let (val, ind) = recv_val_block_with_tag(locs, comm, tag);
+    let (val, ind) = recv_val_block_with_tag(locs, comm, tag, wait_time);
     (expect_msg(val), ind)
 }
 
@@ -1068,6 +1150,7 @@ fn recv_val_block_with_tag<'a>(
     locs: impl Iterator<Item = &'a Loc>,
     comm: CommunicationModel,
     tag: Option<PredicateType>,
+    wait_time: Option<u64>,
 ) -> (Val, usize) {
     let locs = locs.collect::<Vec<_>>();
     validate_locs(&locs);
@@ -1077,7 +1160,7 @@ fn recv_val_block_with_tag<'a>(
         let (val, ind) = ExecutionState::with(|s| {
             let pos = s.next_pos();
             s.must.borrow_mut().handle_recv(
-                RecvMsg::new(pos, RecvLoc::new(locs, tag.clone()), comm, None, false),
+                RecvMsg::new(pos, RecvLoc::new(locs, tag.clone()), comm, None, false, wait_time),
                 true,
             )
         });

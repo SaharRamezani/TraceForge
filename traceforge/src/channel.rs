@@ -147,7 +147,7 @@ impl<T: Message + Clone + 'static> Receiver<T> {
     }
 
     pub fn recv_msg(&self) -> Option<T> {
-        crate::recv_msg_with_tag(iter::once(&self.inner), self.comm, None).map(|x| x.0)
+        crate::recv_msg_with_tag(iter::once(&self.inner), self.comm, None, None).map(|x| x.0)
     }
 
     pub fn async_recv_msg(&self) -> impl Future<Output = T> {
@@ -173,12 +173,13 @@ impl<T: Message + Clone + 'static> Receiver<T> {
             iter::once(&self.inner),
             self.comm,
             Some(PredicateType(Arc::new(f))),
+            None,
         )
         .map(|x| x.0)
     }
 
     pub fn recv_msg_block(&self) -> T {
-        crate::recv_msg_block_with_tag(iter::once(&self.inner), self.comm, None).0
+        crate::recv_msg_block_with_tag(iter::once(&self.inner), self.comm, None, None).0
     }
 
     pub fn try_recv(&self) -> Result<T> {
@@ -204,6 +205,7 @@ impl<T: Message + Clone + 'static> Receiver<T> {
             iter::once(&self.inner),
             self.comm,
             Some(PredicateType(Arc::new(f))),
+            None,
         )
         .0
     }

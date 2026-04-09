@@ -25,6 +25,7 @@ pub(crate) enum LabelEnum {
     Choice(Choice),
     Sample(Sample),
     Block(Block),
+    Sleep(Sleep),
 }
 
 macro_rules! match_and_run {
@@ -41,6 +42,7 @@ macro_rules! match_and_run {
             LabelEnum::Choice(l) => l.as_event_label().$name($($arg),*),
             LabelEnum::Sample(l) => l.as_event_label().$name($($arg),*),
             LabelEnum::Block(l) => l.as_event_label().$name($($arg),*),
+            LabelEnum::Sleep(l) => l.as_event_label().$name($($arg),*),
         }
     };
 }
@@ -59,6 +61,7 @@ macro_rules! match_and_run_mut {
             LabelEnum::Choice(l) => l.as_event_label_mut().$name($($arg),*),
             LabelEnum::Sample(l) => l.as_event_label_mut().$name($($arg),*),
             LabelEnum::Block(l) => l.as_event_label_mut().$name($($arg),*),
+            LabelEnum::Sleep(l) => l.as_event_label_mut().$name($($arg),*),
         }
     };
 }
@@ -241,6 +244,17 @@ impl LabelEnum {
                     return Ok(());
                 }
             }
+            LabelEnum::Sleep(s) => {
+                if let LabelEnum::Sleep(o) = other {
+                    if s.duration != o.duration {
+                        return Err(format!(
+                            "Expected sleep duration {} but got {}",
+                            s.duration, o.duration
+                        ));
+                    }
+                    return Ok(());
+                }
+            }
         }
 
         if let (LabelEnum::Block(_), LabelEnum::End(_)) = (self, other) {
@@ -288,6 +302,7 @@ impl LabelEnum {
             LabelEnum::Choice(s) => format!("called Range({:?})::nondet", s.range()),
             LabelEnum::Sample(_) => "called sample()".to_string(),
             LabelEnum::Block(_) => "became blocked".to_string(),
+            LabelEnum::Sleep(s) => format!("called sleep({})", s.duration),
         }
     }
 }
@@ -306,6 +321,7 @@ impl fmt::Display for LabelEnum {
             LabelEnum::Choice(lab) => write!(f, "{}", lab),
             LabelEnum::Sample(lab) => write!(f, "{}", lab),
             LabelEnum::Block(lab) => write!(f, "{}", lab),
+            LabelEnum::Sleep(lab) => write!(f, "{}", lab),
         }
     }
 }
@@ -324,6 +340,7 @@ impl fmt::Debug for LabelEnum {
             LabelEnum::Choice(lab) => write!(f, "{}", lab),
             LabelEnum::Sample(lab) => write!(f, "{}", lab),
             LabelEnum::Block(lab) => write!(f, "{}", lab),
+            LabelEnum::Sleep(lab) => write!(f, "{}", lab),
         }
     }
 }
@@ -641,6 +658,8 @@ pub(crate) struct RecvMsg {
     rf: Option<Event>,
     non_blocking: bool,
     revisitable: bool,
+    /// `None` means unbounded (block forever until a feasible message arrives).
+    wait_time: Option<u64>,
 }
 
 impl RecvMsg {
@@ -650,6 +669,7 @@ impl RecvMsg {
         comm: CommunicationModel,
         rf: Option<Event>,
         non_blocking: bool,
+        wait_time: Option<u64>,
     ) -> Self {
         Self {
             label: EventLabel::new(pos),
@@ -658,7 +678,13 @@ impl RecvMsg {
             rf,
             non_blocking,
             revisitable: true,
+            wait_time,
         }
+    }
+
+    /// Returns the per-receive wait time bound (W), or `u64::MAX` if unbounded.
+    pub(crate) fn wait_time(&self) -> u64 {
+        self.wait_time.unwrap_or(u64::MAX)
     }
 
     pub(crate) fn rf(&self) -> Option<Event> {
@@ -1164,5 +1190,32 @@ as_label!(Block);
 impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: BLK {:?}", self.as_event_label(), self.btype())
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct Sleep {
+    label: EventLabel,
+    pub(crate) duration: u64,
+}
+
+impl Sleep {
+    pub(crate) fn new(pos: Event, duration: u64) -> Self {
+        Self {
+            label: EventLabel::new(pos),
+            duration,
+        }
+    }
+
+    pub(crate) fn duration(&self) -> u64 {
+        self.duration
+    }
+}
+
+as_label!(Sleep);
+
+impl fmt::Display for Sleep {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: SLEEP({})", self.as_event_label(), self.duration)
     }
 }
