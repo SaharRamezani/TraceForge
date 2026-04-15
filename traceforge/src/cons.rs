@@ -4,6 +4,8 @@ use crate::exec_graph::ExecutionGraph;
 use crate::loc::CommunicationModel;
 use crate::revisit::Revisit;
 use crate::vector_clock::VectorClock;
+use crate::Config;
+use std::collections::HashMap;
 
 // A generic consistency which will, eventually, support arbitrary
 // communication models, depending on the channel.
@@ -381,6 +383,156 @@ impl Consistency {
         porf_override: bool,
     ) -> Vec<Event> {
         self.coherent_rfs_in_view(g, None, rlab, porf_override, true)
+    }
+
+    /// checks whether the execution graph admits a feasible
+    /// time assignment to events that respects the transit and receive wait times
+    ///
+    /// `focus_recv` scopes which receives are re-validated after the
+    /// earliest-time forward pass runs:
+    ///   - `Some(r)`: only `r`'s feasibility is checked. Used at the two
+    ///     `setRF` sites (`visit_rfs`, `calc_revisits`) where only `r`'s rf
+    ///     just changed, so only `r`'s feasibility could have been affected.
+    ///   - `None`: every receive in the graph is checked. Used by the
+    ///     end-of-execution `is_consistent` call, where we validate the final
+    ///     graph as a whole.
+    /// The earliest-time forward pass always runs over the entire graph
+    /// regardless; `focus_recv` only avoids redundantly rechecking receives
+    /// whose rf is unchanged between successive calls during rf filtering.
+    ///
+    /// The implementation computes earliest times via a single forward pass
+    /// over stamp order and then checks the upper-bound constraints per
+    /// receive. It is a sound approximation of the recursive
+    /// `tconsistent` fixpoint: if this function returns `false`, the graph
+    /// really is temporally infeasible (so it is safe to prune), but it may
+    /// fail to reject some infeasible graphs that only a full fixpoint would
+    /// catch. Those are still caught later by the end-of-execution
+    /// consistency check.
+    ///
+    /// Complexity: a single call is `O(E log E)` (sort + forward pass + one
+    /// per-receive check). Filtering an rf candidate set of size `k` at a
+    /// setRF site (`visit_rfs` / `calc_revisits`) therefore costs
+    /// `O(k · E log E)`.
+    pub(crate) fn is_temporally_consistent(
+        &self,
+        g: &ExecutionGraph,
+        config: &Config,
+        focus_recv: Option<Event>,
+    ) -> bool {
+        if !config.is_temporal() {
+            return true;
+        }
+
+        let l = config.transit_l();
+        let u_plus_sd = config.transit_u().saturating_add(config.sd());
+
+        // Collect all events sorted by stamp.
+        let mut all_events: Vec<Event> = Vec::new();
+        for tid in g.thread_ids() {
+            let size = g.thread_size(tid);
+            for i in 0..size {
+                all_events.push(Event::new(tid, i as u32));
+            }
+        }
+        all_events.sort_by_key(|e| g.label(*e).stamp());
+
+        // Forward propagation: compute earliest feasible time for each event.
+        let mut earliest: HashMap<Event, u64> = HashMap::new();
+        for &ev in &all_events {
+            let mut e_time: u64 = 0;
+
+            // po constraint: τ(ev) ≥ τ(prev_in_thread) (+ d for sleep).
+            if ev.index > 0 {
+                let prev = Event::new(ev.thread, ev.index - 1);
+                if let Some(&prev_earliest) = earliest.get(&prev) {
+                    e_time = e_time.max(prev_earliest);
+                    if let LabelEnum::Sleep(slab) = g.label(prev) {
+                        e_time = e_time.max(prev_earliest.saturating_add(slab.duration()));
+                    }
+                }
+            }
+
+            // Begin inherits from its TCreate parent (thread-spawn causality).
+            if let LabelEnum::Begin(blab) = g.label(ev) {
+                if let Some(parent) = blab.parent() {
+                    if let Some(&parent_earliest) = earliest.get(&parent) {
+                        e_time = e_time.max(parent_earliest);
+                    }
+                }
+            }
+
+            // TJoin inherits from the last event of the joined thread.
+            if let LabelEnum::TJoin(jlab) = g.label(ev) {
+                if let Some(last) = g.thread_last(jlab.cid()) {
+                    if let Some(&joined_earliest) = earliest.get(&last.pos()) {
+                        e_time = e_time.max(joined_earliest);
+                    }
+                }
+            }
+
+            // rf lower bound: τ(recv) ≥ τ(send) + L.
+            if let LabelEnum::RecvMsg(rlab) = g.label(ev) {
+                if let Some(rf) = rlab.rf() {
+                    if let Some(&send_earliest) = earliest.get(&rf) {
+                        e_time = e_time.max(send_earliest.saturating_add(l));
+                    }
+                }
+            }
+
+            earliest.insert(ev, e_time);
+        }
+
+        // Per-receive upper-bound check.
+        let check_recv = |recv_ev: Event| -> bool {
+            let rlab = match g.label(recv_ev) {
+                LabelEnum::RecvMsg(r) => r,
+                _ => return true,
+            };
+            let Some(rf) = rlab.rf() else {
+                // rf = ⊥: the Must-τ paper forbids τ(recv) on a timed-out
+                // receive when W = +∞. For the legacy API (W = +∞) we keep
+                // the classical behavior: a timeout is always feasible.
+                // When a finite W is set, the timeout is still feasible
+                // (recv just waits until W elapses), so we return true.
+                return true;
+            };
+            let recv_earliest = earliest.get(&recv_ev).copied().unwrap_or(0);
+            let send_earliest = earliest.get(&rf).copied().unwrap_or(0);
+
+            // Re-apply rf lower bound: during backward revisits the send can
+            // be stamp-later than the recv, so the forward pass did not visit
+            // it before the recv.
+            let recv_earliest = recv_earliest.max(send_earliest.saturating_add(l));
+
+            // rf upper bound: recv must be reachable within U + sd of send.
+            if u_plus_sd < u64::MAX
+                && recv_earliest > send_earliest.saturating_add(u_plus_sd)
+            {
+                return false;
+            }
+
+            // Per-receive wait time: recv ≤ ready(recv) + W.
+            let w = rlab.wait_time();
+            if w < u64::MAX && recv_ev.index > 0 {
+                let prev = Event::new(recv_ev.thread, recv_ev.index - 1);
+                let mut ready = earliest.get(&prev).copied().unwrap_or(0);
+                if let LabelEnum::Sleep(slab) = g.label(prev) {
+                    ready = ready.saturating_add(slab.duration());
+                }
+                if recv_earliest > ready.saturating_add(w) {
+                    return false;
+                }
+            }
+            true
+        };
+
+        match focus_recv {
+            Some(r) => check_recv(r),
+            None => all_events
+                .iter()
+                .filter(|&&ev| matches!(g.label(ev), LabelEnum::RecvMsg(_)))
+                .all(|&ev| check_recv(ev)),
+        }
     }
 
     /// Returns whether the resulting execution would be consistent

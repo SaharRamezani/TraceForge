@@ -672,6 +672,21 @@ impl Must {
         self.add_to_graph(LabelEnum::Block(blab));
     }
 
+    /// Temporal Must-τ: records a `sleep(d)` event for this thread.
+    /// Sleep events are inert for the structural DPOR skeleton; they only
+    /// advance the earliest-time window computed by the temporal checker.
+    pub(crate) fn handle_sleep(&mut self, slab: Sleep) {
+        if self.is_replay(slab.pos()) {
+            info!("| Replay Mode for {}", slab);
+            let lab = LabelEnum::Sleep(slab);
+            self.current.graph.validate_replay_event(&lab);
+            self.process_event(lab);
+            return;
+        }
+        info!("| Handle Mode for {}", slab);
+        self.add_to_graph(LabelEnum::Sleep(slab));
+    }
+
     pub(crate) fn handle_sample<
         T: Clone + std::fmt::Debug + Serialize + for<'a> Deserialize<'a>,
         D: Distribution<T>,
@@ -727,9 +742,19 @@ impl Must {
     }
 
     // this checks if the current graph is consistent
-    // trivially true unless the semantics is Mailbox
+    // trivially true unless the semantics is Mailbox.
+    //
+    // Temporal Must-τ: when temporal mode is enabled, the graph must also
+    // pass the temporal consistency check (τ ∈ ℝ≥0 feasible). In
+    // non-temporal mode `is_temporally_consistent` short-circuits to true
+    // and the legacy semantics is preserved bit-for-bit.
     pub(crate) fn is_consistent(&self) -> bool {
         self.checker.is_consistent(&self.current.graph)
+            && self.checker.is_temporally_consistent(
+                &self.current.graph,
+                &self.config,
+                None,
+            )
     }
 
     pub(crate) fn dropped_messages(&self) -> usize {
@@ -1055,6 +1080,31 @@ impl Must {
 
         self.filter_symmetric_rfs(&mut rfs, pos);
 
+        // Temporal Must-τ: prune rf options whose resulting receive would
+        // violate the temporal consistency predicate. Only applies for the
+        // non-blocking case because the blocking code path may re-issue the
+        // receive when a new send arrives; blocked-receive feasibility is
+        // caught later by `is_consistent` at end of execution.
+        if self.config.is_temporal() && !blocking {
+            let saved_rf = self
+                .current
+                .graph
+                .recv_label(pos)
+                .and_then(|r| r.rf());
+            rfs.retain(|&rf| {
+                self.current.graph.change_rf(pos, Some(rf));
+                let ok = self.checker.is_temporally_consistent(
+                    &self.current.graph,
+                    &self.config,
+                    Some(pos),
+                );
+                ok
+            });
+            // Restore the rf we found on entry so that the rest of visit_rfs
+            // observes the same state as before temporal filtering.
+            self.current.graph.change_rf(pos, saved_rf);
+        }
+
         // At this point, we have handled all the cases for nonblocking receive
         // so we know blocking == true
         if !blocking {
@@ -1182,6 +1232,26 @@ impl Must {
             .take_while(|&rlab| self.is_maximal_extension(&Revisit::new(rlab.pos(), pos)))
             .map(|recv| recv.pos())
             .collect::<Vec<_>>();
+
+        // Temporal Must-τ: prune backward revisits whose resulting
+        // receive-from-send would violate temporal feasibility.
+        let revs = if self.config.is_temporal() {
+            revs.into_iter()
+                .filter(|&r| {
+                    let old_rf = self.current.graph.recv_label(r).and_then(|r| r.rf());
+                    self.current.graph.change_rf(r, Some(pos));
+                    let ok = self.checker.is_temporally_consistent(
+                        &self.current.graph,
+                        &self.config,
+                        Some(r),
+                    );
+                    self.current.graph.change_rf(r, old_rf);
+                    ok
+                })
+                .collect::<Vec<_>>()
+        } else {
+            revs
+        };
 
         if self.config.mode == ExplorationMode::Estimation {
             self.pick_revisit(revs, pos);

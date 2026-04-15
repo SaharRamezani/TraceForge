@@ -198,6 +198,15 @@ pub struct Config {
     pub(crate) symmetry: bool,
     pub(crate) vr: bool,
     pub(crate) lossy_budget: usize,
+    /// Temporal Must-τ: global lower bound on message transit time (L).
+    /// `None` means the temporal check is disabled for this bound.
+    pub(crate) transit_lower_bound: Option<u64>,
+    /// Temporal Must-τ: global upper bound on message transit time (U).
+    /// `None` means the temporal check is disabled for this bound.
+    pub(crate) transit_upper_bound: Option<u64>,
+    /// Temporal Must-τ: storage delay at the receiver mailbox (sd).
+    /// `None` means the temporal check is disabled for this bound.
+    pub(crate) storage_delay: Option<u64>,
     pub(crate) dot_file: Option<String>,
     pub(crate) trace_file: Option<String>,
     pub(crate) error_trace_file: Option<String>,
@@ -213,6 +222,40 @@ pub struct Config {
 impl Config {
     pub fn builder() -> ConfigBuilder {
         ConfigBuilder::new()
+    }
+
+    /// Temporal Must-τ: `true` iff any of the temporal parameters
+    /// (L, U, sd) has been set on this config. When false, all Must-τ
+    /// behavior is bypassed and the checker is structurally identical
+    /// to legacy Must.
+    ///
+    /// NOTE: the legacy receive primitives (`recv_msg`, `recv_msg_block`, ...)
+    /// intentionally have `W = +∞` and thus keep their original semantics even
+    /// under temporal mode. To actually constrain a receive by a wait time,
+    /// use the temporal API: [`temporal_recv_msg_block`] / [`temporal_recv_msg`]
+    /// (or [`temporal_recv_msg_block_with_wait`] to set `W` explicitly).
+    pub fn is_temporal(&self) -> bool {
+        self.transit_lower_bound.is_some()
+            || self.transit_upper_bound.is_some()
+            || self.storage_delay.is_some()
+    }
+
+    /// Temporal Must-τ: returns the effective lower transit bound `L`.
+    /// Defaults to 0 when unspecified.
+    pub fn transit_l(&self) -> u64 {
+        self.transit_lower_bound.unwrap_or(0)
+    }
+
+    /// Temporal Must-τ: returns the effective upper transit bound `U`.
+    /// Defaults to `u64::MAX` (no upper bound) when unspecified.
+    pub fn transit_u(&self) -> u64 {
+        self.transit_upper_bound.unwrap_or(u64::MAX)
+    }
+
+    /// Temporal Must-τ: returns the effective storage delay `sd`.
+    /// Defaults to 0 when unspecified.
+    pub fn sd(&self) -> u64 {
+        self.storage_delay.unwrap_or(0)
     }
 
     pub(crate) fn rename_files(&mut self, suffix: String) {
@@ -260,6 +303,9 @@ impl ConfigBuilder {
             symmetry: false,
             vr: false,
             lossy_budget: 0,
+            transit_lower_bound: None,
+            transit_upper_bound: None,
+            storage_delay: None,
             dot_file: None,
             trace_file: None,
             error_trace_file: None,
@@ -389,6 +435,34 @@ impl ConfigBuilder {
     /// Consider executions where up to `budget` lossy messages are dropped.
     pub fn with_lossy(mut self, budget: usize) -> Self {
         self.0.lossy_budget = budget;
+        self
+    }
+
+    /// Temporal Must-τ: sets the global lower bound on message transit time (`L`).
+    ///
+    /// Setting any of [`with_transit_lower_bound`], [`with_transit_upper_bound`],
+    /// or [`with_storage_delay`] enables temporal mode — the checker then rejects
+    /// executions that have no feasible time assignment.
+    ///
+    /// Legacy receives (`recv_msg`, `recv_msg_block`, ...) keep `W = +∞` and so
+    /// continue to behave as in plain Must. If you want a specific receive to
+    /// be temporally constrained, use the `temporal_recv_*` API.
+    pub fn with_transit_lower_bound(mut self, l: u64) -> Self {
+        self.0.transit_lower_bound = Some(l);
+        self
+    }
+
+    /// Temporal Must-τ: sets the global upper bound on message transit time (`U`).
+    /// See [`ConfigBuilder::with_transit_lower_bound`].
+    pub fn with_transit_upper_bound(mut self, u: u64) -> Self {
+        self.0.transit_upper_bound = Some(u);
+        self
+    }
+
+    /// Temporal Must-τ: sets the storage delay at the receiver mailbox (`sd`).
+    /// See [`ConfigBuilder::with_transit_lower_bound`].
+    pub fn with_storage_delay(mut self, sd: u64) -> Self {
+        self.0.storage_delay = Some(sd);
         self
     }
 
@@ -832,6 +906,170 @@ where
 }
 
 // Main API
+
+// =====================================================================
+// Temporal Must-τ API
+// =====================================================================
+//
+// The functions below form the *temporal* extension of the public API.
+// They live next to the legacy `send_msg` / `recv_msg` / `recv_msg_block`
+// primitives and are additive: plain programs keep working unchanged.
+//
+// IMPORTANT: if you want per-receive timestamp semantics (Must-τ transit
+// bounds `L`/`U`, storage delay `sd`, and per-receive wait time `W`),
+// you MUST use the `temporal_*` primitives below, and enable temporal
+// mode by setting at least one of `with_transit_lower_bound`,
+// `with_transit_upper_bound`, or `with_storage_delay` on the [`Config`].
+// The legacy `recv_msg` / `recv_msg_block` primitives deliberately
+// record `W = +∞` so that untimed code under temporal mode keeps its
+// classical semantics.
+//
+// Namely:
+//   * [`temporal_sleep`]                     - record a `sleep(d)` event;
+//   * [`temporal_recv_msg`]                  - non-blocking recv with W = +∞;
+//   * [`temporal_recv_msg_block`]            - blocking recv with W = +∞;
+//   * [`temporal_recv_msg_with_wait`]        - non-blocking recv with W = w;
+//   * [`temporal_recv_msg_block_with_wait`]  - blocking recv with W = w.
+//
+// Under non-temporal [`Config`], the `temporal_*` functions still work and
+// behave as their untimed counterparts — the temporal checker is disabled.
+
+/// Temporal Must-τ: records a `sleep(d)` event in the current thread.
+///
+/// Sleep events advance the earliest-time window used by the temporal
+/// consistency check. They are inert for the structural DPOR skeleton.
+/// Without a temporal-mode [`Config`] the event is still recorded, but it
+/// has no effect on exploration.
+pub fn temporal_sleep(duration: u64) {
+    switch();
+    ExecutionState::with(|s| {
+        let pos = s.next_pos();
+        let slab = Sleep::new(pos, duration);
+        s.must.borrow_mut().handle_sleep(slab);
+    });
+}
+
+/// Temporal Must-τ: non-blocking receive with an explicit per-receive wait
+/// time bound `w`. The receive must occur no later than `w` time units after
+/// the thread becomes ready at this receive site, otherwise temporal
+/// consistency prunes the execution.
+///
+/// Without temporal mode enabled on the [`Config`], `w` is recorded but not
+/// enforced — the receive behaves like the legacy [`recv_msg`].
+pub fn temporal_recv_msg_with_wait<T: Message + 'static>(w: u64) -> Option<T> {
+    let (loc, comm) = self_loc_comm();
+    temporal_recv_val_with_tag(iter::once(&loc), comm, None, Some(w))
+        .map(|(v, _)| expect_msg(v))
+}
+
+/// Temporal Must-τ: non-blocking receive with `W = +∞` (no wait-time bound).
+///
+/// Equivalent to [`recv_msg`] for the structural graph. Sleep events and
+/// transit bounds from the [`Config`] still influence feasibility.
+pub fn temporal_recv_msg<T: Message + 'static>() -> Option<T> {
+    let (loc, comm) = self_loc_comm();
+    temporal_recv_val_with_tag(iter::once(&loc), comm, None, None)
+        .map(|(v, _)| expect_msg(v))
+}
+
+/// Temporal Must-τ: blocking receive with an explicit per-receive wait
+/// time bound `w`. The thread blocks until a temporally feasible send is
+/// available; if none can exist under the temporal bounds the execution is
+/// reported as blocked.
+///
+/// Without temporal mode enabled on the [`Config`], `w` is recorded but not
+/// enforced — the receive behaves like the legacy [`recv_msg_block`].
+pub fn temporal_recv_msg_block_with_wait<T: Message + 'static>(w: u64) -> T {
+    let (loc, comm) = self_loc_comm();
+    let (v, _) = temporal_recv_val_block_with_tag(iter::once(&loc), comm, None, Some(w));
+    expect_msg(v)
+}
+
+/// Temporal Must-τ: blocking receive with `W = +∞` (no wait-time bound).
+///
+/// Equivalent to [`recv_msg_block`] for the structural graph.
+pub fn temporal_recv_msg_block<T: Message + 'static>() -> T {
+    let (loc, comm) = self_loc_comm();
+    let (v, _) = temporal_recv_val_block_with_tag(iter::once(&loc), comm, None, None);
+    expect_msg(v)
+}
+
+// Internal helper: mirrors `recv_val_with_tag` but uses `RecvMsg::new_with_wait`
+// so that the per-receive `W` reaches the temporal checker. Legacy
+// `recv_val_with_tag` is left untouched.
+fn temporal_recv_val_with_tag<'a>(
+    locs: impl Iterator<Item = &'a Loc>,
+    comm: CommunicationModel,
+    tag: Option<PredicateType>,
+    wait_time: Option<u64>,
+) -> Option<(Val, usize)> {
+    let locs = locs.collect::<Vec<_>>();
+    validate_locs(&locs);
+    loop {
+        switch();
+        let locs = locs.clone();
+        let tag = tag.clone();
+        let (val, ind) = ExecutionState::with(|s| {
+            let pos = s.next_pos();
+            s.must.borrow_mut().handle_recv(
+                RecvMsg::new_with_wait(
+                    pos,
+                    RecvLoc::new(locs, tag),
+                    comm,
+                    None,
+                    true,
+                    wait_time,
+                ),
+                false,
+            )
+        });
+        if val.as_ref().is_some_and(Val::is_pending) {
+            ExecutionState::with(|s| {
+                s.current_mut().stuck();
+                s.prev_pos();
+            });
+        } else {
+            return val.map(|v| (v, ind.unwrap()));
+        }
+    }
+}
+
+// Internal helper: mirrors `recv_val_block_with_tag` with a per-receive W.
+fn temporal_recv_val_block_with_tag<'a>(
+    locs: impl Iterator<Item = &'a Loc>,
+    comm: CommunicationModel,
+    tag: Option<PredicateType>,
+    wait_time: Option<u64>,
+) -> (Val, usize) {
+    let locs = locs.collect::<Vec<_>>();
+    validate_locs(&locs);
+    loop {
+        switch();
+        let locs = locs.clone();
+        let (val, ind) = ExecutionState::with(|s| {
+            let pos = s.next_pos();
+            s.must.borrow_mut().handle_recv(
+                RecvMsg::new_with_wait(
+                    pos,
+                    RecvLoc::new(locs, tag.clone()),
+                    comm,
+                    None,
+                    false,
+                    wait_time,
+                ),
+                true,
+            )
+        });
+        if let Some(box_msg) = val {
+            if box_msg.is_pending() {
+                ExecutionState::with(|s| s.current_mut().stuck());
+            } else {
+                return (box_msg, ind.unwrap());
+            }
+        };
+        ExecutionState::with(|s| s.prev_pos());
+    }
+}
 
 /// Sends to `t` the message `v`
 pub fn send_msg<T: Message + 'static>(t: ThreadId, v: T) {
