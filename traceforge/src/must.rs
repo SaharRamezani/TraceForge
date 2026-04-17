@@ -376,6 +376,20 @@ impl Must {
         self.monitors.insert(monitor_info.thread_id, monitor_info);
     }
 
+    /// `case e ∈ sleep(d)`: add the event to the graph and continue.
+    /// The only effect is to advance the thread's local clock.
+    pub(crate) fn handle_sleep(&mut self, slab: Sleep) {
+        if self.is_replay(slab.pos()) {
+            info!("| Replay Mode for sleep {}", slab);
+            let lab = LabelEnum::Sleep(slab);
+            self.current.graph.validate_replay_event(&lab);
+            self.process_event(lab);
+            return;
+        }
+        info!("| Handle Mode for {}", slab);
+        self.add_to_graph(LabelEnum::Sleep(slab));
+    }
+
     /// Returns the value read, if any, along with the rlab's receiving channel index, if any.
     /// Note: It can be that there is a "value" but no index (Val::default, during replay).
     pub(crate) fn handle_recv(
@@ -1055,6 +1069,7 @@ impl Must {
         );
 
         self.filter_symmetric_rfs(&mut rfs, pos);
+        self.filter_temporally_consistent_rfs(&mut rfs, pos);
 
         // At this point, we have handled all the cases for nonblocking receive
         // so we know blocking == true
@@ -1184,6 +1199,20 @@ impl Must {
             .map(|recv| recv.pos())
             .collect::<Vec<_>>();
 
+        // Drop backward revisits whose resulting graph would be
+        // temporally inconsistent. Pure no-op when `temporal` is `None`.
+        let mut revs = revs;
+        if let Some(cfg) = self.config.temporal {
+            let g = &mut self.current.graph;
+            revs.retain(|&r| {
+                let original_rf = g.recv_label(r).unwrap().rf();
+                g.change_rf(r, Some(pos));
+                let iv = crate::temporal_cons::tconsistent(g, r, &cfg);
+                g.change_rf(r, original_rf);
+                !iv.is_empty()
+            });
+        }
+
         if self.config.mode == ExplorationMode::Estimation {
             self.pick_revisit(revs, pos);
             return;
@@ -1245,6 +1274,33 @@ impl Must {
             LabelEnum::Choice(chlab) => chlab.result() == *chlab.range().end(),
             _ => true,
         }
+    }
+
+    /// Drop candidate sends whose `setRF(G, pos, s)`
+    /// would make `tconsistent(G, pos)` empty. When `config.temporal` is
+    /// `None` this is a no-op.
+    ///
+    /// The check is performed by temporarily mutating `rlab.rf` to each
+    /// candidate and running `tconsistent`, then restoring the prior rf
+    /// so the caller's view of the graph is unchanged.
+    fn filter_temporally_consistent_rfs(&mut self, rfs: &mut Vec<Event>, pos: Event) {
+        let cfg = match self.config.temporal {
+            None => return,
+            Some(c) => c,
+        };
+        let g = &mut self.current.graph;
+        let original_rf = g.recv_label(pos).unwrap().rf();
+        let kept: Vec<Event> = rfs
+            .iter()
+            .copied()
+            .filter(|&s| {
+                g.change_rf(pos, Some(s));
+                let iv = crate::temporal_cons::tconsistent(g, pos, &cfg);
+                !iv.is_empty()
+            })
+            .collect();
+        g.change_rf(pos, original_rf);
+        *rfs = kept;
     }
 
     fn filter_symmetric_rfs(&self, rfs: &mut Vec<Event>, pos: Event) {
@@ -1423,6 +1479,7 @@ impl Must {
                 slab.set_dropped();
                 self.current.graph.incr_dropped_sends();
             }
+            LabelEnum::Sleep(_) => unreachable!("sleep events are not revisitable"),
             _ => panic!(),
         };
         self.current.graph.cut_to_stamp(stamp);
