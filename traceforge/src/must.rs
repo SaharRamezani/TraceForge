@@ -12,8 +12,9 @@ use crate::{event_label::*, ExecutionState, MonitorAcceptorFn, MonitorCreateFn};
 use crate::{replay as REPLAY, Val};
 use crate::{Config, ExplorationMode, SchedulePolicy, Stats};
 use log::{debug, info, trace, warn};
-use rand::distributions::Distribution;
-use rand::{prelude::SliceRandom, Rng, SeedableRng};
+use rand::distr::Distribution;
+use rand::seq::IndexedRandom;
+use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64Mcg;
 
 use core::panic;
@@ -194,7 +195,7 @@ impl Must {
     }
 
     pub(crate) fn gen_bool(&mut self) -> bool {
-        self.rng.gen_range(0..=1) == 0
+        self.rng.random_range(0..=1) == 0
     }
 	 
     pub(crate) fn current() -> Option<Rc<RefCell<Must>>> {
@@ -373,6 +374,20 @@ impl Must {
 
     pub(crate) fn handle_register_mon(&mut self, monitor_info: MonitorInfo) {
         self.monitors.insert(monitor_info.thread_id, monitor_info);
+    }
+
+    /// `case e ∈ sleep(d)`: add the event to the graph and continue.
+    /// The only effect is to advance the thread's local clock.
+    pub(crate) fn handle_sleep(&mut self, slab: Sleep) {
+        if self.is_replay(slab.pos()) {
+            info!("| Replay Mode for sleep {}", slab);
+            let lab = LabelEnum::Sleep(slab);
+            self.current.graph.validate_replay_event(&lab);
+            self.process_event(lab);
+            return;
+        }
+        info!("| Handle Mode for {}", slab);
+        self.add_to_graph(LabelEnum::Sleep(slab));
     }
 
     /// Returns the value read, if any, along with the rlab's receiving channel index, if any.
@@ -1054,6 +1069,7 @@ impl Must {
         );
 
         self.filter_symmetric_rfs(&mut rfs, pos);
+        self.filter_temporally_consistent_rfs(&mut rfs, pos);
 
         // At this point, we have handled all the cases for nonblocking receive
         // so we know blocking == true
@@ -1063,7 +1079,7 @@ impl Must {
                     self.telemetry
                         .histogram(EXECS_EST.to_owned(), (rfs.len() + 1) as f64);
 
-                    let idx = self.rng.gen_range(0..=rfs.len());
+                    let idx = self.rng.random_range(0..=rfs.len());
 
                     info!("| Choosing {} out of {}", idx, rfs.len());
 
@@ -1092,7 +1108,7 @@ impl Must {
                 self.telemetry
                     .histogram(EXECS_EST.to_owned(), rfs.len() as f64);
 
-                let idx = self.rng.gen_range(0..=(rfs.len() - 1));
+                let idx = self.rng.random_range(0..=(rfs.len() - 1));
 
                 info!("| Choosing {} out of {}", idx, rfs.len());
 
@@ -1183,6 +1199,20 @@ impl Must {
             .map(|recv| recv.pos())
             .collect::<Vec<_>>();
 
+        // Drop backward revisits whose resulting graph would be
+        // temporally inconsistent. Pure no-op when `temporal` is `None`.
+        let mut revs = revs;
+        if let Some(cfg) = self.config.temporal {
+            let g = &mut self.current.graph;
+            revs.retain(|&r| {
+                let original_rf = g.recv_label(r).unwrap().rf();
+                g.change_rf(r, Some(pos));
+                let iv = crate::temporal_cons::tconsistent(g, r, &cfg);
+                g.change_rf(r, original_rf);
+                !iv.is_empty()
+            });
+        }
+
         if self.config.mode == ExplorationMode::Estimation {
             self.pick_revisit(revs, pos);
             return;
@@ -1244,6 +1274,33 @@ impl Must {
             LabelEnum::Choice(chlab) => chlab.result() == *chlab.range().end(),
             _ => true,
         }
+    }
+
+    /// Drop candidate sends whose `setRF(G, pos, s)`
+    /// would make `tconsistent(G, pos)` empty. When `config.temporal` is
+    /// `None` this is a no-op.
+    ///
+    /// The check is performed by temporarily mutating `rlab.rf` to each
+    /// candidate and running `tconsistent`, then restoring the prior rf
+    /// so the caller's view of the graph is unchanged.
+    fn filter_temporally_consistent_rfs(&mut self, rfs: &mut Vec<Event>, pos: Event) {
+        let cfg = match self.config.temporal {
+            None => return,
+            Some(c) => c,
+        };
+        let g = &mut self.current.graph;
+        let original_rf = g.recv_label(pos).unwrap().rf();
+        let kept: Vec<Event> = rfs
+            .iter()
+            .copied()
+            .filter(|&s| {
+                g.change_rf(pos, Some(s));
+                let iv = crate::temporal_cons::tconsistent(g, pos, &cfg);
+                !iv.is_empty()
+            })
+            .collect();
+        g.change_rf(pos, original_rf);
+        *rfs = kept;
     }
 
     fn filter_symmetric_rfs(&self, rfs: &mut Vec<Event>, pos: Event) {
@@ -1422,6 +1479,7 @@ impl Must {
                 slab.set_dropped();
                 self.current.graph.incr_dropped_sends();
             }
+            LabelEnum::Sleep(_) => unreachable!("sleep events are not revisitable"),
             _ => panic!(),
         };
         self.current.graph.cut_to_stamp(stamp);
@@ -1488,7 +1546,7 @@ impl Must {
     fn pick_ctoss(&mut self, pos: Event) -> bool {
         self.telemetry.histogram(EXECS_EST.to_owned(), 2.0);
 
-        let toss = rand::thread_rng().gen_range(0..=1) == 0;
+        let toss = rand::rng().random_range(0..=1) == 0;
         cast!(self.current.graph.label_mut(pos), LabelEnum::CToss).set_result(toss);
         toss
     }
@@ -1498,7 +1556,7 @@ impl Must {
         let range = choice.range();
         let start = *range.start();
         let end = *range.end();
-        let rand_value = rand::thread_rng().gen_range(start..=end);
+        let rand_value = rand::rng().random_range(start..=end);
         choice.set_result(rand_value);
 
         self.telemetry
@@ -1515,7 +1573,7 @@ impl Must {
         self.telemetry
             .histogram(EXECS_EST.to_owned(), (revs.len() + 1) as f64);
 
-        let idx = rand::thread_rng().gen_range(0..=revs.len());
+        let idx = rand::rng().random_range(0..=revs.len());
         if idx < revs.len() {
             push_worklist(
                 &mut self.current.rqueue,
@@ -1830,7 +1888,7 @@ fn pop_worklist(worklist: &mut RQueue, is_arbitrary: bool, rng: &mut Pcg64Mcg) -
         }
         else {
             // Choose randomly from alternatives at the highest stamp
-	        let idx = rng.gen_range(0..revs.len());
+	        let idx = rng.random_range(0..revs.len());
 	        let rev = revs.swap_remove(idx);
             (*stamp, rev, revs.is_empty())
         }

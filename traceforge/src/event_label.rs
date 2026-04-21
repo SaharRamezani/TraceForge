@@ -8,6 +8,7 @@ use std::ops::RangeInclusive;
 use crate::event::Event;
 use crate::loc::{CommunicationModel, Loc, RecvLoc, SendLoc, WakeMsg};
 use crate::msg::Val;
+use crate::temporal_cons::WaitTime;
 use crate::thread::main_thread_id;
 use crate::vector_clock::VectorClock;
 use crate::ThreadId;
@@ -25,6 +26,7 @@ pub(crate) enum LabelEnum {
     Choice(Choice),
     Sample(Sample),
     Block(Block),
+    Sleep(Sleep),
 }
 
 macro_rules! match_and_run {
@@ -41,6 +43,7 @@ macro_rules! match_and_run {
             LabelEnum::Choice(l) => l.as_event_label().$name($($arg),*),
             LabelEnum::Sample(l) => l.as_event_label().$name($($arg),*),
             LabelEnum::Block(l) => l.as_event_label().$name($($arg),*),
+            LabelEnum::Sleep(l) => l.as_event_label().$name($($arg),*),
         }
     };
 }
@@ -59,6 +62,7 @@ macro_rules! match_and_run_mut {
             LabelEnum::Choice(l) => l.as_event_label_mut().$name($($arg),*),
             LabelEnum::Sample(l) => l.as_event_label_mut().$name($($arg),*),
             LabelEnum::Block(l) => l.as_event_label_mut().$name($($arg),*),
+            LabelEnum::Sleep(l) => l.as_event_label_mut().$name($($arg),*),
         }
     };
 }
@@ -162,8 +166,15 @@ impl LabelEnum {
                     return Ok(());
                 }
             }
-            LabelEnum::RecvMsg(_s) => {
-                if let LabelEnum::RecvMsg(_o) = other {
+            LabelEnum::RecvMsg(s) => {
+                if let LabelEnum::RecvMsg(o) = other {
+                    if s.wait() != o.wait() {
+                        return Err(format!(
+                            "Expected to receive with wait={:?} but got wait={:?}",
+                            s.wait(),
+                            o.wait()
+                        ));
+                    }
                     return Ok(());
                 }
             }
@@ -241,6 +252,18 @@ impl LabelEnum {
                     return Ok(());
                 }
             }
+            LabelEnum::Sleep(s) => {
+                if let LabelEnum::Sleep(o) = other {
+                    if s.duration() != o.duration() {
+                        return Err(format!(
+                            "Expected to sleep for {} but got {}",
+                            s.duration(),
+                            o.duration()
+                        ));
+                    }
+                    return Ok(());
+                }
+            }
         }
 
         if let (LabelEnum::Block(_), LabelEnum::End(_)) = (self, other) {
@@ -288,6 +311,7 @@ impl LabelEnum {
             LabelEnum::Choice(s) => format!("called Range({:?})::nondet", s.range()),
             LabelEnum::Sample(_) => "called sample()".to_string(),
             LabelEnum::Block(_) => "became blocked".to_string(),
+            LabelEnum::Sleep(s) => format!("slept for {}", s.duration()),
         }
     }
 }
@@ -306,6 +330,7 @@ impl fmt::Display for LabelEnum {
             LabelEnum::Choice(lab) => write!(f, "{}", lab),
             LabelEnum::Sample(lab) => write!(f, "{}", lab),
             LabelEnum::Block(lab) => write!(f, "{}", lab),
+            LabelEnum::Sleep(lab) => write!(f, "{}", lab),
         }
     }
 }
@@ -324,6 +349,7 @@ impl fmt::Debug for LabelEnum {
             LabelEnum::Choice(lab) => write!(f, "{}", lab),
             LabelEnum::Sample(lab) => write!(f, "{}", lab),
             LabelEnum::Block(lab) => write!(f, "{}", lab),
+            LabelEnum::Sleep(lab) => write!(f, "{}", lab),
         }
     }
 }
@@ -641,6 +667,14 @@ pub(crate) struct RecvMsg {
     rf: Option<Event>,
     non_blocking: bool,
     revisitable: bool,
+    /// Per-receive wait time `W_r`
+    ///
+    /// * `None`: legacy untimed receive;
+    /// * `Some(WaitTime::Finite(w))`: temporal receive with finite wait.
+    /// * `Some(WaitTime::Infinite)`: temporal receive with `W_r = +∞`
+    ///   (blocking receive: timeout / `rf = ⊥` is inadmissible).
+    #[serde(default)]
+    wait: Option<WaitTime>,
 }
 
 impl RecvMsg {
@@ -658,7 +692,36 @@ impl RecvMsg {
             rf,
             non_blocking,
             revisitable: true,
+            wait: None,
         }
+    }
+
+    /// Constructor for a timed receive. Identical to [`RecvMsg::new`]
+    /// but records `wait` so that [`crate::temporal_cons::tconsistent`]
+    /// can bound this receive.
+    pub(crate) fn new_timed(
+        pos: Event,
+        loc: RecvLoc,
+        comm: CommunicationModel,
+        rf: Option<Event>,
+        non_blocking: bool,
+        wait: WaitTime,
+    ) -> Self {
+        Self {
+            label: EventLabel::new(pos),
+            loc,
+            comm,
+            rf,
+            non_blocking,
+            revisitable: true,
+            wait: Some(wait),
+        }
+    }
+
+    /// Wait time `W_r` for this receive, if this is a timed receive.
+    /// Returns `None` for legacy untimed receives.
+    pub(crate) fn wait(&self) -> Option<WaitTime> {
+        self.wait
     }
 
     pub(crate) fn rf(&self) -> Option<Event> {
@@ -692,6 +755,7 @@ impl RecvMsg {
 
     pub(crate) fn recover_lost(&mut self, other: Self) {
         self.loc = other.loc;
+        self.wait = other.wait;
     }
 
     /// Return if either the send is monitored by the receive or the locations match
@@ -1164,5 +1228,34 @@ as_label!(Block);
 impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: BLK {:?}", self.as_event_label(), self.btype())
+    }
+}
+
+/// A sleep event. Advances the local clock by exactly
+/// `duration` units (`d`).
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct Sleep {
+    label: EventLabel,
+    duration: u64,
+}
+
+impl Sleep {
+    pub(crate) fn new(pos: Event, duration: u64) -> Self {
+        Self {
+            label: EventLabel::new(pos),
+            duration,
+        }
+    }
+
+    pub(crate) fn duration(&self) -> u64 {
+        self.duration
+    }
+}
+
+as_label!(Sleep);
+
+impl fmt::Display for Sleep {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: SLEEP({})", self.as_event_label(), self.duration)
     }
 }
