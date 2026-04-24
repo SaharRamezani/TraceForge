@@ -98,29 +98,29 @@ impl<T: Message + 'static> Sender<T> {
     }
 
     pub fn send_tagged_msg(&self, tag: u32, v: T) {
-        crate::send_msg_with_tag(v, Some(tag), &self.inner, self.comm, false)
+        crate::send_msg_with_tag(v, Some(tag), &self.inner, self.comm, false, None)
     }
 
     pub fn send_tagged_lossy_msg(&self, tag: u32, v: T) {
-        crate::send_msg_with_tag(v, Some(tag), &self.inner, self.comm, true)
+        crate::send_msg_with_tag(v, Some(tag), &self.inner, self.comm, true, None)
     }
 
     pub fn send_vec_tagged_msg(&self, tag: Vec<u32>, v: T) {
         let tag = if tag.is_empty() { None } else { Some(tag) };
-        crate::send_msg_with_vec_tag(v, tag, &self.inner, self.comm, false)
+        crate::send_msg_with_vec_tag(v, tag, &self.inner, self.comm, false, None)
     }
 
     pub fn send_vec_tagged_lossy_msg(&self, tag: Vec<u32>, v: T) {
         let tag = if tag.is_empty() { None } else { Some(tag) };
-        crate::send_msg_with_vec_tag(v, tag, &self.inner, self.comm, true)
+        crate::send_msg_with_vec_tag(v, tag, &self.inner, self.comm, true, None)
     }
 
     pub fn send_msg(&self, v: T) {
-        crate::send_msg_with_tag(v, None, &self.inner, self.comm, false);
+        crate::send_msg_with_tag(v, None, &self.inner, self.comm, false, None);
     }
 
     pub fn send_lossy_msg(&self, v: T) {
-        crate::send_msg_with_tag(v, None, &self.inner, self.comm, true);
+        crate::send_msg_with_tag(v, None, &self.inner, self.comm, true, None);
     }
 }
 
