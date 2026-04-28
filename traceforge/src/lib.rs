@@ -23,6 +23,7 @@ mod revisit;
 mod runtime;
 pub mod sync;
 mod telemetry;
+mod temporal_cons;
 mod testmode;
 use future::spawn_receive;
 pub use testmode::{parallel_test, test};
@@ -33,9 +34,11 @@ mod vector_clock;
 pub use crate::msg::Val;
 // `Val` is used by monitors.
 
+pub use crate::temporal_cons::{TemporalConfig, WaitTime};
+
 use channel::{cons_to_model, self_loc_comm, thread_loc_comm, Receiver};
 use coverage::ExecutionObserver;
-use event_label::{Block, BlockType, CToss, Choice, RecvMsg, SendMsg};
+use event_label::{Block, BlockType, CToss, Choice, RecvMsg, SendMsg, Sleep};
 use loc::{CommunicationModel, Loc, RecvLoc, SendLoc};
 use msg::Message;
 
@@ -206,6 +209,11 @@ pub struct Config {
     pub(crate) parallel_workers: Option<usize>,
     pub(crate) keep_per_execution_coverage: bool,
     pub(crate) predetermined_choices: HashMap<String, Vec<Vec<bool>>>,
+
+    /// Temporal configuration. `None` = legacy (structural-only) verification;
+    /// `Some(_)` enables the temporal consistency filter.
+    #[serde(default)]
+    pub(crate) temporal: Option<TemporalConfig>,
     #[serde(skip)]
     pub(crate) callbacks: Arc<Mutex<Vec<Box<dyn ExecutionObserver + Send>>>>,
 }
@@ -268,6 +276,7 @@ impl ConfigBuilder {
             parallel_workers: None,
             keep_per_execution_coverage: false,
             predetermined_choices: HashMap::new(),
+            temporal: None,
             callbacks: Arc::new(Mutex::new(Vec::new())),
         })
     }
@@ -389,6 +398,39 @@ impl ConfigBuilder {
     /// Consider executions where up to `budget` lossy messages are dropped.
     pub fn with_lossy(mut self, budget: usize) -> Self {
         self.0.lossy_budget = budget;
+        self
+    }
+
+    /// Enables temporal verification with the given global transit bounds
+    /// and storage delay.
+    ///
+    /// * `l`, `u`: default network transit-time window used for any send
+    ///   that does not specify its own `(L, U)` (i.e. sends issued via
+    ///   [`crate::send_msg`] rather than [`crate::send_msg_timed`]).
+    /// * `sd`: default storage delay used for any destination thread that
+    ///   does not have a per-node override via
+    ///   [`ConfigBuilder::with_node_sd`].
+    ///
+    /// When this is set, timed-receive primitives (`recv_msg_timed`,
+    /// `recv_msg_block_timed`, …) and `sleep` become meaningful.
+    ///
+    /// Requires `l <= u`.
+    pub fn with_temporal(mut self, l: u64, u: u64, sd: u64) -> Self {
+        self.0.temporal = Some(TemporalConfig::new(l, u, sd));
+        self
+    }
+
+    /// Overrides the storage delay `sd(q)` for destination thread `tid`.
+    /// Only meaningful after [`ConfigBuilder::with_temporal`] has been
+    /// called; if no global temporal config is set, this is a no-op on
+    /// the final built config.
+    ///
+    /// Threads without a per-node override use the global `sd` from
+    /// [`ConfigBuilder::with_temporal`].
+    pub fn with_node_sd(mut self, tid: thread::ThreadId, sd: u64) -> Self {
+        if let Some(temporal) = self.0.temporal.take() {
+            self.0.temporal = Some(temporal.with_node_sd(tid, sd));
+        }
         self
     }
 
@@ -836,37 +878,83 @@ where
 /// Sends to `t` the message `v`
 pub fn send_msg<T: Message + 'static>(t: ThreadId, v: T) {
     let (loc, comm) = thread_loc_comm(t);
-    send_msg_with_tag(v, None, &loc, comm, false)
+    send_msg_with_tag(v, None, &loc, comm, false, None)
 }
 
 /// Sends to `t` the message `v`, which can be lost
 pub fn send_lossy_msg<T: Message + 'static>(t: ThreadId, v: T) {
     let (loc, comm) = thread_loc_comm(t);
-    send_msg_with_tag(v, None, &loc, comm, true)
+    send_msg_with_tag(v, None, &loc, comm, true, None)
 }
 
 /// Sends to `t` the message `v` tagged with 'tag
 pub fn send_tagged_msg<T: Message + 'static>(t: ThreadId, tag: u32, v: T) {
     let (loc, comm) = thread_loc_comm(t);
-    send_msg_with_tag(v, Some(tag), &loc, comm, false)
+    send_msg_with_tag(v, Some(tag), &loc, comm, false, None)
 }
 
 /// Sends to `t` the message `v`, which can be lost, tagged with 'tag
 pub fn send_tagged_lossy_msg<T: Message + 'static>(t: ThreadId, tag: u32, v: T) {
     let (loc, comm) = thread_loc_comm(t);
-    send_msg_with_tag(v, Some(tag), &loc, comm, true)
+    send_msg_with_tag(v, Some(tag), &loc, comm, true, None)
 }
 
 /// Sends to `t` the message `v` tagged with a vector 'tag
 pub fn send_vec_tagged_msg<T: Message + 'static>(t: ThreadId, tag: Vec<u32>, v: T) {
     let (loc, comm) = thread_loc_comm(t);
-    send_msg_with_vec_tag(v, Some(tag), &loc, comm, false)
+    send_msg_with_vec_tag(v, Some(tag), &loc, comm, false, None)
 }
 
 /// Sends to `t` the message `v`, which can be lost, tagged with 'tag
 pub fn send_vec_tagged_lossy_msg<T: Message + 'static>(t: ThreadId, tag: Vec<u32>, v: T) {
     let (loc, comm) = thread_loc_comm(t);
-    send_msg_with_vec_tag(v, Some(tag), &loc, comm, true)
+    send_msg_with_vec_tag(v, Some(tag), &loc, comm, true, None)
+}
+
+/// Sends to `t` the message `v` with explicit per-send transit bounds.
+///
+/// The bounds override the globals set via
+/// [`ConfigBuilder::with_temporal`] for this send only; other sends in
+/// the same run continue to use the globals unless they also opt in.
+/// Requires `l <= u`. Has no effect when the config has no
+/// temporal extension.
+pub fn send_msg_timed<T: Message + 'static>(t: ThreadId, v: T, l: u64, u: u64) {
+    assert!(l <= u, "send_msg_timed requires L <= U");
+    let (loc, comm) = thread_loc_comm(t);
+    send_msg_with_tag(v, None, &loc, comm, false, Some((l, u)))
+}
+
+/// Lossy variant of [`send_msg_timed`].
+pub fn send_lossy_msg_timed<T: Message + 'static>(t: ThreadId, v: T, l: u64, u: u64) {
+    assert!(l <= u, "send_lossy_msg_timed requires L <= U");
+    let (loc, comm) = thread_loc_comm(t);
+    send_msg_with_tag(v, None, &loc, comm, true, Some((l, u)))
+}
+
+/// Tagged variant of [`send_msg_timed`].
+pub fn send_tagged_msg_timed<T: Message + 'static>(
+    t: ThreadId,
+    tag: u32,
+    v: T,
+    l: u64,
+    u: u64,
+) {
+    assert!(l <= u, "send_tagged_msg_timed requires L <= U");
+    let (loc, comm) = thread_loc_comm(t);
+    send_msg_with_tag(v, Some(tag), &loc, comm, false, Some((l, u)))
+}
+
+/// Vector-tagged variant of [`send_msg_timed`].
+pub fn send_vec_tagged_msg_timed<T: Message + 'static>(
+    t: ThreadId,
+    tag: Vec<u32>,
+    v: T,
+    l: u64,
+    u: u64,
+) {
+    assert!(l <= u, "send_vec_tagged_msg_timed requires L <= U");
+    let (loc, comm) = thread_loc_comm(t);
+    send_msg_with_vec_tag(v, Some(tag), &loc, comm, false, Some((l, u)))
 }
 
 /// Helper for [`send_msg`] and [`send_tagged_msg`]
@@ -876,8 +964,9 @@ fn send_msg_with_tag<T: Message + 'static>(
     loc: &Loc,
     comm: CommunicationModel,
     lossy: bool,
+    transit: Option<(u64, u64)>,
 ) {
-    send_msg_with_vec_tag(v, tag.map(|t| vec![t]), loc, comm, lossy);
+    send_msg_with_vec_tag(v, tag.map(|t| vec![t]), loc, comm, lossy, transit);
 }
 
 /// Helper for vector tagged message sending
@@ -887,6 +976,7 @@ fn send_msg_with_vec_tag<T: Message + 'static>(
     loc: &Loc,
     comm: CommunicationModel,
     lossy: bool,
+    transit: Option<(u64, u64)>,
 ) {
     let tag = normalize_vec_tag(tag);
     switch();
@@ -917,7 +1007,7 @@ fn send_msg_with_vec_tag<T: Message + 'static>(
             monitor_msgs.len()
         );
 
-        let slab = SendMsg::new(
+        let mut slab = SendMsg::new(
             pos,
             SendLoc::new(loc, sender_tid, tag),
             comm,
@@ -925,6 +1015,9 @@ fn send_msg_with_vec_tag<T: Message + 'static>(
             monitor_msgs,
             lossy,
         );
+        if let Some((l, u)) = transit {
+            slab = slab.with_transit(l, u);
+        }
 
         let maybe_stuck = s.must.borrow_mut().handle_send(slab);
         maybe_stuck.iter().for_each(|r| {
@@ -1086,6 +1179,200 @@ fn recv_val_block_with_tag<'a>(
                 // The joined thread has not finished executing yet,
                 // so the End label doesn't have the value returned by the thread.
                 // Block this thread and let the other thread finish.
+                ExecutionState::with(|s| s.current_mut().stuck());
+            } else {
+                return (box_msg, ind.unwrap());
+            }
+        };
+
+        ExecutionState::with(|s| s.prev_pos());
+    }
+}
+
+// =======================================================================
+// Temporal primitives
+// =======================================================================
+
+/// Advances the current thread's local clock by `duration` time units.
+///
+/// `sleep(d)` primitive: it introduces a first-class
+/// event into the execution graph whose only effect is to
+/// shift the thread's `[τ_lo, τ_hi]` window by `duration`.
+/// Has no observable effect in runs where
+/// [`ConfigBuilder::with_temporal`] was not set.
+pub fn sleep(duration: u64) {
+    switch();
+    ExecutionState::with(|s| {
+        let pos = s.next_pos();
+        s.must.borrow_mut().handle_sleep(Sleep::new(pos, duration));
+    });
+}
+
+/// Timed receive `recv_within^M(λx:true, wait)`: returns `Some(msg)` if
+/// a matching message is available within `wait` time units, or `None`
+/// on timeout. `WaitTime::Infinite` is equivalent to a blocking receive
+/// ([`recv_msg_block_timed`]) and the `None` (timeout) branch is pruned
+/// from exploration, so only `Some` executions are reported.
+pub fn recv_msg_timed<T: Message + 'static>(wait: WaitTime) -> Option<T> {
+    match wait {
+        WaitTime::Infinite => Some(recv_msg_block_timed::<T>()),
+        WaitTime::Finite(_) => {
+            let (loc, comm) = self_loc_comm();
+            recv_msg_with_tag_timed(iter::once(&loc), comm, None, wait).map(|x| x.0)
+        }
+    }
+}
+
+/// Timed tagged receive `recv_within^M(λx:f(x), wait)`. See
+/// [`recv_msg_timed`] for semantics.
+pub fn recv_tagged_msg_timed<F, T>(f: F, wait: WaitTime) -> Option<T>
+where
+    F: Fn(ThreadId, Option<u32>) -> bool + 'static + Send + Sync,
+    T: Message + 'static,
+{
+    recv_vec_tagged_msg_timed(
+        move |tid, tag| {
+            let tag = tag.and_then(|tags| tags.first().copied());
+            f(tid, tag)
+        },
+        wait,
+    )
+}
+
+/// Timed vector-tagged receive. See [`recv_msg_timed`] for semantics.
+pub fn recv_vec_tagged_msg_timed<F, T>(f: F, wait: WaitTime) -> Option<T>
+where
+    F: Fn(ThreadId, Option<Vec<u32>>) -> bool + 'static + Send + Sync,
+    T: Message + 'static,
+{
+    match wait {
+        WaitTime::Infinite => Some(recv_vec_tagged_msg_block_timed(f)),
+        WaitTime::Finite(_) => {
+            let (loc, comm) = self_loc_comm();
+            recv_msg_with_tag_timed(
+                iter::once(&loc),
+                comm,
+                Some(PredicateType(Arc::new(move |tid, tag| {
+                    f(tid, normalize_vec_tag(tag))
+                }))),
+                wait,
+            )
+            .map(|x| x.0)
+        }
+    }
+}
+
+fn recv_msg_with_tag_timed<'a, T: Message + 'static>(
+    locs: impl Iterator<Item = &'a Loc>,
+    comm: CommunicationModel,
+    tag: Option<PredicateType>,
+    wait: WaitTime,
+) -> Option<(T, usize)> {
+    recv_val_with_tag_timed(locs, comm, tag, wait).map(|(val, ind)| (expect_msg(val), ind))
+}
+
+fn recv_val_with_tag_timed<'a>(
+    locs: impl Iterator<Item = &'a Loc>,
+    comm: CommunicationModel,
+    tag: Option<PredicateType>,
+    wait: WaitTime,
+) -> Option<(Val, usize)> {
+    let locs = locs.collect::<Vec<_>>();
+    validate_locs(&locs);
+    loop {
+        switch();
+        let locs = locs.clone();
+        let tag = tag.clone();
+        let (val, ind) = ExecutionState::with(|s| {
+            let pos = s.next_pos();
+            s.must.borrow_mut().handle_recv(
+                RecvMsg::new_timed(pos, RecvLoc::new(locs, tag), comm, None, true, wait),
+                false,
+            )
+        });
+        if val.as_ref().is_some_and(Val::is_pending) {
+            ExecutionState::with(|s| {
+                s.current_mut().stuck();
+                s.prev_pos();
+            });
+        } else {
+            return val.map(|v| (v, ind.unwrap()));
+        }
+    }
+}
+
+/// Blocking timed receive (`W_r = +∞`): waits indefinitely for a
+/// matching message. The `None` (timeout) branch is pruned from
+/// exploration, so this always returns a message.
+pub fn recv_msg_block_timed<T: Message + 'static>() -> T {
+    let (loc, comm) = self_loc_comm();
+    recv_msg_block_with_tag_timed(iter::once(&loc), comm, None).0
+}
+
+/// Blocking tagged timed receive. See [`recv_msg_block_timed`].
+pub fn recv_tagged_msg_block_timed<F, T>(f: F) -> T
+where
+    F: Fn(ThreadId, Option<u32>) -> bool + 'static + Send + Sync,
+    T: Message + 'static,
+{
+    recv_vec_tagged_msg_block_timed(move |tid, tag| {
+        let tag = tag.and_then(|tags| tags.first().copied());
+        f(tid, tag)
+    })
+}
+
+/// Blocking vector-tagged timed receive. See [`recv_msg_block_timed`].
+pub fn recv_vec_tagged_msg_block_timed<F, T>(f: F) -> T
+where
+    F: Fn(ThreadId, Option<Vec<u32>>) -> bool + 'static + Send + Sync,
+    T: Message + 'static,
+{
+    let (loc, comm) = self_loc_comm();
+    recv_msg_block_with_tag_timed(
+        iter::once(&loc),
+        comm,
+        Some(PredicateType(Arc::new(move |tid, tag| {
+            f(tid, normalize_vec_tag(tag))
+        }))),
+    )
+    .0
+}
+
+fn recv_msg_block_with_tag_timed<'a, T: Message + 'static>(
+    locs: impl Iterator<Item = &'a Loc>,
+    comm: CommunicationModel,
+    tag: Option<PredicateType>,
+) -> (T, usize) {
+    let (val, ind) = recv_val_block_with_tag_timed(locs, comm, tag);
+    (expect_msg(val), ind)
+}
+
+fn recv_val_block_with_tag_timed<'a>(
+    locs: impl Iterator<Item = &'a Loc>,
+    comm: CommunicationModel,
+    tag: Option<PredicateType>,
+) -> (Val, usize) {
+    let locs = locs.collect::<Vec<_>>();
+    validate_locs(&locs);
+    loop {
+        switch();
+        let locs = locs.clone();
+        let (val, ind) = ExecutionState::with(|s| {
+            let pos = s.next_pos();
+            s.must.borrow_mut().handle_recv(
+                RecvMsg::new_timed(
+                    pos,
+                    RecvLoc::new(locs, tag.clone()),
+                    comm,
+                    None,
+                    false,
+                    WaitTime::Infinite,
+                ),
+                true,
+            )
+        });
+        if let Some(box_msg) = val {
+            if box_msg.is_pending() {
                 ExecutionState::with(|s| s.current_mut().stuck());
             } else {
                 return (box_msg, ind.unwrap());
