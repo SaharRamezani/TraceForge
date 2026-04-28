@@ -1,7 +1,7 @@
 //! Integration tests for the Must-τ extension.
 //!
 //! Each test exercises a small scenario where the temporal feasibility
-//! check (tconsistent) must either admit or reject an interleaving.
+//! check (temporally_consistent) must either admit or reject an interleaving.
 //! Assertions are on the number of complete executions explored.
 
 use traceforge::thread::{self, ThreadId};
@@ -153,7 +153,7 @@ fn legacy_recv_inside_temporal_is_transparent() {
         Config::builder().with_temporal(0, 10, 0).build(),
         || {
             let consumer = thread::spawn(|| {
-                // Legacy untimed receive: tconsistent passes through.
+                // Legacy untimed receive: temporally_consistent passes through.
                 let v: i32 = traceforge::recv_msg_block();
                 assert_eq!(v, 42);
             });
@@ -169,14 +169,6 @@ fn legacy_recv_inside_temporal_is_transparent() {
 // ---------------------------------------------------------------------
 // Per-send (L, U) overrides the globals.
 // ---------------------------------------------------------------------
-//
-// Global L = U = 10 would force the send's window to [10, 10], which
-// does not intersect the receiver's [0, 5] wait window — the pairing is
-// rejected and only the timeout branch survives.
-//
-// With per-send L = U = 0 (via `send_msg_timed`), the send window
-// collapses to [0, 0], overlapping [0, 5], so both `rf = send` and
-// `rf = ⊥` branches become temporally admissible.
 #[test]
 fn per_send_bounds_override_global() {
     let stats_override = traceforge::verify(
@@ -203,16 +195,66 @@ fn per_send_bounds_override_global() {
 }
 
 // ---------------------------------------------------------------------
-// Per-node sd overrides the global storage delay.
+// Two concurrent sends with disjoint per-send (L, U) windows.
 // ---------------------------------------------------------------------
 //
-// Producer sends at time 0; main sleeps 10 and then receives with
-// W_r = 0. With global sd = 0 the send window is [0, 5] and the wait
-// window is [10, 10], so `rf = send` is rejected.
+// Both senders opt in via `send_msg_timed`, but their windows do not
+// overlap:
+//   send_a window = [0, 5]
+//   send_b window = [20, 30]
+// The consumer issues one `recv_msg_timed(W_r = 10)`, so the rf-from-send
+// window is capped at 10. Only A's send overlaps; B's window starts at
+// 20 and is dropped by the temporal filter. Globals are deliberately
+// permissive so that any pruning here is attributable to the per-send
+// overrides.
 //
-// A per-node override `sd(main) = 10` extends the send window to
-// [0, 15], which now intersects [10, 10] at t = 10; the pairing becomes
-// admissible and both `rf = send` and `rf = ⊥` are reachable.
+// Admissible rf candidates: send_a, ⊥. The send_b candidate is pruned.
+#[test]
+fn per_send_distinct_windows_disjoint() {
+    let stats = traceforge::verify(
+        Config::builder().with_temporal(0, 100, 0).build(),
+        || {
+            let consumer = thread::spawn(|| {
+                let _v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(10));
+            });
+            let cid = consumer.thread().id();
+            let _a = thread::spawn(move || {
+                traceforge::send_msg_timed(cid, 1i32, 0, 5);
+            });
+            let _b = thread::spawn(move || {
+                traceforge::send_msg_timed(cid, 2i32, 20, 30);
+            });
+        },
+    );
+    assert_eq!(stats.execs, 2);
+}
+
+// ---------------------------------------------------------------------
+// Two concurrent sends with distinct but overlapping per-send windows.
+// ---------------------------------------------------------------------
+#[test]
+fn per_send_distinct_windows_overlap() {
+    let stats = traceforge::verify(
+        Config::builder().with_temporal(0, 100, 0).build(),
+        || {
+            let consumer = thread::spawn(|| {
+                let _v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(10));
+            });
+            let cid = consumer.thread().id();
+            let _a = thread::spawn(move || {
+                traceforge::send_msg_timed(cid, 1i32, 0, 5);
+            });
+            let _b = thread::spawn(move || {
+                traceforge::send_msg_timed(cid, 2i32, 3, 8);
+            });
+        },
+    );
+    assert_eq!(stats.execs, 3);
+}
+
+// ---------------------------------------------------------------------
+// Per-node sd overrides the global storage delay.
+// ---------------------------------------------------------------------
 #[test]
 fn per_node_sd_overrides_global() {
     let stats = traceforge::verify(
@@ -251,11 +293,6 @@ fn per_node_sd_overrides_global() {
 // Sleep is per-thread: it does not leak into parallel threads'
 // temporal windows.
 // ---------------------------------------------------------------------
-//
-// Thread A sleeps for a very long time and does nothing else.
-// Thread B receives within a short wait from a send that has no delay.
-// each thread starts at [0, 0], so A's huge sleep must not push B's
-// receive window.
 #[test]
 fn sleep_is_per_thread() {
     let stats = traceforge::verify(
@@ -410,9 +447,7 @@ fn four_thread_pipeline_temporal_pruning() {
 
     let loose = run(50, 50);
     let tight = run(2, 2);
-    // Loose bounds admit every receive's `rf=⊥` branch in addition to the
-    // forwarded one; tight bounds prune the timeout branches whose windows
-    // do not overlap any send. The exact numbers below are the observed
+    // The exact numbers below are the observed
     // exploration counts; they should drop in lockstep if the pruning is
     // strengthened, and divergence here means the temporal filter changed
     // shape and the counts should be re-baselined.

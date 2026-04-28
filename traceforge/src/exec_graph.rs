@@ -398,11 +398,11 @@ impl ExecutionGraph {
                         BlockType::Assert => {
                             return Some(BlockType::Assert);
                         }
-                        BlockType::Value(loc) => {
+                        BlockType::Value(loc, wait) => {
                             if self.is_thread_daemon(t) {
                                 continue;
                             } else {
-                                ret = Some(BlockType::Value(loc.clone()));
+                                ret = Some(BlockType::Value(loc.clone(), *wait));
                             }
                         }
                         block => {

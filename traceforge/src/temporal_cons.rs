@@ -3,7 +3,7 @@
 //! This module implements the temporal extension of the Must algorithm.
 //! It provides the [`WaitTime`] user-facing wait type, the [`TemporalConfig`]
 //! that holds the global transit bounds (`L`, `U`) and storage delay (`sd`)
-//! (with optional per-node `sd` overrides), and the [`tconsistent`] walker
+//! (with optional per-node `sd` overrides), and the [`temporally_consistent`] walker
 //! that computes the feasible time window `[τ_lo, τ_hi]` for a given event
 //! by recursing over the program order.
 //!
@@ -121,16 +121,16 @@ impl TimeInterval {
 ///
 /// The walk stops at each thread's first event (`Begin`), returning
 /// `[0, 0]`.
-pub(crate) fn tconsistent(
+pub(crate) fn temporally_consistent(
     g: &ExecutionGraph,
     e: Event,
     cfg: &TemporalConfig,
 ) -> TimeInterval {
     let mut cache = HashMap::new();
-    tconsistent_rec(g, e, cfg, &mut cache)
+    temporally_consistent_rec(g, e, cfg, &mut cache)
 }
 
-fn tconsistent_rec(
+fn temporally_consistent_rec(
     g: &ExecutionGraph,
     e: Event,
     cfg: &TemporalConfig,
@@ -150,7 +150,7 @@ fn tconsistent_rec(
     }
 
     let pred = Event::new(e.thread, e.index - 1);
-    let pred_iv = tconsistent_rec(g, pred, cfg, cache);
+    let pred_iv = temporally_consistent_rec(g, pred, cfg, cache);
 
     let lab = g.label(e);
     let iv = match lab {
@@ -176,7 +176,7 @@ fn tconsistent_rec(
                         cache.insert(e, TimeInterval::empty());
                         return TimeInterval::empty();
                     }
-                    let send_iv = tconsistent_rec(g, s, cfg, cache);
+                    let send_iv = temporally_consistent_rec(g, s, cfg, cache);
                     if send_iv.is_empty() {
                         cache.insert(e, TimeInterval::empty());
                         return TimeInterval::empty();

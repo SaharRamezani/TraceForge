@@ -280,7 +280,7 @@ impl LabelEnum {
             // and thus we will never reach this path.
             // If ever needed, return true since we can compare neither locations
             // (they are lost during deserialization) nor tags (they are predicates)
-            (BlockType::Value(_), BlockType::Value(_)) => unreachable!(),
+            (BlockType::Value(_, _), BlockType::Value(_, _)) => unreachable!(),
             _ => false,
         }
     }
@@ -690,7 +690,7 @@ impl RecvMsg {
     }
 
     /// Constructor for a timed receive. Identical to [`RecvMsg::new`]
-    /// but records `wait` so that [`crate::temporal_cons::tconsistent`]
+    /// but records `wait` so that [`crate::temporal_cons::temporally_consistent`]
     /// can bound this receive.
     pub(crate) fn new_timed(
         pos: Event,
@@ -782,10 +782,20 @@ as_label!(RecvMsg);
 
 impl fmt::Display for RecvMsg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Surface the wait W_r (if any) directly in the dot label so
+        // visualizations can distinguish blocking (W_r=∞) from timed
+        // (W_r=N) receives at a glance. Legacy untimed receives carry
+        // no annotation, preserving the historical format.
+        let wait_tag = match self.wait {
+            None => String::new(),
+            Some(WaitTime::Infinite) => " W_r=∞".to_string(),
+            Some(WaitTime::Finite(w)) => format!(" W_r={}", w),
+        };
         write!(
             f,
-            "{}: RECV() [{}]",
+            "{}: RECV{}() [{}]",
             self.label,
+            wait_tag,
             if self.rf().is_none() {
                 "TIMEOUT".to_string()
             } else {
@@ -1200,8 +1210,12 @@ pub(crate) enum BlockType {
     // User-level blocking
     Assume,
     Assert,
-    // Internal blocking
-    Value(RecvLoc),
+    // Internal blocking. The optional `WaitTime` carries the wait that
+    // the original (now-overwritten) recv was created with, so that
+    // visualization tools can still tell `recv_msg_block_timed`
+    // (W_r=∞) apart from a finite-wait timed recv after the recv label
+    // has been replaced by this Block.
+    Value(RecvLoc, Option<WaitTime>),
     Join(ThreadId),
 }
 
@@ -1241,7 +1255,27 @@ as_label!(Block);
 
 impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: BLK {:?}", self.as_event_label(), self.btype())
+        match self.btype() {
+            // Surface the original recv's wait directly in the label so
+            // a blocked recv still tells you whether it was W_r=∞
+            // (recv_msg_block_timed) vs. a finite wait. Untimed recvs
+            // omit the tag, preserving the historical format.
+            BlockType::Value(loc, wait) => {
+                let wait_tag = match wait {
+                    None => String::new(),
+                    Some(WaitTime::Infinite) => " W_r=∞".to_string(),
+                    Some(WaitTime::Finite(w)) => format!(" W_r={}", w),
+                };
+                write!(
+                    f,
+                    "{}: BLK Value{}({:?})",
+                    self.as_event_label(),
+                    wait_tag,
+                    loc
+                )
+            }
+            other => write!(f, "{}: BLK {:?}", self.as_event_label(), other),
+        }
     }
 }
 
