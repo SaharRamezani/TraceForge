@@ -1,7 +1,8 @@
 //! Visualization-only helper test that captures every explored
-//! execution of the *buggy* 3PC into a viz_out/three_pc_buggy/
-//! directory. Mirrors the timeout-aware structure of the original 3PC
-//! reference: every recv that can legitimately fail to deliver uses
+//! execution of a *buggy* 3PC variant (Skeen '81 skeleton, broken
+//! decision rule) into viz_out/three_pc_buggy/. Mirrors the
+//! timeout-aware structure of the original 3PC reference: every recv
+//! that can legitimately fail to deliver uses
 //! `recv_msg_timed(WaitTime::Finite(W))` and treats `None` as a
 //! timeout.
 //!
@@ -9,8 +10,13 @@
 //! coordinator advances to PreCommit (and ultimately Commit) whenever a
 //! *majority of received* votes are Yes, instead of requiring *all*
 //! votes to be Yes AND all to have arrived. With timeouts this is even
-//! more dangerous — a single missed vote should always force an abort,
-//! but the buggy coordinator may still commit on the survivors.
+//! more dangerous — Skeen's atomicity argument requires a single missed
+//! vote to force abort, but the buggy coordinator may still commit on
+//! the survivors.
+//!
+//! Bound choice: identical to `three_pc_correct_visualize.rs` so the
+//! reduction comparison is apples-to-apples. See that file (and
+//! `benchmarks_decision.md` § 4.2) for the algebra.
 //!
 //! Output layout (relative to the cargo workspace root):
 //!   viz_out/three_pc_buggy/exec_NNN.dot     one per explored execution
@@ -33,10 +39,11 @@ use traceforge::thread::{self, ThreadId};
 use traceforge::*;
 
 const NUM_PARTICIPANTS: u32 = 3;
-const DELTA: u64 = 5;
-// Coordinator vote/ack receive wait. Must be < DELTA so cross-mappings
-// (recv k reading from participant j's send, j != k+1) get pruned.
-const VOTE_WAIT: u64 = DELTA - 1;
+// Skeen '81 termination protocol bounds (see correct-variant
+// visualizer for the full algebra).
+const U: u64 = 1;
+const VOTE_WAIT: u64 = 2 * U; // W = 2·Δ (Skeen termination bound)
+const DELTA: u64 = VOTE_WAIT + 1; // minimum stagger for cross-mapping pruning
 // Participants use `recv_msg_block_timed` (W_r=∞). Finite-wait
 // participant recvs would advance the participant's local clock to the
 // actual PreCommit arrival time, which collapses the staggering and
@@ -227,14 +234,14 @@ fn visualize_buggy_3pc() {
             "t4": "p2",
         },
         "order": ["t1", "t2", "t3", "t4", "t0"],
-        "l": 0, "u": 1, "sd": 0,
-        "wait": format!("coord vote/ack={}, participant=∞", VOTE_WAIT),
+        "l": 0, "u": U, "sd": 0,
+        "wait": format!("coord vote/ack={} (= 2·U, Skeen '81), participant=∞", VOTE_WAIT),
     })
     .to_string();
     fs::write(dir.join("meta.json"), meta_json).unwrap();
 
     let cfg = Config::builder()
-        .with_temporal(0, 1, 0)
+        .with_temporal(0, U, 0)
         .with_keep_going_after_error(true)
         .with_verbose(1)
         .with_dot_out(src.to_str().unwrap())
