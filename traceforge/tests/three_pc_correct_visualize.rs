@@ -1,34 +1,27 @@
-//! Visualization-only helper test that captures every explored
-//! execution of the *correct* 3PC (Skeen '81) into a
-//! viz_out/three_pc_correct/ directory. Mirrors the timeout-aware
-//! structure of the original 3PC reference: every recv that can
-//! legitimately fail to deliver uses `recv_msg_timed(WaitTime::Finite(W))`
-//! and treats `None` as a timeout, so the viewer captures both
-//! "successful read" and "timeout" branches the model checker explores.
+//! Visualization-only test that captures every explored execution of
+//! the **full Skeen '81 Three-Phase Commit** (including termination
+//! protocol) into `viz_out/three_pc_correct/`.
 //!
-//! Bound choice (per `benchmarks_decision.md` § 4.2):
-//!   * `L = 0` — the report's recommendation; pruning power comes from
-//!     `U` being finite, not from `L > 0`.
-//!   * `U = 1` — Skeen's Δ in dimensionless model-checker time units.
-//!   * `W = 2·U = 2` — Skeen '81 termination protocol bound.
-//!   * `DELTA = W + 1 = 3` — minimum participant staggering that makes
-//!     every cross-mapping (recv k reading from participant j ≠ k)
-//!     fall outside the recv window under temporal pruning.
+//! Configuration is identical to the N=2 row of the participants sweep
+//! in `tests/three_pc_compare.rs`, so the execution graphs rendered
+//! here are exactly the executions counted in that row.
 //!
-//! Structural twin of `three_pc_buggy_visualize.rs`: same protocol
-//! skeleton, same temporal staggering, same wait windows; the only
-//! difference is the coordinator's decision rule (unanimity vs.
-//! majority).
+//! Bound choice (Skeen '81 + BHG '87 §7):
+//!   N = 2 (smallest non-trivial; matches compare-test N=2 row)
+//!   L = 0, U = 1, W = 2·U = 2, DELTA = W + 1 = 3, sd = 0
 //!
-//! Output layout (relative to the cargo workspace root):
-//!   viz_out/three_pc_correct/exec_NNN.dot     one per explored execution
-//!   viz_out/three_pc_correct/meta.json        viewer header / labels
-//!   viz_out/three_pc_correct/prunes.jsonl     temporal prune log
+//! Configurable rounds via the `THREE_PC_ROUNDS` env var (default 1).
+//! Each round is one independent commit transaction. Keep at R=1 for
+//! human-inspectable graphs — at R=2 the visualizer would snapshot
+//! ~518k DOT files at N=2 (and the verification itself takes ~minute+),
+//! which is impractical for hand-inspection. Use the compare test or
+//! the main example for multi-round measurements.
 //!
-//! Run end-to-end:
+//! Run:
 //!   cargo test --release --test three_pc_correct_visualize
+//!   THREE_PC_ROUNDS=2 cargo test --release --test three_pc_correct_visualize   # impractical at this N
 //!   python3 viz_out/build_html.py
-//! Then open viz_out/index.html.
+//! Then open `viz_out/index.html`.
 
 use std::fs;
 use std::path::PathBuf;
@@ -39,163 +32,245 @@ use traceforge::monitor_types::EndCondition;
 use traceforge::thread::{self, ThreadId};
 use traceforge::*;
 
-const NUM_PARTICIPANTS: u32 = 3;
-// Skeen '81 termination protocol bounds. See file-level docstring for
-// the algebra fixing W = 2·U and DELTA = W + 1.
+const NUM_PARTICIPANTS: u32 = 2;
 const U: u64 = 1;
-const VOTE_WAIT: u64 = 2 * U; // W = 2·Δ (Skeen termination bound)
-const DELTA: u64 = VOTE_WAIT + 1; // minimum stagger for cross-mapping pruning
-// Participants use `recv_msg_block_timed` (W_r=∞). Finite-wait
-// participant recvs would advance the participant's local clock to the
-// actual PreCommit arrival time, which collapses the (i+1)*DELTA
-// staggering and makes ALL acks land at the coordinator at the same
-// clock — every ack rf becomes admissible for every recv, so cross-
-// mappings stop getting pruned and the bug-witness path stops being
-// reachable. With W_r=∞, the participant's local clock stays at its
-// predicate clock, the staggered acks sail through, and the buggy
-// coordinator's all-acks-received → Commit branch surfaces.
+const W: u64 = 2 * U;          // Skeen termination wait
+const DELTA: u64 = W + 1;      // minimum stagger for cross-mapping pruning
+
+/// Number of independent commit rounds. Read from the
+/// `THREE_PC_ROUNDS` env var so the caller can override without
+/// recompiling. Default 1.
+///
+///     THREE_PC_ROUNDS=2 cargo test --release --test three_pc_correct_visualize
+fn rounds_from_env() -> u32 {
+    std::env::var("THREE_PC_ROUNDS").ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1)
+}
+
+// ==== Protocol types (mirrored from compare test) =====================
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PState { Initial, Wait, Prepared, Committed, Aborted }
 
 #[derive(Clone, Debug, PartialEq)]
-enum CoordinatorMsg {
-    Init(Vec<ThreadId>),
-    Yes,
-    No,
-    Ack,
+enum PMsg {
+    Prepare { coord: ThreadId, peers: Vec<ThreadId> },
+    PreCommit, Commit, Abort,
+    StateRequest(ThreadId),
+    StateReply(PState),
+    Decide(Decision),
+    Probe(ThreadId),
+    ProbeAck,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum ParticipantMsg {
-    Prepare(ThreadId),
-    PreCommit,
-    Commit,
-    Abort,
+enum CMsg {
+    Init { peers: Vec<ThreadId> },
+    Yes, No, Ack,
 }
 
-fn coordinator() {
-    let ps: Vec<ThreadId> = match traceforge::recv_msg_block::<CoordinatorMsg>() {
-        CoordinatorMsg::Init(ids) => ids,
-        _ => panic!("expected Init"),
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Decision { Commit, Abort }
+
+#[derive(Clone, Copy, Debug)]
+struct Bounds { u: u64, w: u64, delta: u64 }
+
+// ==== Coordinator =====================================================
+
+fn coordinator(b: Bounds) {
+    let ps: Vec<ThreadId> = match traceforge::recv_msg_block::<CMsg>() {
+        CMsg::Init { peers } => peers, _ => panic!()
     };
     let me = thread::current().id();
     for id in &ps {
-        traceforge::send_msg(*id, ParticipantMsg::Prepare(me));
+        traceforge::send_msg(*id, PMsg::Prepare { coord: me, peers: ps.clone() });
     }
-
-    let mut yes_count = 0usize;
-    let mut received_count = 0usize;
+    let mut yes = 0usize; let mut got = 0usize;
     for _ in 0..ps.len() {
-        traceforge::sleep(DELTA);
-        let v: Option<CoordinatorMsg> = traceforge::recv_msg_timed(WaitTime::Finite(VOTE_WAIT));
-        match v {
-            Some(CoordinatorMsg::Yes) => {
-                received_count += 1;
-                yes_count += 1;
+        traceforge::sleep(b.delta);
+        match traceforge::recv_msg_timed::<CMsg>(WaitTime::Finite(b.w)) {
+            Some(CMsg::Yes) => { got += 1; yes += 1; }
+            Some(CMsg::No)  => got += 1,
+            _ => {} // None timeout or HB-inconsistent rf
+        }
+    }
+    if got != ps.len() || yes != ps.len() {
+        for id in &ps { traceforge::send_msg(*id, PMsg::Abort); }
+        return;
+    }
+    for id in &ps { traceforge::send_msg(*id, PMsg::PreCommit); }
+    let mut acks = 0usize;
+    for _ in 0..ps.len() {
+        traceforge::sleep(b.delta);
+        match traceforge::recv_msg_timed::<CMsg>(WaitTime::Finite(b.w)) {
+            Some(CMsg::Ack) => acks += 1,
+            _ => {} // None or off-variant
+        }
+    }
+    if acks != ps.len() { return; }
+    for id in &ps { traceforge::send_msg(*id, PMsg::Commit); }
+}
+
+// ==== Participant + termination =======================================
+
+struct ParticipantCtx {
+    b: Bounds, my_index: u32, num_ps: u32,
+    coord_id: ThreadId, peer_ids: Vec<ThreadId>,
+    state: PState, voted_yes: bool,
+}
+
+impl ParticipantCtx {
+    fn me(&self) -> ThreadId { self.peer_ids[self.my_index as usize] }
+    fn recv(&self) -> Option<PMsg> {
+        traceforge::recv_msg_timed(WaitTime::Finite(self.b.w))
+    }
+    fn handle_term(&self, msg: PMsg) {
+        match msg {
+            PMsg::StateRequest(s) => traceforge::send_msg(s, PMsg::StateReply(self.state)),
+            PMsg::Probe(s) => traceforge::send_msg(s, PMsg::ProbeAck),
+            _ => {}
+        }
+    }
+    fn apply_decide(&mut self, d: Decision) -> Decision {
+        self.state = match d { Decision::Commit => PState::Committed, _ => PState::Aborted };
+        if d == Decision::Commit { traceforge::assert(self.voted_yes); }
+        d
+    }
+    fn drain_until_decision(&mut self) {
+        loop {
+            match self.recv() {
+                Some(PMsg::Abort | PMsg::Commit | PMsg::Decide(_)) => return,
+                Some(o) => self.handle_term(o),
+                None => return,
             }
-            Some(CoordinatorMsg::No) => received_count += 1,
-            None => {} // vote timed out — treated as "not yes" below
-            Some(_) => panic!("expected vote"),
         }
     }
-
-    // CORRECT: PreCommit iff every participant voted Yes AND every vote
-    // arrived. A timeout on any recv → not unanimous → abort.
-    let unanimous = received_count == ps.len() && yes_count == ps.len();
-    if !unanimous {
-        for id in &ps {
-            traceforge::send_msg(*id, ParticipantMsg::Abort);
-        }
-        return;
-    }
-
-    for id in &ps {
-        traceforge::send_msg(*id, ParticipantMsg::PreCommit);
-    }
-
-    let mut acks_received = 0usize;
-    for _ in 0..ps.len() {
-        traceforge::sleep(DELTA);
-        let v: Option<CoordinatorMsg> = traceforge::recv_msg_timed(WaitTime::Finite(VOTE_WAIT));
-        match v {
-            Some(CoordinatorMsg::Ack) => acks_received += 1,
-            None => {} // ack timed out
-            Some(_) => panic!("expected ack"),
-        }
-    }
-
-    if acks_received != ps.len() {
-        // Missing ack: don't commit. Participants past PreCommit will
-        // time out waiting for Commit and exit cleanly.
-        return;
-    }
-
-    for id in &ps {
-        traceforge::send_msg(*id, ParticipantMsg::Commit);
-    }
-}
-
-fn participant(index: u32) {
-    let cid = match traceforge::recv_msg_block::<ParticipantMsg>() {
-        ParticipantMsg::Prepare(id) => id,
-        _ => panic!("expected Prepare"),
-    };
-    traceforge::sleep(DELTA * (index as u64 + 1));
-    let yes = traceforge::nondet();
-    traceforge::send_msg(
-        cid,
-        if yes {
-            CoordinatorMsg::Yes
+    fn run_after_prepare(&mut self) -> Decision {
+        traceforge::sleep(self.b.delta * (self.my_index as u64 + 1));
+        self.voted_yes = traceforge::nondet();
+        if self.voted_yes {
+            traceforge::send_msg(self.coord_id, CMsg::Yes);
+            self.state = PState::Wait;
         } else {
-            CoordinatorMsg::No
-        },
-    );
-
-    // Plain `recv_msg_block` (untimed) — deliberately *not*
-    // `recv_msg_block_timed`. The block_timed variant advances the
-    // participant's local clock to the actual rf-window time on
-    // completion, which converges all participants to the same
-    // PreCommit-arrival τ and erases the (i+1)*DELTA staggering. The
-    // untimed variant leaves the clock alone, so each participant's
-    // ack-send τ stays at the canonical (N+i+1)*DELTA value the
-    // coordinator's ack receives are tuned for.
-    let action: ParticipantMsg = traceforge::recv_msg_block();
-
-    match action {
-        ParticipantMsg::Abort => return,
-        ParticipantMsg::PreCommit => (),
-        _ => panic!("expected PreCommit or Abort"),
+            traceforge::send_msg(self.coord_id, CMsg::No);
+            self.state = PState::Aborted;
+            self.drain_until_decision();
+            return Decision::Abort;
+        }
+        loop {
+            match self.recv() {
+                Some(PMsg::Abort) => { self.state = PState::Aborted; return Decision::Abort; }
+                Some(PMsg::PreCommit) => { self.state = PState::Prepared; break; }
+                Some(PMsg::Decide(d)) => return self.apply_decide(d),
+                Some(o) => self.handle_term(o),
+                None => return self.terminate(),
+            }
+        }
+        traceforge::sleep(self.b.delta * self.num_ps as u64);
+        traceforge::send_msg(self.coord_id, CMsg::Ack);
+        loop {
+            match self.recv() {
+                Some(PMsg::Commit) => {
+                    self.state = PState::Committed;
+                    traceforge::assert(self.voted_yes);
+                    return Decision::Commit;
+                }
+                Some(PMsg::Abort) => { self.state = PState::Aborted; return Decision::Abort; }
+                Some(PMsg::Decide(d)) => return self.apply_decide(d),
+                Some(o) => self.handle_term(o),
+                None => return self.terminate(),
+            }
+        }
     }
-
-    // Coord's k-th ack recv runs at predicate clock (N+k)*DELTA, so each
-    // participant must sleep N*DELTA here (not (i+1)*DELTA) to land at
-    // (N+i+1)*DELTA, matching the canonical k = i+1 pairing.
-    traceforge::sleep(DELTA * NUM_PARTICIPANTS as u64);
-    traceforge::send_msg(cid, CoordinatorMsg::Ack);
-
-    // Plain `recv_msg_block` (untimed) — deliberately *not*
-    // `recv_msg_block_timed`. The block_timed variant advances the
-    // participant's local clock to the actual rf-window time on
-    // completion, which converges all participants to the same
-    // PreCommit-arrival τ and erases the (i+1)*DELTA staggering. The
-    // untimed variant leaves the clock alone, so each participant's
-    // ack-send τ stays at the canonical (N+i+1)*DELTA value the
-    // coordinator's ack receives are tuned for.
-    let action: ParticipantMsg = traceforge::recv_msg_block();
-    if matches!(action, ParticipantMsg::Commit) {
-        // Same safety property as the buggy version. With the correct
-        // unanimity rule above, this should never fire.
-        traceforge::assert(yes);
+    fn terminate(&mut self) -> Decision {
+        for j in 0..self.my_index {
+            traceforge::send_msg(self.peer_ids[j as usize], PMsg::Probe(self.me()));
+        }
+        let mut any_lower = false;
+        for _ in 0..self.my_index {
+            traceforge::sleep(self.b.delta);
+            match self.recv() {
+                Some(PMsg::ProbeAck) => any_lower = true,
+                Some(PMsg::Decide(d)) => return self.apply_decide(d),
+                Some(o) => self.handle_term(o),
+                None => {}
+            }
+        }
+        if any_lower { return self.wait_for_decide(); }
+        self.run_termination()
+    }
+    fn wait_for_decide(&mut self) -> Decision {
+        loop {
+            match self.recv() {
+                Some(PMsg::Decide(d)) => return self.apply_decide(d),
+                Some(o) => self.handle_term(o),
+                None => return Decision::Abort,
+            }
+        }
+    }
+    fn run_termination(&mut self) -> Decision {
+        for (j, p) in self.peer_ids.iter().enumerate() {
+            if j as u32 != self.my_index {
+                traceforge::send_msg(*p, PMsg::StateRequest(self.me()));
+            }
+        }
+        let mut states = vec![self.state];
+        for _ in 0..self.peer_ids.len() - 1 {
+            traceforge::sleep(self.b.delta);
+            match self.recv() {
+                Some(PMsg::StateReply(s)) => states.push(s),
+                Some(o) => self.handle_term(o),
+                None => {}
+            }
+        }
+        let d = if states.iter().any(|s| *s == PState::Committed) { Decision::Commit }
+            else if states.iter().any(|s| *s == PState::Aborted) { Decision::Abort }
+            else if states.iter().any(|s| *s == PState::Prepared) { Decision::Commit }
+            else { Decision::Abort };
+        for (j, p) in self.peer_ids.iter().enumerate() {
+            if j as u32 != self.my_index {
+                traceforge::send_msg(*p, PMsg::Decide(d));
+            }
+        }
+        self.state = match d { Decision::Commit => PState::Committed, _ => PState::Aborted };
+        if d == Decision::Commit { traceforge::assert(self.voted_yes); }
+        d
     }
 }
 
-struct DotSnapshotter {
-    src: PathBuf,
-    dir: PathBuf,
+fn participant(b: Bounds, num_ps: u32, index: u32, rounds: u32) {
+    let mut ctx_opt: Option<ParticipantCtx> = None;
+    for _r in 0..rounds {
+        let (coord_id, peers) = loop {
+            match traceforge::recv_msg_block::<PMsg>() {
+                PMsg::Prepare { coord, peers } => break (coord, peers),
+                PMsg::StateRequest(s) => {
+                    let st = ctx_opt.as_ref().map(|c| c.state).unwrap_or(PState::Initial);
+                    traceforge::send_msg(s, PMsg::StateReply(st));
+                }
+                PMsg::Probe(s) => traceforge::send_msg(s, PMsg::ProbeAck),
+                _ => {}
+            }
+        };
+        let ctx = ctx_opt.get_or_insert(ParticipantCtx {
+            b, my_index: index, num_ps, coord_id, peer_ids: peers.clone(),
+            state: PState::Initial, voted_yes: false,
+        });
+        ctx.coord_id = coord_id;
+        ctx.peer_ids = peers;
+        ctx.state = PState::Initial;
+        ctx.voted_yes = false;
+        let _ = ctx.run_after_prepare();
+    }
 }
+
+// ==== Test entry =======================================================
+
+struct DotSnapshotter { src: PathBuf, dir: PathBuf }
 
 impl ExecutionObserver for DotSnapshotter {
-    fn before(&mut self, _eid: ExecutionId) {
-        let _ = fs::write(&self.src, b"");
-    }
+    fn before(&mut self, _eid: ExecutionId) { let _ = fs::write(&self.src, b""); }
     fn after(&mut self, eid: ExecutionId, _ec: &EndCondition, _c: CoverageInfo) {
         let dst = self.dir.join(format!("exec_{:03}.dot", eid));
         let _ = fs::copy(&self.src, &dst);
@@ -205,67 +280,69 @@ impl ExecutionObserver for DotSnapshotter {
 #[test]
 fn visualize_correct_3pc() {
     let manifest = env!("CARGO_MANIFEST_DIR");
-    let dir = PathBuf::from(manifest)
-        .join("..")
-        .join("viz_out")
-        .join("three_pc_correct");
+    let dir = PathBuf::from(manifest).join("..").join("viz_out").join("three_pc_correct");
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     let src = dir.join("_latest.dot");
     let prune_log = dir.join("prunes.jsonl");
-    // Touch the prune log so the artifact always exists even when the
-    // run records zero rejections (TraceForge only opens this file lazily
-    // on the first prune).
     let _ = fs::write(&prune_log, b"");
 
     let description = format!(
-        "Correct 3PC (N={}, temporal mode, with timeouts): every recv that can \
-         legitimately fail uses recv_msg_timed(WaitTime::Finite). The coordinator \
-         requires both unanimity AND all-arrived to PreCommit; a missing ack \
-         leaves the round uncommitted. Expect zero FAIL pills.",
+        "Full Skeen 3PC (N={}, with termination sub-protocol). Includes election + state-collection + decision rule. \
+         Bounds: L=0, U=1, W=2 (= 2·U, Skeen termination bound), DELTA=3. Each rendered execution is one schedule \
+         the model checker explored under MUST-τ — including those where a participant times out and runs \
+         termination on behalf of the group.",
         NUM_PARTICIPANTS
     );
+    let labels: Vec<(String, String)> = (0..NUM_PARTICIPANTS)
+        .map(|i| (format!("t{}", i + 2), format!("p{}", i)))
+        .collect();
+    let labels_json = labels.iter().fold(serde_json::Map::new(), |mut m, (k, v)| {
+        m.insert(k.clone(), serde_json::Value::String(v.clone()));
+        m
+    });
+    let order: Vec<String> = std::iter::once("t1".into())
+        .chain(labels.iter().map(|(k, _)| k.clone()))
+        .chain(std::iter::once("t0".into()))
+        .collect();
+    let mut labels_full = labels_json;
+    labels_full.insert("t0".to_string(), serde_json::Value::String("main".to_string()));
+    labels_full.insert("t1".to_string(), serde_json::Value::String("coordinator".to_string()));
     let meta_json = json!({
-        "kind":        "vote",
-        "title":       format!("Three-Phase Commit: correct (timeouts, N={})", NUM_PARTICIPANTS),
+        "kind": "vote",
+        "title": format!("Three-Phase Commit (full Skeen, termination, N={})", NUM_PARTICIPANTS),
         "description": description,
-        "labels": {
-            "t0": "main",
-            "t1": "coordinator",
-            "t2": "p0",
-            "t3": "p1",
-            "t4": "p2",
-        },
-        "order": ["t1", "t2", "t3", "t4", "t0"],
+        "labels": labels_full,
+        "order": order,
         "l": 0, "u": U, "sd": 0,
-        "wait": format!("coord vote/ack={} (= 2·U, Skeen '81), participant=∞", VOTE_WAIT),
-    })
-    .to_string();
+        "wait": format!("coord vote/ack={} (= 2·U, Skeen termination), participant={}", W, W),
+    }).to_string();
     fs::write(dir.join("meta.json"), meta_json).unwrap();
 
     let cfg = Config::builder()
         .with_temporal(0, U, 0)
         .with_keep_going_after_error(true)
         .with_verbose(1)
+        .with_progress_report(usize::MAX)
         .with_dot_out(src.to_str().unwrap())
         .with_dot_out_blocked(true)
         .with_prune_log(prune_log.to_str().unwrap())
-        .with_callback(Box::new(DotSnapshotter {
-            src: src.clone(),
-            dir: dir.clone(),
-        }))
+        .with_callback(Box::new(DotSnapshotter { src: src.clone(), dir: dir.clone() }))
         .build();
 
+    let b = Bounds { u: U, w: W, delta: DELTA };
+    let r_rounds = rounds_from_env();
     traceforge::verify(cfg, move || {
-        let c = thread::spawn(coordinator);
-        let mut ps = Vec::new();
+        let mut handles = Vec::new();
         for i in 0..NUM_PARTICIPANTS {
-            ps.push(thread::spawn(move || participant(i)));
+            handles.push(thread::spawn(move || participant(b, NUM_PARTICIPANTS, i, r_rounds)));
         }
-        traceforge::send_msg(
-            c.thread().id(),
-            CoordinatorMsg::Init(ps.iter().map(|h| h.thread().id()).collect()),
-        );
+        let peers: Vec<ThreadId> = handles.iter().map(|h| h.thread().id()).collect();
+        for _r in 0..r_rounds {
+            let peers_for_coord = peers.clone();
+            let c = thread::spawn(move || coordinator(b));
+            traceforge::send_msg(c.thread().id(), CMsg::Init { peers: peers_for_coord });
+        }
     });
 
     let _ = fs::remove_file(src);
