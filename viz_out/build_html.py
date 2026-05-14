@@ -15,6 +15,7 @@ protocol (3PC, Raft, Paxos, ...): write a Rust visualize test that
 dumps its dots to `viz_out/<your_slug>/exec_NNN.dot` and a `meta.json`
 of the shape documented in `load_meta`. No changes here.
 """
+import collections
 import json
 import re
 from pathlib import Path
@@ -118,7 +119,7 @@ ASSERT_RE = re.compile(r'BLK\s+Assert')
 BLOCK_RE  = re.compile(r'BLK\s+(?!Assert\b)(?:Value|Join|Block)\b')
 
 
-def summarize_votes(dot_text: str, labels: dict, order: list) -> dict:
+def summarize_votes(dot_text: str, labels: dict, order: list, nondet_role: str = "auto") -> dict:
     """Per-participant Y/N pattern + final decision for a 2PC-style run.
 
     The label and counts emulate the schema produced by `summarize` so
@@ -126,7 +127,21 @@ def summarize_votes(dot_text: str, labels: dict, order: list) -> dict:
     of Yes votes (rendered green), `t_count` the number of No votes
     (rendered orange/red).
     """
-    votes = {tid: ("Y" if val == "true" else "N") for tid, val in NONDET_RE.findall(dot_text)}
+    # When the meta declares `nondet_role: "crash"`, no thread is a
+    # voter — the per-run Y/N sidebar pattern is empty. For "vote" or
+    # heuristic mode, only threads with exactly one NONDET contribute
+    # (multi-NONDET threads under heuristic mode are interpreted as
+    # crash-decision threads, not voters).
+    raw = NONDET_RE.findall(dot_text)
+    if nondet_role == "crash":
+        votes = {}
+    else:
+        nondet_count_by_tid = collections.Counter(tid for tid, _ in raw)
+        votes = {
+            tid: ("Y" if val == "true" else "N")
+            for tid, val in raw
+            if nondet_count_by_tid[tid] == 1
+        }
     parts = []
     yes = 0
     no = 0
@@ -238,7 +253,7 @@ RF_EDGE_RE = re.compile(
 )
 
 
-def prettify_dot(dot: str, labels: dict) -> str:
+def prettify_dot(dot: str, labels: dict, nondet_role: str = "auto") -> str:
     """Rewrite verbose Rust-debug labels into compact, color-coded text.
 
     Transformations applied in order:
@@ -346,15 +361,38 @@ def prettify_dot(dot: str, labels: dict) -> str:
         repl_recv_timeout, dot,
     )
 
-    # --- 7. NONDET coloring. -------------------------------------------
+    # --- 7. NONDET coloring (role-aware). -----------------------------
+    # meta.json may set `nondet_role` to:
+    #   "vote"  — NONDET true → "vote Yes", false → "vote No"
+    #             (legacy 2PC and 3PC-without-crashes)
+    #   "crash" — NONDET true → "crash",    false → "continue"
+    #             (Skeen 3PC with --crashes, fail-stop at every send/
+    #              recv boundary)
+    # When `nondet_role` is missing or "auto", fall back to a whole-
+    # execution heuristic: any thread with >1 nondet ⇒ crash semantics,
+    # otherwise vote. (The explicit role is preferred — the heuristic
+    # still mislabels executions where every thread crashed before its
+    # second nondet.)
+    if nondet_role in ("vote", "crash"):
+        force = nondet_role
+    else:
+        nondet_count_by_tid = collections.Counter(
+            tid for tid, _ in NONDET_RE.findall(dot)
+        )
+        force = "crash" if any(c > 1 for c in nondet_count_by_tid.values()) else "vote"
+    def repl_nondet(m):
+        prefix = m.group(1)
+        val = m.group(3)
+        if force == "crash":
+            inner = ('<font color="#d68a18"><b>crash</b></font>' if val == "true"
+                     else '<font color="#888888">continue</font>')
+        else:
+            inner = ('<font color="#1f8b3a"><b>vote Yes</b></font>' if val == "true"
+                     else '<font color="#c0392b"><b>vote No</b></font>')
+        return prefix + inner
     dot = re.sub(
-        r'NONDET\s+true\b',
-        '<font color="#1f8b3a"><b>vote Yes</b></font>',
-        dot,
-    )
-    dot = re.sub(
-        r'NONDET\s+false\b',
-        '<font color="#c0392b"><b>vote No</b></font>',
+        r'(\((t\d+),\s*\d+\):\s*)NONDET\s+(true|false)\b',
+        repl_nondet,
         dot,
     )
 
@@ -398,7 +436,7 @@ def prettify_dot(dot: str, labels: dict) -> str:
     return dot
 
 
-def load_run(run_dir: Path, kind: str, labels: dict, order: list):
+def load_run(run_dir: Path, kind: str, labels: dict, order: list, nondet_role: str = "auto"):
     items = []
     for f in sorted(run_dir.glob("exec_*.dot")):
         eid = int(f.stem.split("_")[1])
@@ -412,7 +450,7 @@ def load_run(run_dir: Path, kind: str, labels: dict, order: list):
         if blocked:
             summ = {"label": "(blocked execution no graph captured)", "s_count": 0, "t_count": 0}
         elif kind == "vote":
-            summ = summarize_votes(text_raw, labels, order)
+            summ = summarize_votes(text_raw, labels, order, nondet_role)
             decision = summ.get("decision")
         else:
             summ = summarize(text_raw, labels, order)
@@ -428,7 +466,7 @@ def load_run(run_dir: Path, kind: str, labels: dict, order: list):
         # Prettify the dot for the renderer; summaries above were
         # computed against the raw debug text, where their regexes are
         # tuned for the Rust `Debug` shape.
-        text = prettify_dot(text_raw, labels) if not blocked else text_raw
+        text = prettify_dot(text_raw, labels, nondet_role) if not blocked else text_raw
         items.append(
             {
                 "eid": eid,
@@ -477,7 +515,8 @@ def main():
         kind = meta.get("kind", "pipeline")
         labels = meta.get("labels", {}) or {}
         order = meta.get("order", []) or []
-        execs = load_run(run_dir, kind, labels, order)
+        nondet_role = meta.get("nondet_role", "auto")
+        execs = load_run(run_dir, kind, labels, order, nondet_role)
         prunes = load_prunes(run_dir)
         # Cross-reference: count how many prune rejections fired during
         # each exec, so the sidebar can flag "prune-caused block" when an

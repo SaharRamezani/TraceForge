@@ -1,25 +1,25 @@
 //! Visualization-only test that captures every explored execution of
-//! the **full Skeen '81 Three-Phase Commit** (including termination
-//! protocol) into `viz_out/three_pc_correct/`.
+//! the **full Skeen '81 3PC** (with Section 5 termination protocol —
+//! preassigned-ranking election, two-phase backup, reentrant on backup
+//! failure) into `viz_out/three_pc_correct/`.
 //!
 //! Configuration is identical to the N=2 row of the participants sweep
-//! in `tests/three_pc_compare.rs`, so the execution graphs rendered
-//! here are exactly the executions counted in that row.
+//! in `tests/three_pc_compare.rs`.
 //!
-//! Bound choice (Skeen '81 + BHG '87 §7):
-//!   N = 2 (smallest non-trivial; matches compare-test N=2 row)
+//! Bound choice (Skeen '81 §5):
+//!   N = 2 (smallest non-trivial)
 //!   L = 0, U = 1, W = 2·U = 2, DELTA = W + 1 = 3, sd = 0
 //!
-//! Configurable rounds via the `THREE_PC_ROUNDS` env var (default 1).
-//! Each round is one independent commit transaction. Keep at R=1 for
-//! human-inspectable graphs — at R=2 the visualizer would snapshot
-//! ~518k DOT files at N=2 (and the verification itself takes ~minute+),
-//! which is impractical for hand-inspection. Use the compare test or
-//! the main example for multi-round measurements.
+//! Configurable rounds via `THREE_PC_ROUNDS` (default 1). Each round =
+//! fresh threads (true clean-slate restart).
+//!
+//! Configurable failures via `THREE_PC_CRASHES=1`: enables fail-stop
+//! crash points at every send/recv boundary on every site (coord and
+//! every slave, including when acting as backup). Default OFF.
 //!
 //! Run:
 //!   cargo test --release --test three_pc_correct_visualize
-//!   THREE_PC_ROUNDS=2 cargo test --release --test three_pc_correct_visualize   # impractical at this N
+//!   THREE_PC_ROUNDS=2 THREE_PC_CRASHES=1 cargo test --release --test three_pc_correct_visualize
 //!   python3 viz_out/build_html.py
 //! Then open `viz_out/index.html`.
 
@@ -34,21 +34,22 @@ use traceforge::*;
 
 const NUM_PARTICIPANTS: u32 = 2;
 const U: u64 = 1;
-const W: u64 = 2 * U;          // Skeen termination wait
-const DELTA: u64 = W + 1;      // minimum stagger for cross-mapping pruning
+const W: u64 = 2 * U;
+const DELTA: u64 = W + 1;
 
-/// Number of independent commit rounds. Read from the
-/// `THREE_PC_ROUNDS` env var so the caller can override without
-/// recompiling. Default 1.
-///
-///     THREE_PC_ROUNDS=2 cargo test --release --test three_pc_correct_visualize
 fn rounds_from_env() -> u32 {
     std::env::var("THREE_PC_ROUNDS").ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(1)
 }
 
-// ==== Protocol types (mirrored from compare test) =====================
+fn crashes_from_env() -> bool {
+    std::env::var("THREE_PC_CRASHES").ok()
+        .map(|s| s == "1" || s.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+// ==== Protocol types ==================================================
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PState { Initial, Wait, Prepared, Committed, Aborted }
@@ -57,11 +58,8 @@ enum PState { Initial, Wait, Prepared, Committed, Aborted }
 enum PMsg {
     Prepare { coord: ThreadId, peers: Vec<ThreadId> },
     PreCommit, Commit, Abort,
-    StateRequest(ThreadId),
-    StateReply(PState),
-    Decide(Decision),
-    Probe(ThreadId),
-    ProbeAck,
+    MoveTo { backup: ThreadId, state: PState },
+    BackupAck { from: ThreadId },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -76,99 +74,126 @@ enum Decision { Commit, Abort }
 #[derive(Clone, Copy, Debug)]
 struct Bounds { u: u64, w: u64, delta: u64 }
 
+fn maybe_crash(crashes: bool) -> bool {
+    crashes && traceforge::nondet()
+}
+
 // ==== Coordinator =====================================================
 
-fn coordinator(b: Bounds) {
-    let ps: Vec<ThreadId> = match traceforge::recv_msg_block::<CMsg>() {
-        CMsg::Init { peers } => peers, _ => panic!()
+fn coordinator(b: Bounds, crashes: bool) {
+    let ps: Vec<ThreadId> = loop {
+        match traceforge::recv_msg_block::<CMsg>() {
+            CMsg::Init { peers } => break peers,
+            _ => {}
+        }
     };
     let me = thread::current().id();
+    if maybe_crash(crashes) { return; }
+
     for id in &ps {
         traceforge::send_msg(*id, PMsg::Prepare { coord: me, peers: ps.clone() });
+        if maybe_crash(crashes) { return; }
     }
+
     let mut yes = 0usize; let mut got = 0usize;
     for _ in 0..ps.len() {
         traceforge::sleep(b.delta);
         match traceforge::recv_msg_timed::<CMsg>(WaitTime::Finite(b.w)) {
             Some(CMsg::Yes) => { got += 1; yes += 1; }
             Some(CMsg::No)  => got += 1,
-            _ => {} // None timeout or HB-inconsistent rf
+            _ => {}
         }
+        if maybe_crash(crashes) { return; }
     }
     if got != ps.len() || yes != ps.len() {
-        for id in &ps { traceforge::send_msg(*id, PMsg::Abort); }
+        for id in &ps {
+            if maybe_crash(crashes) { return; }
+            traceforge::send_msg(*id, PMsg::Abort);
+        }
         return;
     }
-    for id in &ps { traceforge::send_msg(*id, PMsg::PreCommit); }
+    if maybe_crash(crashes) { return; }
+    for id in &ps {
+        traceforge::send_msg(*id, PMsg::PreCommit);
+        if maybe_crash(crashes) { return; }
+    }
     let mut acks = 0usize;
     for _ in 0..ps.len() {
         traceforge::sleep(b.delta);
         match traceforge::recv_msg_timed::<CMsg>(WaitTime::Finite(b.w)) {
             Some(CMsg::Ack) => acks += 1,
-            _ => {} // None or off-variant
+            _ => {}
         }
+        if maybe_crash(crashes) { return; }
     }
     if acks != ps.len() { return; }
-    for id in &ps { traceforge::send_msg(*id, PMsg::Commit); }
+    if maybe_crash(crashes) { return; }
+    for id in &ps {
+        traceforge::send_msg(*id, PMsg::Commit);
+        if maybe_crash(crashes) { return; }
+    }
 }
 
-// ==== Participant + termination =======================================
+// ==== Slave + Skeen §5 termination ====================================
 
-struct ParticipantCtx {
+struct SlaveCtx {
     b: Bounds, my_index: u32, num_ps: u32,
     coord_id: ThreadId, peer_ids: Vec<ThreadId>,
-    state: PState, voted_yes: bool,
+    state: PState, voted_yes: bool, crashes: bool,
 }
 
-impl ParticipantCtx {
+enum BackupOutcome { Decision(Decision), CurrentDead }
+
+impl SlaveCtx {
     fn me(&self) -> ThreadId { self.peer_ids[self.my_index as usize] }
     fn recv(&self) -> Option<PMsg> {
         traceforge::recv_msg_timed(WaitTime::Finite(self.b.w))
     }
-    fn handle_term(&self, msg: PMsg) {
-        match msg {
-            PMsg::StateRequest(s) => traceforge::send_msg(s, PMsg::StateReply(self.state)),
-            PMsg::Probe(s) => traceforge::send_msg(s, PMsg::ProbeAck),
-            _ => {}
+    fn decision_rule(&self) -> Decision {
+        match self.state {
+            PState::Prepared | PState::Committed => Decision::Commit,
+            _ => Decision::Abort,
         }
     }
-    fn apply_decide(&mut self, d: Decision) -> Decision {
-        self.state = match d { Decision::Commit => PState::Committed, _ => PState::Aborted };
-        if d == Decision::Commit { traceforge::assert(self.voted_yes); }
-        d
-    }
-    fn drain_until_decision(&mut self) {
-        loop {
-            match self.recv() {
-                Some(PMsg::Abort | PMsg::Commit | PMsg::Decide(_)) => return,
-                Some(o) => self.handle_term(o),
-                None => return,
-            }
+    fn handle_move_to(&mut self, backup: ThreadId, target: PState) {
+        if self.state != PState::Committed && self.state != PState::Aborted {
+            self.state = target;
         }
+        traceforge::send_msg(backup, PMsg::BackupAck { from: self.me() });
     }
     fn run_after_prepare(&mut self) -> Decision {
+        if maybe_crash(self.crashes) { return Decision::Abort; }
         traceforge::sleep(self.b.delta * (self.my_index as u64 + 1));
         self.voted_yes = traceforge::nondet();
         if self.voted_yes {
+            if maybe_crash(self.crashes) { return Decision::Abort; }
             traceforge::send_msg(self.coord_id, CMsg::Yes);
             self.state = PState::Wait;
         } else {
+            if maybe_crash(self.crashes) { return Decision::Abort; }
             traceforge::send_msg(self.coord_id, CMsg::No);
             self.state = PState::Aborted;
-            self.drain_until_decision();
             return Decision::Abort;
         }
+        if maybe_crash(self.crashes) { return Decision::Abort; }
         loop {
             match self.recv() {
                 Some(PMsg::Abort) => { self.state = PState::Aborted; return Decision::Abort; }
                 Some(PMsg::PreCommit) => { self.state = PState::Prepared; break; }
-                Some(PMsg::Decide(d)) => return self.apply_decide(d),
-                Some(o) => self.handle_term(o),
+                Some(PMsg::Commit) => {
+                    self.state = PState::Committed;
+                    traceforge::assert(self.voted_yes);
+                    return Decision::Commit;
+                }
+                Some(PMsg::MoveTo { backup, state }) => self.handle_move_to(backup, state),
+                Some(_) => {}
                 None => return self.terminate(),
             }
         }
+        if maybe_crash(self.crashes) { return Decision::Abort; }
         traceforge::sleep(self.b.delta * self.num_ps as u64);
         traceforge::send_msg(self.coord_id, CMsg::Ack);
+        if maybe_crash(self.crashes) { return Decision::Abort; }
         loop {
             match self.recv() {
                 Some(PMsg::Commit) => {
@@ -177,95 +202,118 @@ impl ParticipantCtx {
                     return Decision::Commit;
                 }
                 Some(PMsg::Abort) => { self.state = PState::Aborted; return Decision::Abort; }
-                Some(PMsg::Decide(d)) => return self.apply_decide(d),
-                Some(o) => self.handle_term(o),
+                Some(PMsg::MoveTo { backup, state }) => self.handle_move_to(backup, state),
+                Some(_) => {}
                 None => return self.terminate(),
             }
         }
     }
     fn terminate(&mut self) -> Decision {
-        for j in 0..self.my_index {
-            traceforge::send_msg(self.peer_ids[j as usize], PMsg::Probe(self.me()));
-        }
-        let mut any_lower = false;
-        for _ in 0..self.my_index {
-            traceforge::sleep(self.b.delta);
-            match self.recv() {
-                Some(PMsg::ProbeAck) => any_lower = true,
-                Some(PMsg::Decide(d)) => return self.apply_decide(d),
-                Some(o) => self.handle_term(o),
-                None => {}
+        let mut current = 0u32;
+        while current < self.num_ps {
+            if current == self.my_index {
+                return self.run_backup_protocol();
+            }
+            match self.wait_for_backup(current) {
+                BackupOutcome::Decision(d) => return d,
+                BackupOutcome::CurrentDead => current += 1,
             }
         }
-        if any_lower { return self.wait_for_decide(); }
-        self.run_termination()
-    }
-    fn wait_for_decide(&mut self) -> Decision {
-        loop {
-            match self.recv() {
-                Some(PMsg::Decide(d)) => return self.apply_decide(d),
-                Some(o) => self.handle_term(o),
-                None => return Decision::Abort,
-            }
-        }
-    }
-    fn run_termination(&mut self) -> Decision {
-        for (j, p) in self.peer_ids.iter().enumerate() {
-            if j as u32 != self.my_index {
-                traceforge::send_msg(*p, PMsg::StateRequest(self.me()));
-            }
-        }
-        let mut states = vec![self.state];
-        for _ in 0..self.peer_ids.len() - 1 {
-            traceforge::sleep(self.b.delta);
-            match self.recv() {
-                Some(PMsg::StateReply(s)) => states.push(s),
-                Some(o) => self.handle_term(o),
-                None => {}
-            }
-        }
-        let d = if states.iter().any(|s| *s == PState::Committed) { Decision::Commit }
-            else if states.iter().any(|s| *s == PState::Aborted) { Decision::Abort }
-            else if states.iter().any(|s| *s == PState::Prepared) { Decision::Commit }
-            else { Decision::Abort };
-        for (j, p) in self.peer_ids.iter().enumerate() {
-            if j as u32 != self.my_index {
-                traceforge::send_msg(*p, PMsg::Decide(d));
-            }
-        }
+        let d = self.decision_rule();
         self.state = match d { Decision::Commit => PState::Committed, _ => PState::Aborted };
         if d == Decision::Commit { traceforge::assert(self.voted_yes); }
         d
     }
-}
-
-fn participant(b: Bounds, num_ps: u32, index: u32, rounds: u32) {
-    let mut ctx_opt: Option<ParticipantCtx> = None;
-    for _r in 0..rounds {
-        let (coord_id, peers) = loop {
-            match traceforge::recv_msg_block::<PMsg>() {
-                PMsg::Prepare { coord, peers } => break (coord, peers),
-                PMsg::StateRequest(s) => {
-                    let st = ctx_opt.as_ref().map(|c| c.state).unwrap_or(PState::Initial);
-                    traceforge::send_msg(s, PMsg::StateReply(st));
+    fn wait_for_backup(&mut self, current_idx: u32) -> BackupOutcome {
+        let current_peer = self.peer_ids[current_idx as usize];
+        loop {
+            match self.recv() {
+                Some(PMsg::MoveTo { backup, state }) => {
+                    if backup == current_peer { self.handle_move_to(backup, state); }
                 }
-                PMsg::Probe(s) => traceforge::send_msg(s, PMsg::ProbeAck),
-                _ => {}
+                Some(PMsg::Commit) => {
+                    self.state = PState::Committed;
+                    traceforge::assert(self.voted_yes);
+                    return BackupOutcome::Decision(Decision::Commit);
+                }
+                Some(PMsg::Abort) => {
+                    self.state = PState::Aborted;
+                    return BackupOutcome::Decision(Decision::Abort);
+                }
+                Some(_) => {}
+                None => return BackupOutcome::CurrentDead,
             }
+        }
+    }
+    fn run_backup_protocol(&mut self) -> Decision {
+        let decision = self.decision_rule();
+        let need_phase1 = self.state != PState::Committed && self.state != PState::Aborted;
+        if need_phase1 {
+            let my_state = self.state;
+            let me = self.me();
+            for (j, p) in self.peer_ids.iter().enumerate() {
+                if j as u32 != self.my_index {
+                    if maybe_crash(self.crashes) { return decision; }
+                    traceforge::send_msg(*p, PMsg::MoveTo { backup: me, state: my_state });
+                }
+            }
+            let needed = self.peer_ids.len() - 1;
+            for _ in 0..needed {
+                if maybe_crash(self.crashes) { return decision; }
+                traceforge::sleep(self.b.delta);
+                match self.recv() {
+                    Some(PMsg::BackupAck { .. }) => {}
+                    Some(PMsg::Commit) => {
+                        self.state = PState::Committed;
+                        traceforge::assert(self.voted_yes);
+                        return Decision::Commit;
+                    }
+                    Some(PMsg::Abort) => {
+                        self.state = PState::Aborted;
+                        return Decision::Abort;
+                    }
+                    Some(PMsg::MoveTo { backup, state }) => self.handle_move_to(backup, state),
+                    Some(_) => {}
+                    None => break,
+                }
+            }
+        }
+        if maybe_crash(self.crashes) { return decision; }
+        let msg = match decision {
+            Decision::Commit => PMsg::Commit,
+            Decision::Abort => PMsg::Abort,
         };
-        let ctx = ctx_opt.get_or_insert(ParticipantCtx {
-            b, my_index: index, num_ps, coord_id, peer_ids: peers.clone(),
-            state: PState::Initial, voted_yes: false,
-        });
-        ctx.coord_id = coord_id;
-        ctx.peer_ids = peers;
-        ctx.state = PState::Initial;
-        ctx.voted_yes = false;
-        let _ = ctx.run_after_prepare();
+        for (j, p) in self.peer_ids.iter().enumerate() {
+            if j as u32 != self.my_index {
+                if maybe_crash(self.crashes) { return decision; }
+                traceforge::send_msg(*p, msg.clone());
+            }
+        }
+        self.state = match decision {
+            Decision::Commit => PState::Committed,
+            Decision::Abort => PState::Aborted,
+        };
+        if decision == Decision::Commit { traceforge::assert(self.voted_yes); }
+        decision
     }
 }
 
-// ==== Test entry =======================================================
+fn slave(b: Bounds, num_ps: u32, index: u32, crashes: bool) {
+    if maybe_crash(crashes) { return; }
+    let (coord_id, peers) = loop {
+        match traceforge::recv_msg_block::<PMsg>() {
+            PMsg::Prepare { coord, peers } => break (coord, peers),
+            _ => {}
+        }
+    };
+    let mut ctx = SlaveCtx {
+        b, my_index: index, num_ps, coord_id, peer_ids: peers,
+        state: PState::Initial, voted_yes: false, crashes,
+    };
+    let _ = ctx.run_after_prepare();
+}
+
+// ==== Test entry ======================================================
 
 struct DotSnapshotter { src: PathBuf, dir: PathBuf }
 
@@ -287,35 +335,50 @@ fn visualize_correct_3pc() {
     let prune_log = dir.join("prunes.jsonl");
     let _ = fs::write(&prune_log, b"");
 
+    let crashes = crashes_from_env();
     let description = format!(
-        "Full Skeen 3PC (N={}, with termination sub-protocol). Includes election + state-collection + decision rule. \
-         Bounds: L=0, U=1, W=2 (= 2·U, Skeen termination bound), DELTA=3. Each rendered execution is one schedule \
-         the model checker explored under MUST-τ — including those where a participant times out and runs \
-         termination on behalf of the group.",
-        NUM_PARTICIPANTS
+        "Full Skeen '81 3PC (N={}, with §5 termination protocol). \
+         Election by preassigned ranking (lowest-index alive); reentrant \
+         on backup failure. Backup runs two-phase: MoveTo(my state) + acks, \
+         then Commit/Abort by Skeen decision rule on backup's own state. \
+         Bounds: L=0, U=1, W=2 (= 2·U), DELTA=3. Crashes: {}.",
+        NUM_PARTICIPANTS, crashes
     );
+    // Spawn order in the verifier closure is: N slaves first (t1..tN),
+    // then the coord (t{N+1}). t0 is main. Keep label mapping in sync
+    // with that order — otherwise the rendered "→ coordinator" arrows
+    // point at slave p0 instead of the actual coord thread.
+    let coord_tid = format!("t{}", NUM_PARTICIPANTS + 1);
     let labels: Vec<(String, String)> = (0..NUM_PARTICIPANTS)
-        .map(|i| (format!("t{}", i + 2), format!("p{}", i)))
+        .map(|i| (format!("t{}", i + 1), format!("p{}", i)))
         .collect();
     let labels_json = labels.iter().fold(serde_json::Map::new(), |mut m, (k, v)| {
         m.insert(k.clone(), serde_json::Value::String(v.clone()));
         m
     });
-    let order: Vec<String> = std::iter::once("t1".into())
+    let order: Vec<String> = std::iter::once(coord_tid.clone())
         .chain(labels.iter().map(|(k, _)| k.clone()))
         .chain(std::iter::once("t0".into()))
         .collect();
     let mut labels_full = labels_json;
     labels_full.insert("t0".to_string(), serde_json::Value::String("main".to_string()));
-    labels_full.insert("t1".to_string(), serde_json::Value::String("coordinator".to_string()));
+    labels_full.insert(coord_tid, serde_json::Value::String("coordinator".to_string()));
+    // nondet_role tells the renderer whether NONDET events are votes
+    // (single nondet per thread, legacy 2PC/3PC-without-crashes) or
+    // crash decisions (one nondet per send/recv boundary, 3PC-with-
+    // crashes). Without this flag the renderer falls back to a
+    // per-execution count heuristic that mislabels threads that
+    // crashed before reaching their second nondet.
+    let nondet_role = if crashes { "crash" } else { "vote" };
     let meta_json = json!({
         "kind": "vote",
-        "title": format!("Three-Phase Commit (full Skeen, termination, N={})", NUM_PARTICIPANTS),
+        "nondet_role": nondet_role,
+        "title": format!("Three-Phase Commit (Skeen '81 + §5 termination, N={})", NUM_PARTICIPANTS),
         "description": description,
         "labels": labels_full,
         "order": order,
         "l": 0, "u": U, "sd": 0,
-        "wait": format!("coord vote/ack={} (= 2·U, Skeen termination), participant={}", W, W),
+        "wait": format!("coord vote/ack={}, slave={}", W, W),
     }).to_string();
     fs::write(dir.join("meta.json"), meta_json).unwrap();
 
@@ -333,15 +396,16 @@ fn visualize_correct_3pc() {
     let b = Bounds { u: U, w: W, delta: DELTA };
     let r_rounds = rounds_from_env();
     traceforge::verify(cfg, move || {
-        let mut handles = Vec::new();
-        for i in 0..NUM_PARTICIPANTS {
-            handles.push(thread::spawn(move || participant(b, NUM_PARTICIPANTS, i, r_rounds)));
-        }
-        let peers: Vec<ThreadId> = handles.iter().map(|h| h.thread().id()).collect();
         for _r in 0..r_rounds {
-            let peers_for_coord = peers.clone();
-            let c = thread::spawn(move || coordinator(b));
-            traceforge::send_msg(c.thread().id(), CMsg::Init { peers: peers_for_coord });
+            let mut handles = Vec::new();
+            for i in 0..NUM_PARTICIPANTS {
+                handles.push(thread::spawn(move || slave(b, NUM_PARTICIPANTS, i, crashes)));
+            }
+            let peers: Vec<ThreadId> = handles.iter().map(|h| h.thread().id()).collect();
+            let c = thread::spawn(move || coordinator(b, crashes));
+            traceforge::send_msg(c.thread().id(), CMsg::Init { peers });
+            for h in handles { let _ = h.join(); }
+            let _ = c.join();
         }
     });
 

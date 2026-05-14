@@ -1,69 +1,87 @@
-//! Three-Phase Commit (3PC) — Skeen '81 with the **full termination
-//! protocol** (election + state collection + decision rule), ported
-//! to TraceForge with bounded message delays.
+//! Three-Phase Commit (3PC) — **strictly** as described in
 //!
-//! Reference: D. Skeen, "NonBlocking Commit Protocols," ACM SIGMOD '81
-//! (pp. 133–142). Termination protocol decision rule is rendered per
-//! the canonical textbook treatment in Bernstein, Hadzilacos & Goodman,
-//! *Concurrency Control and Recovery in Database Systems* (1987), §7.
+//!   D. Skeen, "NonBlocking Commit Protocols," ACM SIGMOD '81
+//!   pp. 133-142.
 //!
-//! ## Protocol — normal case
+//! Section / figure references below cite that paper directly.
 //!
-//!   Phase 1  CanCommit / Vote
-//!     coord  ── Prepare ──▶ all participants
-//!     each p ── Yes/No  ──▶ coord
-//!     coord aborts unless every vote is Yes (and every vote arrived)
+//! ## Normal-case protocol (Figure 7, central-site 3PC)
 //!
-//!   Phase 2  PreCommit / Ack
-//!     coord  ── PreCommit ──▶ all participants
-//!     each p ── Ack       ──▶ coord
-//!     coord refuses to commit unless every Ack arrived
+//!   Phase 1 (coord state q1 → w1)
+//!     coord  ── xact ──▶ every slave
+//!     slave  qi ── xact / yes ──▶ wi   (vote yes)   OR
+//!            qi ── xact / no  ──▶ ai   (vote no, terminal abort)
+//!   coord decision in w1:
+//!     all yes  →  w1 → p1 (broadcast `prepare`)
+//!     any no   →  w1 → a1 (broadcast `abort`)
 //!
-//!   Phase 3  DoCommit
-//!     coord  ── Commit ──▶ all participants
+//!   Phase 2 (coord state p1)
+//!     coord  ── prepare ──▶ every slave
+//!     slave  wi ── prepare / ack ──▶ pi
+//!     coord collects acks
 //!
-//! ## Participant state machine (Skeen)
+//!   Phase 3 (coord state c1)
+//!     coord  ── commit ──▶ every slave
+//!     slave  pi ── commit ──▶ ci
 //!
-//!   Q (initial) → W (voted yes) → P (received PreCommit) → C (committed)
-//!   any state may transition → A (aborted)
+//! ## Termination protocol (Section 5 — central-site termination)
 //!
-//! ## Termination protocol (Skeen §3 / BHG §7)
+//! Triggered whenever a slave's wait times out (= coord failure
+//! detected). Per the paper:
 //!
-//! Triggered when a participant times out waiting for a coord message.
-//! Election: the lowest-index alive participant becomes the new
-//! coordinator (chosen via probe-and-timeout — non-replies = crashed).
-//! Then the new coordinator runs:
+//!   "The basic idea of this scheme is to choose a coordinator, which
+//!   we will call a *backup coordinator*, from the set of operational
+//!   sites. ... Since the backup can fail before terminating the
+//!   transaction, the protocol must be reentrant."
 //!
-//!   1. Send STATE-REQ to all alive participants.
-//!   2. Collect STATE-REPLY (each participant's local PState) with
-//!      a finite wait. Non-replies → assumed crashed.
-//!   3. Apply the decision rule on the multiset S of collected states:
-//!      a. ∃ C ∈ S        →  broadcast Commit
-//!      b. ∃ A ∈ S        →  broadcast Abort
-//!      c. ∃ P ∈ S        →  broadcast Commit (rule (c) of Skeen,
-//!                            since no C/A means safe to commit if any
-//!                            participant is past PreCommit)
-//!      d. all in W or Q  →  broadcast Abort
+//! Election: "the choice could be based on a preassigned ranking."
+//! We use the lowest-index slave still operational; on its failure
+//! the next-indexed slave takes over (reentrancy).
 //!
-//! Rule (c) is what makes 3PC *non-blocking*: even if the coord crashed
-//! mid-Phase-2 leaving some participants in P and others in W, the
-//! termination protocol can safely commit.
+//! Decision rule (quoted from page 141):
+//!   "If the concurrency set for the current state of the backup
+//!    contains a commit state, then the transaction is committed.
+//!    Otherwise, it is aborted."
 //!
-//! ## Bounded execution
+//! For the canonical 3PC of Figure 7 the concurrency sets are:
+//!   q : { q, w }           → no commit → abort
+//!   w : { w, p }           → no commit → abort
+//!   p : { p, c }           → has commit → commit
+//!   c : { c }              → commit
+//!   a : { a }              → abort
 //!
-//!   * `--rounds R` — number of independent commit transactions to
-//!                    run. Each round is a fresh 3PC invocation.
-//!                    Default 1 (Skeen's per-transaction analysis).
-//!   * Termination attempts — naturally bounded at N (once every
-//!                            participant has tried, nobody left).
+//! Backup's two-phase protocol (quoted, page 141):
+//!   "Phase 1: The backup issues a message to all sites to make a
+//!    transition to its local state. The backup then waits for an
+//!    acknowledgment from each site.
+//!    Phase 2: The backup issues a commit or abort message to each
+//!    site (by applying the decision rule given above).
+//!    If the backup is initially in a commit or an abort state, then
+//!    the first phase can be omitted."
+//!
+//! Reentrancy is realised by every slave keeping `current_backup` —
+//! starting at index 0, incremented on each timeout. When
+//! `current_backup == my_index`, the slave assumes the role.
+//!
+//! ## Failures
+//!
+//! Every site (coordinator and every slave, including a slave acting
+//! as backup) may fail at every send/receive boundary when the
+//! `crashes` flag is set, modelled as `crashes && nondet()`. Failures
+//! are fail-stop: a crashed thread simply returns.
+//!
+//! ## Rounds
+//!
+//! Each round is one independent invocation of the protocol with
+//! freshly spawned threads (true clean slate — no carried-over state
+//! or stale queue entries).
 //!
 //! ## Implementation note: unified message enums
 //!
 //! TraceForge's `recv_msg_block::<T>()` panics if the next queued
 //! message isn't of type T (it does not filter by type). Therefore
-//! every message sent to a participant uses the same `PMsg` enum and
-//! every message sent to the coordinator uses the same `CMsg` enum —
-//! the *variants* distinguish protocol-level message types.
+//! every message sent to a slave uses the same `PMsg` enum and every
+//! message sent to the coordinator uses the same `CMsg` enum.
 
 use std::time::{Duration, Instant};
 
@@ -77,54 +95,50 @@ const DEFAULT_ROUNDS: u32 = 1;
 const SWEEP_RATIOS: &[u64] = &[2, 3, 5, 7];
 const SWEEP_PARTICIPANTS: &[u32] = &[3, 4, 5];
 
-/// Skeen participant state machine. {q, w, p, c, a} from the paper.
+/// Skeen slave-state FSA (Figure 7): {q, w, p, c, a}.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PState {
     Initial,    // q
     Wait,       // w
     Prepared,   // p
-    Committed,  // c
-    Aborted,    // a
+    Committed,  // c  (terminal)
+    Aborted,    // a  (terminal)
 }
 
-/// Every message that can arrive at a *participant*. Single enum so the
-/// recv at the participant's queue is type-stable across all protocol
-/// roles.
+/// Messages received by a slave. The same queue carries normal-protocol
+/// messages from the coord *and* termination-protocol messages from
+/// whichever slave is currently acting as backup coordinator.
 #[derive(Clone, Debug, PartialEq)]
 enum PMsg {
-    /// Phase 1 from coord. Doubles as participant bootstrap: carries
-    /// the peer-id list and the coord id (so participants learn the
-    /// world from the coord rather than from a separate main-thread
-    /// Init send — that way every message at the participant has a
-    /// single canonical sender per logical round).
+    /// Phase 1 from coord. Doubles as bootstrap: carries the coord's
+    /// id and the full peer list so slaves can address each other
+    /// during termination without a separate init step.
     Prepare { coord: ThreadId, peers: Vec<ThreadId> },
-    /// Phase 2 from coord (or termination-coord rule (c)).
+    /// Phase 2 from coord.
     PreCommit,
-    /// Phase 3 from coord (or termination-coord rule (a)/(c)).
+    /// Phase 3 from coord OR Phase 2 of a backup (final decision).
     Commit,
-    /// Coord-decided abort (Phase 1 outcome, or termination rule (b)/(d)).
+    /// Phase 1 abort from coord OR Phase 2 of a backup (final decision).
     Abort,
-    /// Termination protocol: peer is asking for our state.
-    StateRequest(ThreadId), // sender id for the reply
-    /// Termination protocol: peer is replying with their state.
-    StateReply(PState),
-    /// Termination protocol: final decision broadcast by terminator.
-    Decide(Decision),
-    /// Election: peer is checking if we are alive.
-    Probe(ThreadId),
-    /// Election: peer is confirming they are alive.
-    ProbeAck,
+    /// Termination Phase 1: backup tells slave to transition to `state`.
+    /// `backup` is the sender id so the slave knows where to send the
+    /// ack and which backup it is currently obeying.
+    MoveTo { backup: ThreadId, state: PState },
+    /// Termination Phase 1 ack from a slave to the backup.
+    BackupAck { from: ThreadId },
 }
 
-/// Every message that can arrive at the *coordinator*. Single enum.
+/// Messages received by the coordinator. The original coord's queue
+/// only ever sees these. (Backup coordinators are slaves and therefore
+/// receive PMsg, not CMsg.)
 #[derive(Clone, Debug, PartialEq)]
 enum CMsg {
-    /// Bootstrap from main thread.
+    /// Bootstrap from main: tells the coord who the slaves are.
     Init { peers: Vec<ThreadId> },
-    /// Vote replies.
+    /// Phase 1 vote replies.
     Yes,
     No,
-    /// Phase-2 ack replies.
+    /// Phase 2 acks.
     Ack,
 }
 
@@ -159,106 +173,105 @@ impl Bounds {
     }
 }
 
+/// Fail-stop crash: returns `true` iff the site should crash here.
+/// Threaded through every send/recv boundary on every role per the
+/// paper's assumption that "site failures are fail-stop" and can occur
+/// at any point during a state transition.
+fn maybe_crash(crashes: bool) -> bool {
+    crashes && traceforge::nondet()
+}
+
 // =====================================================================
-// Coordinator
+// Coordinator (Skeen Figure 7, site 1)
 // =====================================================================
 
 fn coordinator(mode: Mode, b: Bounds, crashes: bool) {
-    let ps: Vec<ThreadId> = match traceforge::recv_msg_block::<CMsg>() {
-        CMsg::Init { peers } => peers,
-        _ => panic!("coord expected Init"),
+    // Wait for bootstrap. Drop strays the model checker speculatively
+    // pairs with this recv under HB-inconsistent rfs (rejected later).
+    let ps: Vec<ThreadId> = loop {
+        match traceforge::recv_msg_block::<CMsg>() {
+            CMsg::Init { peers } => break peers,
+            _ => {}
+        }
     };
+    let me = thread::current().id();
 
-    // Phase 1: Prepare → Vote.  Each Prepare doubles as participant
-    // bootstrap, carrying coord_id and the full peer list.
-    let me_id = thread::current().id();
+    if maybe_crash(crashes) { return; }
+
+    // Phase 1: q1 → w1 (broadcast xact).
     for id in &ps {
-        traceforge::send_msg(
-            *id,
-            PMsg::Prepare { coord: me_id, peers: ps.clone() },
-        );
+        traceforge::send_msg(*id, PMsg::Prepare { coord: me, peers: ps.clone() });
+        if maybe_crash(crashes) { return; }
     }
 
-    let mut yes_count = 0usize;
-    let mut received_count = 0usize;
+    // Phase 1: collect votes.
+    let mut yes = 0usize;
+    let mut received = 0usize;
     for _ in 0..ps.len() {
         if mode == Mode::Temporal {
             traceforge::sleep(b.delta);
         }
-        // Both modes use the *same* timed receive. The only difference
-        // is whether `with_temporal` is set on the config — if it is,
-        // the temporal filter prunes infeasible Some-rfs. None branch
-        // is admissible in both modes (timeout is always a possibility
-        // when the wait is finite). This is the "same code, toggled
-        // pruning" comparison the eval needs.
         let v: Option<CMsg> = traceforge::recv_msg_timed(WaitTime::Finite(b.w));
         match v {
-            Some(CMsg::Yes) => {
-                received_count += 1;
-                yes_count += 1;
-            }
-            Some(CMsg::No) => {
-                received_count += 1;
-            }
-            // None = timeout; off-variant = HB-inconsistent rf the
-            // model checker will reject. Either way, count as missing.
-            _ => {}
+            Some(CMsg::Yes) => { received += 1; yes += 1; }
+            Some(CMsg::No)  => { received += 1; }
+            _ => {} // timeout or HB-inconsistent off-variant
         }
+        if maybe_crash(crashes) { return; }
     }
 
-    let unanimous = received_count == ps.len() && yes_count == ps.len();
-    if !unanimous {
+    // Phase 1 decision: any non-yes or any missing vote → abort all.
+    if received != ps.len() || yes != ps.len() {
         for id in &ps {
+            if maybe_crash(crashes) { return; }
             traceforge::send_msg(*id, PMsg::Abort);
         }
         return;
     }
 
-    // Coord may crash before broadcasting PreCommit.
-    if crashes && traceforge::nondet() {
-        return;
-    }
+    if maybe_crash(crashes) { return; }
 
-    // Phase 2: PreCommit → Ack
+    // Phase 2: w1 → p1 (broadcast prepare).
     for id in &ps {
         traceforge::send_msg(*id, PMsg::PreCommit);
+        if maybe_crash(crashes) { return; }
     }
 
-    if crashes && traceforge::nondet() {
-        return;
-    }
-
-    let mut acks_received = 0usize;
+    // Phase 2: collect acks.
+    let mut acks = 0usize;
     for _ in 0..ps.len() {
         if mode == Mode::Temporal {
             traceforge::sleep(b.delta);
         }
         let v: Option<CMsg> = traceforge::recv_msg_timed(WaitTime::Finite(b.w));
         match v {
-            Some(CMsg::Ack) => acks_received += 1,
-            _ => {} // None or off-variant → missing ack
+            Some(CMsg::Ack) => acks += 1,
+            _ => {}
         }
+        if maybe_crash(crashes) { return; }
     }
 
-    if acks_received != ps.len() {
+    if acks != ps.len() {
+        // Missing acks. Per the paper coord stays in p1 and times out;
+        // the termination protocol takes over at the slaves. Coord
+        // simply returns without sending commit.
         return;
     }
 
-    if crashes && traceforge::nondet() {
-        return;
-    }
+    if maybe_crash(crashes) { return; }
 
-    // Phase 3: Commit
+    // Phase 3: p1 → c1 (broadcast commit).
     for id in &ps {
         traceforge::send_msg(*id, PMsg::Commit);
+        if maybe_crash(crashes) { return; }
     }
 }
 
 // =====================================================================
-// Participant + termination protocol
+// Slave + termination protocol (Skeen Figure 7 site i, Section 5)
 // =====================================================================
 
-struct ParticipantCtx {
+struct SlaveCtx {
     mode: Mode,
     b: Bounds,
     my_index: u32,
@@ -270,47 +283,66 @@ struct ParticipantCtx {
     crashes: bool,
 }
 
-impl ParticipantCtx {
-    fn me(&self) -> ThreadId {
-        self.peer_ids[self.my_index as usize]
-    }
+/// Outcome of a single iteration of the reentrant backup loop.
+enum BackupOutcome {
+    /// We received a final commit/abort from the current backup.
+    Decision(Decision),
+    /// The current backup did not respond within W; advance election.
+    CurrentDead,
+}
 
-    /// Receive next participant-bound message. Both modes use the same
-    /// timed receive; only the temporal-config differs between baseline
-    /// and temporal modes (and thus the pruning of admissible reads).
+impl SlaveCtx {
+    fn me(&self) -> ThreadId { self.peer_ids[self.my_index as usize] }
+
     fn recv(&self) -> Option<PMsg> {
         traceforge::recv_msg_timed(WaitTime::Finite(self.b.w))
     }
 
-    /// Run one round of 3PC starting AFTER Prepare has already been
-    /// consumed (by the outer participant() bootstrap loop). Returns
-    /// the participant's decision.
-    fn run_after_prepare(&mut self) -> Decision {
-        // Crash before voting.
-        if self.crashes && traceforge::nondet() {
-            self.state = PState::Initial;
-            return Decision::Abort;
+    /// Skeen decision rule (Section 5): commit iff concurrency set of
+    /// my state contains the commit state. For 3PC: { p, c } ⇒ commit.
+    fn decision_rule(&self) -> Decision {
+        match self.state {
+            PState::Prepared | PState::Committed => Decision::Commit,
+            _ => Decision::Abort,
         }
+    }
+
+    /// Honor an incoming `MoveTo` from a backup. The paper says a
+    /// committed/aborted slave is in a terminal state and cannot
+    /// transition further (page 137: "the act of committing or
+    /// aborting is irreversible"). Such a slave still acks so the
+    /// backup makes progress on its Phase-1 wait.
+    fn handle_move_to(&mut self, backup: ThreadId, target: PState) {
+        if self.state != PState::Committed && self.state != PState::Aborted {
+            self.state = target;
+        }
+        traceforge::send_msg(backup, PMsg::BackupAck { from: self.me() });
+    }
+
+    /// Run the slave-side protocol after we've consumed Prepare.
+    fn run_after_prepare(&mut self) -> Decision {
+        if maybe_crash(self.crashes) { return Decision::Abort; }
 
         if self.mode == Mode::Temporal {
+            // Stagger so the model checker can prune cross-mapping rfs.
             traceforge::sleep(self.b.delta * (self.my_index as u64 + 1));
         }
 
         self.voted_yes = traceforge::nondet();
         if self.voted_yes {
+            if maybe_crash(self.crashes) { return Decision::Abort; }
             traceforge::send_msg(self.coord_id, CMsg::Yes);
             self.state = PState::Wait;
         } else {
+            if maybe_crash(self.crashes) { return Decision::Abort; }
             traceforge::send_msg(self.coord_id, CMsg::No);
             self.state = PState::Aborted;
-            // No-voter still needs to receive the eventual Abort
-            // from the coord (or termination); drain it so this
-            // participant's state stays clean across rounds.
-            self.drain_until_decision();
             return Decision::Abort;
         }
 
-        // Wait for PreCommit / Abort.
+        if maybe_crash(self.crashes) { return Decision::Abort; }
+
+        // Wait for Phase 2 message from coord (PreCommit or Abort).
         loop {
             match self.recv() {
                 Some(PMsg::Abort) => {
@@ -321,228 +353,217 @@ impl ParticipantCtx {
                     self.state = PState::Prepared;
                     break;
                 }
-                Some(PMsg::Decide(d)) => return self.apply_decide(d),
-                Some(other) => self.handle_termination_msg(other),
+                Some(PMsg::Commit) => {
+                    // Some backup already decided commit while we were
+                    // still in w. Honor it.
+                    self.state = PState::Committed;
+                    traceforge::assert(self.voted_yes);
+                    return Decision::Commit;
+                }
+                Some(PMsg::MoveTo { backup, state }) => {
+                    self.handle_move_to(backup, state);
+                }
+                Some(_) => {} // stray BackupAck — ignore
                 None => return self.terminate(),
             }
         }
 
-        // Crash before sending Ack.
-        if self.crashes && traceforge::nondet() {
-            return Decision::Abort;
-        }
+        if maybe_crash(self.crashes) { return Decision::Abort; }
 
         if self.mode == Mode::Temporal {
             traceforge::sleep(self.b.delta * self.num_ps as u64);
         }
         traceforge::send_msg(self.coord_id, CMsg::Ack);
 
-        // Wait for Commit.
+        if maybe_crash(self.crashes) { return Decision::Abort; }
+
+        // Wait for Phase 3 (Commit) or a backup's final decision.
         loop {
             match self.recv() {
                 Some(PMsg::Commit) => {
                     self.state = PState::Committed;
-                    assert!(self.voted_yes, "atomicity: committed without Yes vote");
+                    traceforge::assert(self.voted_yes);
                     return Decision::Commit;
                 }
                 Some(PMsg::Abort) => {
                     self.state = PState::Aborted;
                     return Decision::Abort;
                 }
-                Some(PMsg::Decide(d)) => return self.apply_decide(d),
-                Some(other) => self.handle_termination_msg(other),
+                Some(PMsg::MoveTo { backup, state }) => {
+                    self.handle_move_to(backup, state);
+                }
+                Some(_) => {}
                 None => return self.terminate(),
             }
         }
     }
 
-    /// Apply a terminator's Decide and update state with atomicity check.
-    fn apply_decide(&mut self, d: Decision) -> Decision {
+    /// Skeen Section 5 termination protocol. Reentrant: on every
+    /// timeout the elected backup index is advanced; if it reaches
+    /// our own index we run the backup protocol ourselves.
+    fn terminate(&mut self) -> Decision {
+        let mut current = 0u32;
+        while current < self.num_ps {
+            if current == self.my_index {
+                return self.run_backup_protocol();
+            }
+            match self.wait_for_backup(current) {
+                BackupOutcome::Decision(d) => return d,
+                BackupOutcome::CurrentDead => current += 1,
+            }
+        }
+        // Election exhausted. Per the paper this can only happen if
+        // every slave (including us) is presumed dead — but we are
+        // still running. The decision rule applies to our state.
+        let d = self.decision_rule();
         self.state = match d {
             Decision::Commit => PState::Committed,
             Decision::Abort => PState::Aborted,
         };
         if d == Decision::Commit {
-            assert!(self.voted_yes, "atomicity: termination committed a No-voter");
+            traceforge::assert(self.voted_yes);
         }
         d
     }
 
-    /// Drain stray messages until we observe a decision. Used by the
-    /// No-voter path so it doesn't leave undelivered Aborts in its
-    /// queue across rounds.
-    fn drain_until_decision(&mut self) {
+    /// Wait for the slave at `current_idx` (acting as backup) to send
+    /// us either a `MoveTo` (Phase 1) or a final `Commit`/`Abort`
+    /// (Phase 2). On timeout, treat the backup as dead.
+    fn wait_for_backup(&mut self, current_idx: u32) -> BackupOutcome {
+        let current_peer = self.peer_ids[current_idx as usize];
         loop {
             match self.recv() {
-                Some(PMsg::Abort) | Some(PMsg::Commit) => return,
-                Some(PMsg::Decide(_)) => return,
-                Some(other) => self.handle_termination_msg(other),
-                None => return,
+                Some(PMsg::MoveTo { backup, state }) => {
+                    if backup == current_peer {
+                        self.handle_move_to(backup, state);
+                        // Stay in the loop, waiting for the decision.
+                    }
+                    // MoveTo from a different backup (higher or lower
+                    // ranked) — drop it. Strict preassigned ranking
+                    // means we only obey the index we're currently
+                    // waiting on.
+                }
+                Some(PMsg::Commit) => {
+                    self.state = PState::Committed;
+                    traceforge::assert(self.voted_yes);
+                    return BackupOutcome::Decision(Decision::Commit);
+                }
+                Some(PMsg::Abort) => {
+                    self.state = PState::Aborted;
+                    return BackupOutcome::Decision(Decision::Abort);
+                }
+                Some(_) => {}
+                None => return BackupOutcome::CurrentDead,
             }
         }
     }
 
-    /// Service an off-protocol termination message (state request,
-    /// probe, etc.) while we are on the normal-case wait path.
-    fn handle_termination_msg(&self, msg: PMsg) {
-        match msg {
-            PMsg::StateRequest(sender) => {
-                traceforge::send_msg(sender, PMsg::StateReply(self.state));
-            }
-            PMsg::Probe(sender) => {
-                traceforge::send_msg(sender, PMsg::ProbeAck);
-            }
-            // StateReply/ProbeAck/Init/Prepare/PreCommit out of place
-            // → protocol error; ignoring is safe under fail-stop.
-            _ => {}
-        }
-    }
+    /// Run as backup coordinator. Strictly the two-phase protocol of
+    /// Skeen Section 5: Phase 1 (move-to-state, omitted if I'm already
+    /// in c or a) + Phase 2 (decision broadcast).
+    fn run_backup_protocol(&mut self) -> Decision {
+        // Decision is fixed at the moment we become backup, based on
+        // our local state. Crucially, this is the *same* rule any
+        // future backup would apply once Phase 1 has synchronised
+        // everyone — that is what makes the protocol reentrant.
+        let decision = self.decision_rule();
 
-    /// Termination protocol entry point. Determines whether we are the
-    /// designated terminator (lowest-index alive participant) and
-    /// either runs termination or waits for the terminator's decision.
-    fn terminate(&mut self) -> Decision {
-        // Probe every lower-index peer. If any reply, defer.
-        for j in 0..self.my_index {
-            traceforge::send_msg(self.peer_ids[j as usize], PMsg::Probe(self.me()));
-        }
-        let mut any_lower_alive = false;
-        for _ in 0..self.my_index {
-            if self.mode == Mode::Temporal {
-                traceforge::sleep(self.b.delta);
-            }
-            match self.recv() {
-                Some(PMsg::ProbeAck) => any_lower_alive = true,
-                Some(PMsg::Decide(d)) => return self.apply_decide(d),
-                Some(other) => self.handle_termination_msg(other),
-                None => {}
-            }
-        }
-        if any_lower_alive {
-            return self.wait_for_decide();
-        }
-        self.run_termination()
-    }
+        let need_phase1 = self.state != PState::Committed
+            && self.state != PState::Aborted;
 
-    /// Block (with timeout) for the terminator's Decide message.
-    fn wait_for_decide(&mut self) -> Decision {
-        loop {
-            match self.recv() {
-                Some(PMsg::Decide(d)) => return self.apply_decide(d),
-                Some(other) => self.handle_termination_msg(other),
-                None => return Decision::Abort, // give up; model-checker logs it
-            }
-        }
-    }
+        if need_phase1 {
+            let my_state = self.state;
+            let me = self.me();
 
-    /// We are the designated terminator. Run Skeen's termination protocol.
-    fn run_termination(&mut self) -> Decision {
-        // 1. STATE-REQUEST to every other peer.
-        for (j, peer) in self.peer_ids.iter().enumerate() {
-            if j as u32 != self.my_index {
-                traceforge::send_msg(*peer, PMsg::StateRequest(self.me()));
+            // Phase 1 broadcast.
+            for (j, p) in self.peer_ids.iter().enumerate() {
+                if j as u32 != self.my_index {
+                    if maybe_crash(self.crashes) { return decision; }
+                    traceforge::send_msg(*p, PMsg::MoveTo { backup: me, state: my_state });
+                }
             }
-        }
 
-        // 2. Collect STATE-REPLY with timeout. Include our own state.
-        let mut states: Vec<PState> = vec![self.state];
-        let expected = self.peer_ids.len() - 1;
-        for _ in 0..expected {
-            if self.mode == Mode::Temporal {
-                traceforge::sleep(self.b.delta);
-            }
-            match self.recv() {
-                Some(PMsg::StateReply(s)) => states.push(s),
-                Some(other) => self.handle_termination_msg(other),
-                None => {}
+            // Phase 1: wait for acks. Per the paper backup "waits for
+            // an acknowledgment from each site"; we use a finite wait
+            // — missing acks ⇒ that slave is presumed failed, but the
+            // decision rule still applies (a future backup will reach
+            // the same decision from its own state).
+            let needed = self.peer_ids.len() - 1;
+            for _ in 0..needed {
+                if maybe_crash(self.crashes) { return decision; }
+                if self.mode == Mode::Temporal {
+                    traceforge::sleep(self.b.delta);
+                }
+                match self.recv() {
+                    Some(PMsg::BackupAck { .. }) => {}
+                    Some(PMsg::Commit) => {
+                        // Another backup beat us. Honor it.
+                        self.state = PState::Committed;
+                        traceforge::assert(self.voted_yes);
+                        return Decision::Commit;
+                    }
+                    Some(PMsg::Abort) => {
+                        self.state = PState::Aborted;
+                        return Decision::Abort;
+                    }
+                    Some(PMsg::MoveTo { backup, state }) => {
+                        // A concurrent backup is also running and
+                        // outranks us in some slave's view. We treat
+                        // it as background noise and continue our run;
+                        // the model checker explores all interleavings.
+                        self.handle_move_to(backup, state);
+                    }
+                    Some(_) => {}
+                    None => break, // give up Phase-1 wait; proceed.
+                }
             }
         }
 
-        // 3. Skeen decision rule.
-        let any_c = states.iter().any(|s| *s == PState::Committed);
-        let any_a = states.iter().any(|s| *s == PState::Aborted);
-        let any_p = states.iter().any(|s| *s == PState::Prepared);
+        if maybe_crash(self.crashes) { return decision; }
 
-        let decision = if any_c {
-            Decision::Commit
-        } else if any_a {
-            Decision::Abort
-        } else if any_p {
-            // Rule (c): some past PreCommit, none past Commit, none
-            // Aborted → safe to commit (and bring W-stragglers along).
-            Decision::Commit
-        } else {
-            Decision::Abort
+        // Phase 2: broadcast decision.
+        let msg = match decision {
+            Decision::Commit => PMsg::Commit,
+            Decision::Abort => PMsg::Abort,
         };
-
-        // 4. Broadcast Decide to every other peer.
-        for (j, peer) in self.peer_ids.iter().enumerate() {
+        for (j, p) in self.peer_ids.iter().enumerate() {
             if j as u32 != self.my_index {
-                traceforge::send_msg(*peer, PMsg::Decide(decision));
+                if maybe_crash(self.crashes) { return decision; }
+                traceforge::send_msg(*p, msg.clone());
             }
         }
 
+        // Apply locally.
         self.state = match decision {
             Decision::Commit => PState::Committed,
             Decision::Abort => PState::Aborted,
         };
         if decision == Decision::Commit {
-            assert!(self.voted_yes, "atomicity: terminator committed a No-voter (self)");
+            traceforge::assert(self.voted_yes);
         }
         decision
     }
 }
 
-fn participant(mode: Mode, b: Bounds, num_ps: u32, index: u32, crashes: bool, rounds: u32) {
-    // We don't have peer_ids or coord_id yet — those come in the first
-    // Prepare message. So we can't construct ParticipantCtx until then.
-    // For each round, wait for Prepare gracefully (handling any stray
-    // termination messages from prior rounds along the way).
-    let mut ctx_opt: Option<ParticipantCtx> = None;
+fn slave(mode: Mode, b: Bounds, num_ps: u32, index: u32, crashes: bool) {
+    // Crash before even waiting for Prepare — captures a slave that
+    // never comes up for this round.
+    if maybe_crash(crashes) { return; }
 
-    for _r in 0..rounds {
-        // Receive Prepare (the round-start signal from coord). Service
-        // any stray peer-to-peer termination messages while waiting —
-        // see file docstring re: cross-sender ordering.
-        let (coord_id, peers, mut prepare_pending) = loop {
-            match traceforge::recv_msg_block::<PMsg>() {
-                PMsg::Prepare { coord, peers } => break (coord, peers, true),
-                // Strays from peers (a previous round's terminator
-                // still talking, or a probe that raced ahead of our
-                // Prepare). Reply with our current state so the peer
-                // can finish its termination round.
-                PMsg::StateRequest(sender) => {
-                    let state = ctx_opt.as_ref().map(|c| c.state).unwrap_or(PState::Initial);
-                    traceforge::send_msg(sender, PMsg::StateReply(state));
-                }
-                PMsg::Probe(sender) => {
-                    traceforge::send_msg(sender, PMsg::ProbeAck);
-                }
-                // StateReply / ProbeAck / Decide arriving before our
-                // Prepare for this round are leftover from prior
-                // rounds — safe to drop.
-                _ => {}
-            }
-        };
-        let _ = prepare_pending; // suppress unused
+    // Wait for Prepare (round bootstrap). Drop strays from the model
+    // checker's speculative pairings.
+    let (coord_id, peers) = loop {
+        match traceforge::recv_msg_block::<PMsg>() {
+            PMsg::Prepare { coord, peers } => break (coord, peers),
+            _ => {}
+        }
+    };
 
-        let ctx = ctx_opt.get_or_insert_with(|| ParticipantCtx {
-            mode,
-            b,
-            my_index: index,
-            num_ps,
-            coord_id,
-            peer_ids: peers.clone(),
-            state: PState::Initial,
-            voted_yes: false,
-            crashes,
-        });
-        ctx.coord_id = coord_id;
-        ctx.peer_ids = peers;
-        ctx.state = PState::Initial;
-        ctx.voted_yes = false;
-        let _ = ctx.run_after_prepare();
-    }
+    let mut ctx = SlaveCtx {
+        mode, b, my_index: index, num_ps, coord_id,
+        peer_ids: peers, state: PState::Initial, voted_yes: false, crashes,
+    };
+    let _ = ctx.run_after_prepare();
 }
 
 // =====================================================================
@@ -561,30 +582,30 @@ fn run(mode: Mode, num_ps: u32, b: Bounds, crashes: bool, rounds: u32) -> (Stats
     let cfg = build_config(mode, b);
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
-        // Spawn participants; collect their IDs for the peer list.
-        let mut handles = Vec::new();
-        for i in 0..num_ps {
-            handles.push(thread::spawn(move || {
-                participant(mode, b, num_ps, i, crashes, rounds)
-            }));
-        }
-        let peer_ids: Vec<ThreadId> = handles.iter().map(|h| h.thread().id()).collect();
-
+        // Each round is a fully independent invocation of the protocol
+        // on fresh threads — the "clean slate" semantics the paper
+        // implicitly assumes (Skeen analyses a single transaction).
         for _r in 0..rounds {
-            let peers_for_coord = peer_ids.clone();
+            let mut handles = Vec::new();
+            for i in 0..num_ps {
+                handles.push(thread::spawn(move || slave(mode, b, num_ps, i, crashes)));
+            }
+            let peer_ids: Vec<ThreadId> = handles.iter().map(|h| h.thread().id()).collect();
             let c = thread::spawn(move || coordinator(mode, b, crashes));
-            let coord_id = c.thread().id();
-            // Only one initial send: the Init bundle that names the
-            // peer list goes to the coord. Coord then broadcasts
-            // Prepare (which doubles as participant bootstrap).
-            traceforge::send_msg(coord_id, CMsg::Init { peers: peers_for_coord });
+            traceforge::send_msg(c.thread().id(), CMsg::Init { peers: peer_ids });
+
+            // Drain this round before starting the next so each round
+            // is independent. Failing threads return immediately, so
+            // join is sufficient.
+            for h in handles { let _ = h.join(); }
+            let _ = c.join();
         }
     });
     (stats, start.elapsed())
 }
 
 // =====================================================================
-// Reporting (unchanged from prior single-round version)
+// Reporting
 // =====================================================================
 
 fn print_one(label: &str, num_ps: u32, b: Bounds, rounds: u32, stats: &Stats, dur: Duration, crashes: bool) {
