@@ -115,6 +115,39 @@ impl TimeInterval {
     }
 }
 
+/// Feasible window for a receive that reads from a send.
+///
+/// Given the receive predecessor's window `pred_iv`, the send's window
+/// `send_iv`, the transit bounds `(L, U)` in force for that send, the
+/// storage delay `sd` of the receiving node, and the receive's upper
+/// wait cap `hi_cap` (`τ_hi(pred) + W_r`, or `u64::MAX` when `W_r = +∞`),
+/// returns `[max(τ_lo(pred), τ_lo(s) + L), min(hi_cap, τ_hi(s) + U + sd)]`.
+/// An empty `pred_iv` or `send_iv` yields an empty interval.
+///
+/// Single source of truth for the receive-reading-from-send arithmetic:
+/// shared by [`tconsistent`] and by `Must::is_block_temporally_feasible`,
+/// which can no longer call the walker once the receive label has been
+/// overwritten by a `Block`.
+pub(crate) fn recv_from_send_window(
+    pred_iv: TimeInterval,
+    send_iv: TimeInterval,
+    transit: (u64, u64),
+    sd: u64,
+    hi_cap: u64,
+) -> TimeInterval {
+    if pred_iv.is_empty() || send_iv.is_empty() {
+        return TimeInterval::empty();
+    }
+    let (l_val, u_val) = transit;
+    // send lower bound = τ_lo(s) + L
+    let send_lo = send_iv.lo.saturating_add(l_val);
+    // send upper bound = τ_hi(s) + U + sd
+    let send_hi = send_iv.hi.saturating_add(u_val).saturating_add(sd);
+    let lo = pred_iv.lo.max(send_lo);
+    let hi = hi_cap.min(send_hi);
+    TimeInterval::new(lo, hi)
+}
+
 /// Compute the timestamp range `[τ_lo(e), τ_hi(e)]` for event `e` by
 /// walking the program order backwards and dispatching on the
 /// label of each event.
@@ -172,40 +205,25 @@ fn tconsistent_rec(
             match rlab.rf() {
                 // Receive reading from a send.
                 Some(s) => {
-                    if pred_iv.is_empty() {
-                        cache.insert(e, TimeInterval::empty());
-                        return TimeInterval::empty();
-                    }
                     let send_iv = tconsistent_rec(g, s, cfg, cache);
-                    if send_iv.is_empty() {
-                        cache.insert(e, TimeInterval::empty());
-                        return TimeInterval::empty();
-                    }
                     // hi_cap = τ_hi(e') + W_r
                     let hi_cap = match wait {
                         WaitTime::Finite(w) => pred_iv.hi.saturating_add(w),
                         WaitTime::Infinite => u64::MAX,
                     };
                     // Per-send L / U overrides; fall back to globals.
-                    let (l_val, u_val) = g
+                    let transit = g
                         .send_label(s)
                         .and_then(|slab| slab.transit())
-                        .map(|(l, u)| (l, u))
                         .unwrap_or((cfg.l, cfg.u));
                     // sd(dst(s)): destination of s is the receiver's thread.
-                    let sd_val = cfg.sd_for(e.thread);
-
-                    // send upper bound = τ_hi(s) + U + sd
-                    let send_hi_with_bounds = send_iv
-                        .hi
-                        .saturating_add(u_val)
-                        .saturating_add(sd_val);
-                    // send lower bound = τ_lo(s) + L
-                    let send_lo_with_bounds = send_iv.lo.saturating_add(l_val);
-
-                    let lo = pred_iv.lo.max(send_lo_with_bounds);
-                    let hi = hi_cap.min(send_hi_with_bounds);
-                    TimeInterval::new(lo, hi)
+                    recv_from_send_window(
+                        pred_iv,
+                        send_iv,
+                        transit,
+                        cfg.sd_for(e.thread),
+                        hi_cap,
+                    )
                 }
                 // Receive timed out (rf = ⊥).
                 None => match wait {

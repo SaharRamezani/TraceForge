@@ -826,15 +826,16 @@ impl Must {
         if let LabelEnum::Block(blab) = g.thread_last(t).unwrap() {
             if let BlockType::Value(loc) = blab.btype() {
                 g.matching_stores(loc).any(|send| {
-                    // We need to consider two cases:
-                    // . Monitor reading from the send:
-                    // . . We are monitoring it and we haven't read it already
-                    send.can_be_monitor_read(&blab.pos()) ||
-                    // . Plain read from the send:
-                    // . . It is unread and the location *really* matches (not via monitoring)
-                        (send.can_be_read_from(loc) &&
-                            // disregard cancelled sends
-                            !send.is_cancelled_wrt(blab.as_event_label()))
+                    let structurally_ok =
+                        // Monitor reading from the send: we are monitoring it
+                        // and we haven't read it already.
+                        send.can_be_monitor_read(&blab.pos())
+                        // Plain read: the location really matches and the
+                        // send isn't cancelled.
+                            || (send.can_be_read_from(loc)
+                                && !send.is_cancelled_wrt(blab.as_event_label()));
+                    structurally_ok
+                        && self.is_block_temporally_feasible(blab.pos(), send)
                 })
             } else {
                 false
@@ -842,6 +843,44 @@ impl Must {
         } else {
             false
         }
+    }
+
+    /// Check whether unblocking the receive at `block_pos` to read from
+    /// `send` could possibly be temporally consistent. Used by
+    /// `is_waiting_on_written` to avoid the runtime spinning on a blocked
+    /// receive whose only matching send would still be rejected by the
+    /// temporal filter (unblock → re-run → re-block, forever).
+    ///
+    /// Returns true when no temporal config is set. The receive label has
+    /// already been overwritten by the `Block`, so this cannot call the
+    /// `tconsistent` walker on the receive directly; instead it feeds the
+    /// predecessor and send windows into the shared
+    /// [`crate::temporal_cons::recv_from_send_window`] helper. A blocked
+    /// receive is always `W_r = +∞` (`BlockType::Value` only ever holds
+    /// blocking receives), so the upper wait cap is `u64::MAX`.
+    fn is_block_temporally_feasible(&self, block_pos: Event, send: &SendMsg) -> bool {
+        let cfg = match &self.config.temporal {
+            Some(c) => c,
+            None => return true,
+        };
+        let g = &self.current.graph;
+        if block_pos.index == 0 {
+            // Defensive: a Block can't be the thread's first event, but
+            // if it ever is, fall back to "feasible".
+            return true;
+        }
+        let pred = Event::new(block_pos.thread, block_pos.index - 1);
+        let pred_iv = crate::temporal_cons::tconsistent(g, pred, cfg);
+        let send_iv = crate::temporal_cons::tconsistent(g, send.pos(), cfg);
+        let transit = send.transit().unwrap_or((cfg.l, cfg.u));
+        let iv = crate::temporal_cons::recv_from_send_window(
+            pred_iv,
+            send_iv,
+            transit,
+            cfg.sd_for(block_pos.thread),
+            u64::MAX,
+        );
+        !iv.is_empty()
     }
 
     fn is_waiting_on_finished(&self, t: ThreadId) -> bool {
