@@ -12,6 +12,10 @@ use crate::temporal_cons::WaitTime;
 use crate::thread::main_thread_id;
 use crate::vector_clock::VectorClock;
 use crate::ThreadId;
+use log::debug;
+
+#[cfg(feature = "symbolic")]
+use crate::symbolic::{SymExpr, SymSort, SymVarId};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) enum LabelEnum {
@@ -27,6 +31,11 @@ pub(crate) enum LabelEnum {
     Sample(Sample),
     Block(Block),
     Sleep(Sleep),
+
+    #[cfg(feature = "symbolic")]
+    SymbolicVar(SymbolicVar),
+    #[cfg(feature = "symbolic")]
+    ConstraintEval(ConstraintEval),
 }
 
 macro_rules! match_and_run {
@@ -44,6 +53,11 @@ macro_rules! match_and_run {
             LabelEnum::Sample(l) => l.as_event_label().$name($($arg),*),
             LabelEnum::Block(l) => l.as_event_label().$name($($arg),*),
             LabelEnum::Sleep(l) => l.as_event_label().$name($($arg),*),
+
+            #[cfg(feature = "symbolic")]
+            LabelEnum::SymbolicVar(l) => l.as_event_label().$name($($arg),*),
+            #[cfg(feature = "symbolic")]
+            LabelEnum::ConstraintEval(l) => l.as_event_label().$name($($arg),*),
         }
     };
 }
@@ -63,6 +77,11 @@ macro_rules! match_and_run_mut {
             LabelEnum::Sample(l) => l.as_event_label_mut().$name($($arg),*),
             LabelEnum::Block(l) => l.as_event_label_mut().$name($($arg),*),
             LabelEnum::Sleep(l) => l.as_event_label_mut().$name($($arg),*),
+
+            #[cfg(feature = "symbolic")]
+            LabelEnum::SymbolicVar(l) => l.as_event_label_mut().$name($($arg),*),
+            #[cfg(feature = "symbolic")]
+            LabelEnum::ConstraintEval(l) => l.as_event_label_mut().$name($($arg),*),
         }
     };
 }
@@ -257,6 +276,24 @@ impl LabelEnum {
                     return Ok(());
                 }
             }
+            #[cfg(feature = "symbolic")]
+            LabelEnum::SymbolicVar(s) => {
+                if let LabelEnum::SymbolicVar(o) = other {
+                    if s.id != o.id || s.sort != o.sort {
+                        return Err("symbolic variable mismatch".into());
+                    }
+                    return Ok(());
+                }
+            }
+            #[cfg(feature = "symbolic")]
+            LabelEnum::ConstraintEval(s) => {
+                if let LabelEnum::ConstraintEval(o) = other {
+                    if s.expr != o.expr {
+                        return Err("symbolic constraint mismatch".into());
+                    }
+                    return Ok(());
+                }
+            }
         }
 
         if let (LabelEnum::Block(_), LabelEnum::End(_)) = (self, other) {
@@ -305,6 +342,11 @@ impl LabelEnum {
             LabelEnum::Sample(_) => "called sample()".to_string(),
             LabelEnum::Block(_) => "became blocked".to_string(),
             LabelEnum::Sleep(s) => format!("slept for {}", s.duration()),
+
+            #[cfg(feature = "symbolic")]
+            LabelEnum::SymbolicVar(_) => "declared a symbolic variable".to_string(),
+            #[cfg(feature = "symbolic")]
+            LabelEnum::ConstraintEval(_) => "evaluated a symbolic expression".to_string(),
         }
     }
 }
@@ -324,6 +366,11 @@ impl fmt::Display for LabelEnum {
             LabelEnum::Sample(lab) => write!(f, "{}", lab),
             LabelEnum::Block(lab) => write!(f, "{}", lab),
             LabelEnum::Sleep(lab) => write!(f, "{}", lab),
+
+            #[cfg(feature = "symbolic")]
+            LabelEnum::SymbolicVar(lab) => write!(f, "{}", lab),
+            #[cfg(feature = "symbolic")]
+            LabelEnum::ConstraintEval(lab) => write!(f, "{}", lab),
         }
     }
 }
@@ -343,6 +390,11 @@ impl fmt::Debug for LabelEnum {
             LabelEnum::Sample(lab) => write!(f, "{}", lab),
             LabelEnum::Block(lab) => write!(f, "{}", lab),
             LabelEnum::Sleep(lab) => write!(f, "{}", lab),
+
+            #[cfg(feature = "symbolic")]
+            LabelEnum::SymbolicVar(lab) => write!(f, "{}", lab),
+            #[cfg(feature = "symbolic")]
+            LabelEnum::ConstraintEval(lab) => write!(f, "{}", lab),
         }
     }
 }
@@ -560,6 +612,7 @@ pub(crate) struct TCreate {
     is_daemon: bool,
     sym_cid: Option<ThreadId>,
     origination_vec: Vec<u32>,
+    filtered_origination_vec: Vec<u32>,
 }
 
 impl TCreate {
@@ -570,6 +623,7 @@ impl TCreate {
         is_daemon: bool,
         sym_cid: Option<ThreadId>,
         origination_vec: Vec<u32>,
+        filtered_origination_vec: Vec<u32>,
     ) -> Self {
         Self {
             label: EventLabel::new(pos),
@@ -578,6 +632,7 @@ impl TCreate {
             is_daemon,
             sym_cid,
             origination_vec,
+            filtered_origination_vec,
         }
     }
 
@@ -600,6 +655,10 @@ impl TCreate {
 
     pub(crate) fn origination_vec(&self) -> Vec<u32> {
         self.origination_vec.clone()
+    }
+
+    pub(crate) fn filtered_origination_vec(&self) -> Vec<u32> {
+        self.filtered_origination_vec.clone()
     }
 }
 
@@ -814,6 +873,12 @@ pub(crate) struct SendMsg {
     reader: Option<Event>,
     /// Monitor receives that currently read from this send.
     monitor_readers: Vec<Event>,
+    /// Receives in cancelled asyncs that read from this send.
+    /// Used as fallback when the primary reader is deleted during backward revisits.
+    /// RefCell for interior mutability: populated during filter_available_sends_in_view
+    /// where we only have &SendMsg.
+    #[serde(skip)]
+    cancelled_recv_readers: std::cell::RefCell<Vec<Event>>,
     /// Monitor threads that accept this message,
     /// and the respective value they would observe.
     #[serde(skip)]
@@ -847,6 +912,7 @@ impl SendMsg {
             monitor_readers: Vec::new(),
             monitor_sends,
             transit: None,
+            cancelled_recv_readers: std::cell::RefCell::new(Vec::new()),
         }
     }
 
@@ -965,6 +1031,7 @@ impl SendMsg {
     }
 
     pub(crate) fn set_reader(&mut self, reader: Option<Event>) {
+        debug!("Setting reader of {} to {:?}", self.label, reader);
         self.reader = reader
     }
 
@@ -978,6 +1045,37 @@ impl SendMsg {
     }
     pub(crate) fn can_be_read_from(&self, reader_loc: &RecvLoc) -> bool {
         self.is_unread() && reader_loc.matches(self)
+    }
+
+    pub(crate) fn push_cancelled_recv_reader(&self, reader: Event) {
+        self.cancelled_recv_readers.borrow_mut().push(reader);
+    }
+
+    pub(crate) fn last_cancelled_recv_reader_not_in(&self, deleted: &[Event]) -> Option<Event> {
+        self.cancelled_recv_readers
+            .borrow()
+            .iter()
+            .rev()
+            .find(|e| !deleted.contains(e))
+            .copied()
+    }
+
+    pub(crate) fn pop_cancelled_recv_reader(&self) -> Option<Event> {
+        self.cancelled_recv_readers.borrow_mut().pop()
+    }
+
+    pub(crate) fn remove_from_cancelled_recv_readers(&self, deleted: &[Event]) {
+        self.cancelled_recv_readers
+            .borrow_mut()
+            .retain(|e| !deleted.contains(e));
+    }
+
+    pub(crate) fn first_cancelled_recv_reader(&self) -> Option<Event> {
+        self.cancelled_recv_readers.borrow().first().copied()
+    }
+
+    pub(crate) fn clear_cancelled_recv_readers(&self) {
+        self.cancelled_recv_readers.borrow_mut().clear();
     }
 
     pub(crate) fn monitor_readers(&self) -> &Vec<Event> {
@@ -1064,6 +1162,7 @@ pub(crate) struct CToss {
     result: bool,
     predetermined: bool,
     maximal: bool,
+    name: Option<String>,
 }
 
 impl CToss {
@@ -1073,7 +1172,13 @@ impl CToss {
             result: init_value,
             predetermined: false,
             maximal: init_value,
+            name: None,
         }
+    }
+
+    pub(crate) fn with_name(mut self, name: String) -> Self {
+        self.name = Some(name);
+        self
     }
 
     pub(crate) fn result(&self) -> bool {
@@ -1101,7 +1206,11 @@ as_label!(CToss);
 
 impl fmt::Display for CToss {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: NONDET {}", self.as_event_label(), self.result())
+        if let Some(ref name) = self.name {
+            write!(f, "{}: NONDET({}) {}", self.as_event_label(), name, self.result())
+        } else {
+            write!(f, "{}: NONDET {}", self.as_event_label(), self.result())
+        }
     }
 }
 
@@ -1272,5 +1381,94 @@ as_label!(Sleep);
 impl fmt::Display for Sleep {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: SLEEP({})", self.as_event_label(), self.duration)
+    }
+}
+
+#[cfg(feature = "symbolic")]
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct SymbolicVar {
+    label: EventLabel,
+    id: SymVarId,
+    sort: SymSort,
+}
+
+#[cfg(feature = "symbolic")]
+impl SymbolicVar {
+    pub(crate) fn new(pos: Event, id: SymVarId, sort: SymSort) -> Self {
+        Self {
+            label: EventLabel::new(pos),
+            id,
+            sort,
+        }
+    }
+
+    pub(crate) fn id(&self) -> SymVarId {
+        self.id.clone()
+    }
+    pub(crate) fn sort(&self) -> &SymSort {
+        &self.sort
+    }
+}
+
+#[cfg(feature = "symbolic")]
+as_label!(SymbolicVar);
+
+#[cfg(feature = "symbolic")]
+impl fmt::Display for SymbolicVar {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}: SYM {:?} {:?}",
+            self.as_event_label(),
+            self.id(),
+            self.sort()
+        )
+    }
+}
+
+#[cfg(feature = "symbolic")]
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct ConstraintEval {
+    label: EventLabel,
+    expr: SymExpr,
+    branch_taken: bool,
+}
+
+#[cfg(feature = "symbolic")]
+impl ConstraintEval {
+    pub(crate) fn new(pos: Event, expr: SymExpr, branch_taken: bool) -> Self {
+        Self {
+            label: EventLabel::new(pos),
+            expr,
+            branch_taken,
+        }
+    }
+
+    pub(crate) fn expr(&self) -> &SymExpr {
+        &self.expr
+    }
+
+    pub(crate) fn branch_taken(&self) -> bool {
+        self.branch_taken
+    }
+
+    pub(crate) fn set_branch_taken(&mut self, b: bool) {
+        self.branch_taken = b;
+    }
+}
+
+#[cfg(feature = "symbolic")]
+as_label!(ConstraintEval);
+
+#[cfg(feature = "symbolic")]
+impl fmt::Display for ConstraintEval {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}: C {:?} [{}]",
+            self.as_event_label(),
+            self.expr(),
+            if self.branch_taken() { "true" } else { "false" }
+        )
     }
 }
