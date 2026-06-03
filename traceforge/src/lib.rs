@@ -25,7 +25,7 @@ mod revisit;
 mod runtime;
 pub mod sync;
 mod telemetry;
-mod temporal_cons;
+mod timed_cons;
 mod testmode;
 use future::spawn_receive;
 pub use testmode::{parallel_test, test};
@@ -38,7 +38,7 @@ mod vector_clock;
 pub use crate::msg::Val;
 // `Val` is used by monitors.
 
-pub use crate::temporal_cons::{TemporalConfig, WaitTime};
+pub use crate::timed_cons::{TimedConfig, WaitTime};
 
 use channel::{cons_to_model, self_loc_comm, thread_loc_comm, Receiver};
 use coverage::ExecutionObserver;
@@ -249,10 +249,10 @@ pub struct Config {
     pub(crate) predetermined_global_choices: HashMap<String, bool>,
     pub(crate) pretty_graph_printing: bool,
 
-    /// Temporal configuration. `None` = legacy (structural-only) verification;
-    /// `Some(_)` enables the temporal consistency filter.
+    /// Timed configuration. `None` = legacy (structural-only) verification;
+    /// `Some(_)` enables the timed consistency filter.
     #[serde(default)]
-    pub(crate) temporal: Option<TemporalConfig>,
+    pub(crate) timed: Option<TimedConfig>,
     #[serde(skip)]
     pub(crate) callbacks: Arc<Mutex<Vec<Box<dyn ExecutionObserver + Send>>>>,
 
@@ -326,7 +326,7 @@ impl ConfigBuilder {
             predetermined_choices: HashMap::new(),
             predetermined_global_choices: HashMap::new(),
             pretty_graph_printing: false,
-            temporal: None,
+            timed: None,
             callbacks: Arc::new(Mutex::new(Vec::new())),
             #[cfg(feature = "symbolic")]
             symbolic: false,
@@ -460,7 +460,7 @@ impl ConfigBuilder {
         self
     }
 
-    /// Enables temporal verification with the given global transit bounds
+    /// Enables timed verification with the given global transit bounds
     /// and storage delay.
     ///
     /// * `l`, `u`: default network transit-time window used for any send
@@ -474,21 +474,21 @@ impl ConfigBuilder {
     /// `recv_msg_block_timed`, …) and `sleep` become meaningful.
     ///
     /// Requires `l <= u`.
-    pub fn with_temporal(mut self, l: u64, u: u64, sd: u64) -> Self {
-        self.0.temporal = Some(TemporalConfig::new(l, u, sd));
+    pub fn with_timed(mut self, l: u64, u: u64, sd: u64) -> Self {
+        self.0.timed = Some(TimedConfig::new(l, u, sd));
         self
     }
 
     /// Overrides the storage delay `sd(q)` for destination thread `tid`.
-    /// Only meaningful after [`ConfigBuilder::with_temporal`] has been
-    /// called; if no global temporal config is set, this is a no-op on
+    /// Only meaningful after [`ConfigBuilder::with_timed`] has been
+    /// called; if no global timed config is set, this is a no-op on
     /// the final built config.
     ///
     /// Threads without a per-node override use the global `sd` from
-    /// [`ConfigBuilder::with_temporal`].
+    /// [`ConfigBuilder::with_timed`].
     pub fn with_node_sd(mut self, tid: thread::ThreadId, sd: u64) -> Self {
-        if let Some(temporal) = self.0.temporal.take() {
-            self.0.temporal = Some(temporal.with_node_sd(tid, sd));
+        if let Some(timed) = self.0.timed.take() {
+            self.0.timed = Some(timed.with_node_sd(tid, sd));
         }
         self
     }
@@ -1068,10 +1068,10 @@ pub fn send_vec_tagged_lossy_msg<T: Message + 'static>(t: ThreadId, tag: Vec<u32
 /// Sends to `t` the message `v` with explicit per-send transit bounds.
 ///
 /// The bounds override the globals set via
-/// [`ConfigBuilder::with_temporal`] for this send only; other sends in
+/// [`ConfigBuilder::with_timed`] for this send only; other sends in
 /// the same run continue to use the globals unless they also opt in.
 /// Requires `l <= u`. Has no effect when the config has no
-/// temporal extension.
+/// timed extension.
 pub fn send_msg_timed<T: Message + 'static>(t: ThreadId, v: T, l: u64, u: u64) {
     assert!(l <= u, "send_msg_timed requires L <= U");
     let (loc, comm) = thread_loc_comm(t);
@@ -1344,7 +1344,7 @@ fn recv_val_block_with_tag<'a>(
 }
 
 // =======================================================================
-// Temporal primitives
+// Timed primitives
 // =======================================================================
 
 /// Advances the current thread's local clock by `duration` time units.
@@ -1353,7 +1353,7 @@ fn recv_val_block_with_tag<'a>(
 /// event into the execution graph whose only effect is to
 /// shift the thread's `[τ_lo, τ_hi]` window by `duration`.
 /// Has no observable effect in runs where
-/// [`ConfigBuilder::with_temporal`] was not set.
+/// [`ConfigBuilder::with_timed`] was not set.
 pub fn sleep(duration: u64) {
     switch();
     ExecutionState::with(|s| {

@@ -8,7 +8,7 @@ use std::ops::RangeInclusive;
 use crate::event::Event;
 use crate::loc::{CommunicationModel, Loc, RecvLoc, SendLoc, WakeMsg};
 use crate::msg::Val;
-use crate::temporal_cons::WaitTime;
+use crate::timed_cons::WaitTime;
 use crate::thread::main_thread_id;
 use crate::vector_clock::VectorClock;
 use crate::ThreadId;
@@ -722,8 +722,8 @@ pub(crate) struct RecvMsg {
     /// Per-receive wait time `W_r`
     ///
     /// * `None`: legacy untimed receive;
-    /// * `Some(WaitTime::Finite(w))`: temporal receive with finite wait.
-    /// * `Some(WaitTime::Infinite)`: temporal receive with `W_r = +∞`
+    /// * `Some(WaitTime::Finite(w))`: timed receive with finite wait.
+    /// * `Some(WaitTime::Infinite)`: timed receive with `W_r = +∞`
     ///   (blocking receive: timeout / `rf = ⊥` is inadmissible).
     #[serde(default)]
     wait: Option<WaitTime>,
@@ -749,7 +749,7 @@ impl RecvMsg {
     }
 
     /// Constructor for a timed receive. Identical to [`RecvMsg::new`]
-    /// but records `wait` so that [`crate::temporal_cons::tconsistent`]
+    /// but records `wait` so that [`crate::timed_cons::timed_consistent`]
     /// can bound this receive.
     pub(crate) fn new_timed(
         pos: Event,
@@ -884,7 +884,7 @@ pub(crate) struct SendMsg {
     #[serde(skip)]
     monitor_sends: MonitorSends,
     /// Per-send transit bounds `(L(s), U(s))`.
-    /// `None` means the global `TemporalConfig::{l, u}` applies;
+    /// `None` means the global `TimedConfig::{l, u}` applies;
     /// `Some((l, u))` overrides them for this send only. Set via the
     /// timed-send primitives in [`crate::lib`] (e.g. `send_msg_timed`).
     #[serde(default)]

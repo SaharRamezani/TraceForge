@@ -1149,7 +1149,7 @@ impl Must {
                             || (send.can_be_read_from(loc)
                                 && !send.is_cancelled_wrt(blab.as_event_label()));
                     structurally_ok
-                        && self.is_block_temporally_feasible(blab.pos(), send)
+                        && self.is_block_timed_feasible(blab.pos(), send)
                 })
             } else {
                 false
@@ -1160,20 +1160,20 @@ impl Must {
     }
 
     /// Check whether unblocking the receive at `block_pos` to read from
-    /// `send` could possibly be temporally consistent. Used by
+    /// `send` could possibly be timed consistent. Used by
     /// `is_waiting_on_written` to avoid the runtime spinning on a blocked
     /// receive whose only matching send would still be rejected by the
-    /// temporal filter (unblock → re-run → re-block, forever).
+    /// timed filter (unblock → re-run → re-block, forever).
     ///
-    /// Returns true when no temporal config is set. The receive label has
+    /// Returns true when no timed config is set. The receive label has
     /// already been overwritten by the `Block`, so this cannot call the
-    /// `tconsistent` walker on the receive directly; instead it feeds the
+    /// `timed_consistent` walker on the receive directly; instead it feeds the
     /// predecessor and send windows into the shared
-    /// [`crate::temporal_cons::recv_from_send_window`] helper. A blocked
+    /// [`crate::timed_cons::recv_from_send_window`] helper. A blocked
     /// receive is always `W_r = +∞` (`BlockType::Value` only ever holds
     /// blocking receives), so the upper wait cap is `u64::MAX`.
-    fn is_block_temporally_feasible(&self, block_pos: Event, send: &SendMsg) -> bool {
-        let cfg = match &self.config.temporal {
+    fn is_block_timed_feasible(&self, block_pos: Event, send: &SendMsg) -> bool {
+        let cfg = match &self.config.timed {
             Some(c) => c,
             None => return true,
         };
@@ -1184,10 +1184,10 @@ impl Must {
             return true;
         }
         let pred = Event::new(block_pos.thread, block_pos.index - 1);
-        let pred_iv = crate::temporal_cons::tconsistent(g, pred, cfg);
-        let send_iv = crate::temporal_cons::tconsistent(g, send.pos(), cfg);
+        let pred_iv = crate::timed_cons::timed_consistent(g, pred, cfg);
+        let send_iv = crate::timed_cons::timed_consistent(g, send.pos(), cfg);
         let transit = send.transit().unwrap_or((cfg.l, cfg.u));
-        let iv = crate::temporal_cons::recv_from_send_window(
+        let iv = crate::timed_cons::recv_from_send_window(
             pred_iv,
             send_iv,
             transit,
@@ -1449,7 +1449,7 @@ impl Must {
         );
 
         self.filter_symmetric_rfs(&mut rfs, pos);
-        self.filter_temporally_consistent_rfs(&mut rfs, pos);
+        self.filter_timed_consistent_rfs(&mut rfs, pos);
 
         // At this point, we have handled all the cases for nonblocking receive
         // so we know blocking == true
@@ -1592,14 +1592,14 @@ impl Must {
             .collect::<Vec<_>>();
 
         // Drop backward revisits whose resulting graph would be
-        // temporally inconsistent. Pure no-op when `temporal` is `None`.
+        // timed inconsistent. Pure no-op when `timed` is `None`.
         let mut revs = revs;
-        if let Some(cfg) = self.config.temporal.clone() {
+        if let Some(cfg) = self.config.timed.clone() {
             let g = &mut self.current.graph;
             revs.retain(|&r| {
                 let original_rf = g.recv_label(r).unwrap().rf();
                 g.change_rf(r, Some(pos));
-                let iv = crate::temporal_cons::tconsistent(g, r, &cfg);
+                let iv = crate::timed_cons::timed_consistent(g, r, &cfg);
                 g.change_rf(r, original_rf);
                 !iv.is_empty()
             });
@@ -1677,14 +1677,14 @@ impl Must {
     }
 
     /// Drop candidate sends whose `setRF(G, pos, s)`
-    /// would make `tconsistent(G, pos)` empty. When `config.temporal` is
+    /// would make `timed_consistent(G, pos)` empty. When `config.timed` is
     /// `None` this is a no-op.
     ///
     /// The check is performed by temporarily mutating `rlab.rf` to each
-    /// candidate and running `tconsistent`, then restoring the prior rf
+    /// candidate and running `timed_consistent`, then restoring the prior rf
     /// so the caller's view of the graph is unchanged.
-    fn filter_temporally_consistent_rfs(&mut self, rfs: &mut Vec<Event>, pos: Event) {
-        let cfg = match self.config.temporal.clone() {
+    fn filter_timed_consistent_rfs(&mut self, rfs: &mut Vec<Event>, pos: Event) {
+        let cfg = match self.config.timed.clone() {
             None => return,
             Some(c) => c,
         };
@@ -1695,7 +1695,7 @@ impl Must {
             .copied()
             .filter(|&s| {
                 g.change_rf(pos, Some(s));
-                let iv = crate::temporal_cons::tconsistent(g, pos, &cfg);
+                let iv = crate::timed_cons::timed_consistent(g, pos, &cfg);
                 !iv.is_empty()
             })
             .collect();

@@ -1,18 +1,18 @@
-//! Temporal consistency
+//! Timed consistency
 //!
-//! This module implements the temporal extension of the Must algorithm.
-//! It provides the [`WaitTime`] user-facing wait type, the [`TemporalConfig`]
+//! This module implements the timed extension of the Must algorithm.
+//! It provides the [`WaitTime`] user-facing wait type, the [`TimedConfig`]
 //! that holds the global transit bounds (`L`, `U`) and storage delay (`sd`)
-//! (with optional per-node `sd` overrides), and the [`tconsistent`] walker
+//! (with optional per-node `sd` overrides), and the [`timed_consistent`] walker
 //! that computes the feasible time window `[τ_lo, τ_hi]` for a given event
 //! by recursing over the program order.
 //!
 //! Per-send `L` / `U` overrides live on the `SendMsg` label itself
 //! (see [`crate::event_label::SendMsg`]). When a send does not carry its
-//! own bounds, the walker falls back to the globals on `TemporalConfig`.
+//! own bounds, the walker falls back to the globals on `TimedConfig`.
 //!
 //! The module is independent of the structural consistency check in
-//! [`crate::cons`]. If the config's `temporal` field is `None`, none
+//! [`crate::cons`]. If the config's `timed` field is `None`, none
 //! of this code runs and legacy behaviour is preserved.
 
 use std::collections::HashMap;
@@ -38,7 +38,7 @@ pub enum WaitTime {
     Infinite,
 }
 
-/// Temporal parameters.
+/// Timed parameters.
 ///
 /// The fields `l`, `u`, `sd` are *defaults* used for any send / node that
 /// does not carry its own override:
@@ -52,10 +52,10 @@ pub enum WaitTime {
 /// Per-node storage-delay overrides live in `node_sd`, keyed by the
 /// *destination* thread's id.
 ///
-/// A run with `temporal = None` on the parent [`crate::Config`] is a
+/// A run with `timed = None` on the parent [`crate::Config`] is a
 /// legacy verification and this struct is ignored.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TemporalConfig {
+pub struct TimedConfig {
     pub l: u64,
     pub u: u64,
     pub sd: u64,
@@ -65,9 +65,9 @@ pub struct TemporalConfig {
     pub node_sd: HashMap<ThreadId, u64>,
 }
 
-impl TemporalConfig {
+impl TimedConfig {
     pub fn new(l: u64, u: u64, sd: u64) -> Self {
-        assert!(l <= u, "TemporalConfig requires L <= U");
+        assert!(l <= u, "TimedConfig requires L <= U");
         Self {
             l,
             u,
@@ -125,7 +125,7 @@ impl TimeInterval {
 /// An empty `pred_iv` or `send_iv` yields an empty interval.
 ///
 /// Single source of truth for the receive-reading-from-send arithmetic:
-/// shared by [`tconsistent`] and by `Must::is_block_temporally_feasible`,
+/// shared by [`timed_consistent`] and by `Must::is_block_timed_feasible`,
 /// which can no longer call the walker once the receive label has been
 /// overwritten by a `Block`.
 pub(crate) fn recv_from_send_window(
@@ -154,19 +154,19 @@ pub(crate) fn recv_from_send_window(
 ///
 /// The walk stops at each thread's first event (`Begin`), returning
 /// `[0, 0]`.
-pub(crate) fn tconsistent(
+pub(crate) fn timed_consistent(
     g: &ExecutionGraph,
     e: Event,
-    cfg: &TemporalConfig,
+    cfg: &TimedConfig,
 ) -> TimeInterval {
     let mut cache = HashMap::new();
-    tconsistent_rec(g, e, cfg, &mut cache)
+    timed_consistent_rec(g, e, cfg, &mut cache)
 }
 
-fn tconsistent_rec(
+fn timed_consistent_rec(
     g: &ExecutionGraph,
     e: Event,
-    cfg: &TemporalConfig,
+    cfg: &TimedConfig,
     cache: &mut HashMap<Event, TimeInterval>,
 ) -> TimeInterval {
     if let Some(cached) = cache.get(&e) {
@@ -183,7 +183,7 @@ fn tconsistent_rec(
     }
 
     let pred = Event::new(e.thread, e.index - 1);
-    let pred_iv = tconsistent_rec(g, pred, cfg, cache);
+    let pred_iv = timed_consistent_rec(g, pred, cfg, cache);
 
     let lab = g.label(e);
     let iv = match lab {
@@ -205,7 +205,7 @@ fn tconsistent_rec(
             match rlab.rf() {
                 // Receive reading from a send.
                 Some(s) => {
-                    let send_iv = tconsistent_rec(g, s, cfg, cache);
+                    let send_iv = timed_consistent_rec(g, s, cfg, cache);
                     // hi_cap = τ_hi(e') + W_r
                     let hi_cap = match wait {
                         WaitTime::Finite(w) => pred_iv.hi.saturating_add(w),

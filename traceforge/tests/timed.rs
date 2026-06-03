@@ -1,7 +1,7 @@
 //! Integration tests for the Must-τ extension.
 //!
-//! Each test exercises a small scenario where the temporal feasibility
-//! check (tconsistent) must either admit or reject an interleaving.
+//! Each test exercises a small scenario where the timed feasibility
+//! check (timed_consistent) must either admit or reject an interleaving.
 //! Assertions are on the number of complete executions explored.
 
 use traceforge::thread::{self, ThreadId};
@@ -14,11 +14,11 @@ use traceforge::*;
 // With L=0, U=1000, sd=0:
 //   send window = [10, 1010], recv-reading-from-send window = [10, 100]
 //   recv-timeout window                                    = [100, 100]
-// Both the `rf = send` and `rf = ⊥` branches are temporally consistent.
+// Both the `rf = send` and `rf = ⊥` branches are timed consistent.
 #[test]
 fn sleep_advances_lower_bound_both_outcomes() {
     let stats = traceforge::verify(
-        Config::builder().with_temporal(0, 1000, 0).build(),
+        Config::builder().with_timed(0, 1000, 0).build(),
         || {
             let consumer = thread::spawn(|| {
                 let _: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(100));
@@ -39,11 +39,11 @@ fn sleep_advances_lower_bound_both_outcomes() {
 //   timeout window          = [0, 10]
 //   rf-from-send window for recv = [max(0,100), min(10, 100)] = [100, 10] (empty)
 // Only the timeout branch survives and the `rf = send` candidate is dropped
-// by the temporal filter.
+// by the timed filter.
 #[test]
 fn finite_wait_forces_timeout() {
     let stats = traceforge::verify(
-        Config::builder().with_temporal(0, 0, 0).build(),
+        Config::builder().with_timed(0, 0, 0).build(),
         || {
             let consumer = thread::spawn(|| {
                 let v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(10));
@@ -69,7 +69,7 @@ fn finite_wait_forces_timeout() {
 #[test]
 fn infinite_wait_prunes_timeout() {
     let stats = traceforge::verify(
-        Config::builder().with_temporal(0, 10, 0).build(),
+        Config::builder().with_timed(0, 10, 0).build(),
         || {
             let consumer = thread::spawn(|| {
                 let v: i32 = traceforge::recv_msg_block_timed();
@@ -84,17 +84,17 @@ fn infinite_wait_prunes_timeout() {
 
 // ---------------------------------------------------------------------
 // Predicate variant: `recv_tagged_msg_timed` composes with the
-// temporal filter.
+// timed filter.
 // ---------------------------------------------------------------------
 //
 // Two senders each send one message; the consumer's predicate matches
-// only the first sender. With generous temporal bounds, the send from
-// the matching sender is always temporally consistent, while the
+// only the first sender. With generous timed bounds, the send from
+// the matching sender is always timed consistent, while the
 // other sender's message is simply filtered out by the predicate.
 #[test]
 fn predicate_timed_recv() {
     let stats = traceforge::verify(
-        Config::builder().with_temporal(0, 100, 0).build(),
+        Config::builder().with_timed(0, 100, 0).build(),
         || {
             let main_id = thread::current().id();
             let s1 = thread::spawn(move || {
@@ -122,14 +122,14 @@ fn predicate_timed_recv() {
 }
 
 // ---------------------------------------------------------------------
-// Legacy run (no `with_temporal`) is unchanged by the new code paths.
+// Legacy run (no `with_timed`) is unchanged by the new code paths.
 // ---------------------------------------------------------------------
 //
 // This is a regression test:
-// when `config.temporal` is `None`. A single send/recv should produce
+// when `config.timed` is `None`. A single send/recv should produce
 // exactly one complete execution, just like it did before.
 #[test]
-fn legacy_run_unchanged_without_temporal() {
+fn legacy_run_unchanged_without_timed() {
     let stats = traceforge::verify(Config::builder().build(), || {
         let consumer = thread::spawn(|| {
             let v: i32 = traceforge::recv_msg_block();
@@ -141,23 +141,23 @@ fn legacy_run_unchanged_without_temporal() {
 }
 
 // ---------------------------------------------------------------------
-// Legacy untimed receives inside a temporal run are time-transparent.
+// Legacy untimed receives inside a timed run are time-transparent.
 // ---------------------------------------------------------------------
 //
-// `with_temporal` is set, but the consumer uses the legacy
+// `with_timed` is set, but the consumer uses the legacy
 // `recv_msg_block` primitive so it must still behave exactly like a
-// plain blocking receive, contributing no temporal constraint.
+// plain blocking receive, contributing no timed constraint.
 #[test]
-fn legacy_recv_inside_temporal_is_transparent() {
+fn legacy_recv_inside_timed_is_transparent() {
     let stats = traceforge::verify(
-        Config::builder().with_temporal(0, 10, 0).build(),
+        Config::builder().with_timed(0, 10, 0).build(),
         || {
             let consumer = thread::spawn(|| {
-                // Legacy untimed receive: tconsistent passes through.
+                // Legacy untimed receive: timed_consistent passes through.
                 let v: i32 = traceforge::recv_msg_block();
                 assert_eq!(v, 42);
             });
-            // Sleep is still temporally advancing main's local clock,
+            // Sleep is still timed advancing main's local clock,
             // but the legacy recv has no wait constraint to violate.
             traceforge::sleep(1000);
             traceforge::send_msg(consumer.thread().id(), 42i32);
@@ -176,11 +176,11 @@ fn legacy_recv_inside_temporal_is_transparent() {
 //
 // With per-send L = U = 0 (via `send_msg_timed`), the send window
 // collapses to [0, 0], overlapping [0, 5], so both `rf = send` and
-// `rf = ⊥` branches become temporally admissible.
+// `rf = ⊥` branches become timed admissible.
 #[test]
 fn per_send_bounds_override_global() {
     let stats_override = traceforge::verify(
-        Config::builder().with_temporal(10, 10, 0).build(),
+        Config::builder().with_timed(10, 10, 0).build(),
         || {
             let consumer = thread::spawn(|| {
                 let _v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(5));
@@ -191,7 +191,7 @@ fn per_send_bounds_override_global() {
     assert_eq!(stats_override.execs, 2);
 
     let stats_no_override = traceforge::verify(
-        Config::builder().with_temporal(10, 10, 0).build(),
+        Config::builder().with_timed(10, 10, 0).build(),
         || {
             let consumer = thread::spawn(|| {
                 let _v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(5));
@@ -217,7 +217,7 @@ fn per_send_bounds_override_global() {
 fn per_node_sd_overrides_global() {
     let stats = traceforge::verify(
         Config::builder()
-            .with_temporal(0, 5, 0)
+            .with_timed(0, 5, 0)
             .with_node_sd(traceforge::thread::main_thread_id(), 10)
             .build(),
         || {
@@ -234,7 +234,7 @@ fn per_node_sd_overrides_global() {
     // Same scenario without the per-node override: send is rejected,
     // only the timeout branch survives.
     let stats_fallback = traceforge::verify(
-        Config::builder().with_temporal(0, 5, 0).build(),
+        Config::builder().with_timed(0, 5, 0).build(),
         || {
             let main_id = thread::current().id();
             let _p = thread::spawn(move || {
@@ -249,7 +249,7 @@ fn per_node_sd_overrides_global() {
 
 // ---------------------------------------------------------------------
 // Sleep is per-thread: it does not leak into parallel threads'
-// temporal windows.
+// timed windows.
 // ---------------------------------------------------------------------
 //
 // Thread A sleeps for a very long time and does nothing else.
@@ -259,11 +259,11 @@ fn per_node_sd_overrides_global() {
 #[test]
 fn sleep_is_per_thread() {
     let stats = traceforge::verify(
-        Config::builder().with_temporal(0, 0, 0).build(),
+        Config::builder().with_timed(0, 0, 0).build(),
         || {
             let b = thread::spawn(|| {
                 // Short wait; if A's sleep leaked in, this would be
-                // temporally infeasible.
+                // timed infeasible.
                 let v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(5));
                 let _ = v;
             });
@@ -279,14 +279,14 @@ fn sleep_is_per_thread() {
 // ---------------------------------------------------------------------
 // 3-thread relay pipeline: main -> t1 -> t2 -> main, repeated 3 times.
 // 9 sends + 9 receives, every receive blocking with infinite wait, and
-// generous temporal bounds. The pipeline structure forces a unique
+// generous timed bounds. The pipeline structure forces a unique
 // rf-mapping (each receive has only one upstream sender at a time), so
-// temporal pruning must accept exactly one execution.
+// timed pruning must accept exactly one execution.
 // ---------------------------------------------------------------------
 #[test]
 fn relay_pipeline_three_threads_blocking() {
     let stats = traceforge::verify(
-        Config::builder().with_temporal(0, 50, 0).build(),
+        Config::builder().with_timed(0, 50, 0).build(),
         || {
             let main_id = thread::current().id();
             let t2 = thread::spawn(move || {
@@ -321,12 +321,12 @@ fn relay_pipeline_three_threads_blocking() {
 //
 // Tag-uniqueness forces a single rf-mapping per receive, so the only
 // remaining freedom is scheduling of the 4 concurrent worker replies.
-// The temporal filter must not reject this fully consistent scenario.
+// The timed filter must not reject this fully consistent scenario.
 // ---------------------------------------------------------------------
 #[test]
 fn star_hub_with_workers_tagged() {
     let stats = traceforge::verify(
-        Config::builder().with_temporal(0, 50, 0).build(),
+        Config::builder().with_timed(0, 50, 0).build(),
         || {
             let main_id = thread::current().id();
             let mut worker_ids = Vec::new();
@@ -351,7 +351,7 @@ fn star_hub_with_workers_tagged() {
 }
 
 // ---------------------------------------------------------------------
-// 4-thread pipeline where temporal pruning genuinely matters.
+// 4-thread pipeline where timed pruning genuinely matters.
 // Same pipeline shape as the relay test (main -> a -> b -> c -> main,
 // 2 rounds = 8 sends + 8 receives) but the consumer-side receives use
 // `recv_msg_timed` with a finite wait, and there is a sleep in front
@@ -362,10 +362,10 @@ fn star_hub_with_workers_tagged() {
 // for the early receives are pruned.
 // ---------------------------------------------------------------------
 #[test]
-fn four_thread_pipeline_temporal_pruning() {
+fn four_thread_pipeline_timed_pruning() {
     fn run(global_u: u64, wait_ns: u64) -> usize {
         traceforge::verify(
-            Config::builder().with_temporal(0, global_u, 0).build(),
+            Config::builder().with_timed(0, global_u, 0).build(),
             move || {
                 let main_id = thread::current().id();
                 let c = thread::spawn(move || {
@@ -414,7 +414,7 @@ fn four_thread_pipeline_temporal_pruning() {
     // forwarded one; tight bounds prune the timeout branches whose windows
     // do not overlap any send. The exact numbers below are the observed
     // exploration counts; they should drop in lockstep if the pruning is
-    // strengthened, and divergence here means the temporal filter changed
+    // strengthened, and divergence here means the timed filter changed
     // shape and the counts should be re-baselined.
     assert_eq!(loose, 38);
     assert_eq!(tight, 22);
