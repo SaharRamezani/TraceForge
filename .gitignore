@@ -1,2 +1,4 @@
 *.lock
 target/
+viz_out/*/
+viz_out/index.html

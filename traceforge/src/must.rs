@@ -148,6 +148,10 @@ pub(crate) struct Must {
     pub(crate) global_named_choices: HashMap<String, bool>,
     // Maximum number of events across all complete (non-blocked) execution graphs
     max_graph_events: usize,
+
+    /// Dedup set for prune-log records: Cleared at the start of every
+    /// new execution. Only used when `config.prune_log_file` is set.
+    pub(crate) prune_dedup: HashSet<(&'static str, Event, Event)>,
 }
 
 impl Must {
@@ -185,6 +189,7 @@ impl Must {
             symbolic_solver: SymbolicSolver::new(),
             global_named_choices: HashMap::new(),
             max_graph_events: 0,
+            prune_dedup: HashSet::new(),
         }
     }
 
@@ -285,6 +290,13 @@ impl Must {
     }
 
     pub(crate) fn run_metrics_before(&mut self) {
+        // Reset per-execution prune-dedup state so each execution gets
+        // its own distinct set of rejected rfs in the log. Only does this
+        // when the user opted into prune logging, otherwise
+        // the set is empty and we'd be paying for nothing.
+        if self.config.prune_log_file.is_some() {
+            self.prune_dedup.clear();
+        }
         let eid = self.telemetry.coverage.current_eid();
         for cb in &mut self
             .config
@@ -1110,7 +1122,7 @@ impl Must {
             LabelEnum::Block(blab) => match blab.btype() {
                 // it's an internal blocking and the instruction points
                 // at least *2* instructions before it (see event_label::Block)
-                BlockType::Join(_) | BlockType::Value(_) => (*i as u32) < blab.pos().index - 1,
+                BlockType::Join(_) | BlockType::Value(_, _) => (*i as u32) < blab.pos().index - 1,
                 // it's a user blocking and the instruction points before it
                 BlockType::Assume | BlockType::Assert => (*i as u32) < blab.pos().index,
             },
@@ -1138,7 +1150,7 @@ impl Must {
     fn is_waiting_on_written(&self, t: ThreadId) -> bool {
         let g = &self.current.graph;
         if let LabelEnum::Block(blab) = g.thread_last(t).unwrap() {
-            if let BlockType::Value(loc) = blab.btype() {
+            if let BlockType::Value(loc, _) = blab.btype() {
                 g.matching_stores(loc).any(|send| {
                     let structurally_ok =
                         // Monitor reading from the send: we are monitoring it
@@ -1250,7 +1262,7 @@ impl Must {
             None => EndCondition::AllThreadsCompleted,
             Some(block) => match block {
                 BlockType::Assume | BlockType::Assert => EndCondition::FailedAssumption,
-                BlockType::Value(_) | BlockType::Join(_) => EndCondition::Deadlock,
+                BlockType::Value(_, _) | BlockType::Join(_) => EndCondition::Deadlock,
             },
         };
 
@@ -1292,6 +1304,14 @@ impl Must {
                     println!("One more blocked execution");
                     println!("{}", self.print_graph(None));
                     println!("Finished printing graph");
+                } else if self.config.dot_out_blocked
+                    && (self.config.dot_file.is_some() || self.config.trace_file.is_some())
+                {
+                    // Opt-in: write the dot/trace file for the blocked
+                    // execution without emitting the graph to stdout.
+                    // `print_graph` is the same routine the verbose
+                    // path calls; we just discard its returned string.
+                    let _ = self.print_graph(None);
                 }
             }
         } else if self.is_consistent() {
@@ -1506,17 +1526,16 @@ impl Must {
             }
             self.current.graph.val_copy(pos)
         } else {
-            // Overwrites RecvMsg
+            // Overwrites RecvMsg. Capture the original recv's wait
+            // before the overwrite so the resulting Block can still tell
+            // visualizers which kind of timed recv this was.
+            let (loc, wait) = {
+                let rlab = self.current.graph.recv_label(pos).unwrap();
+                (rlab.recv_loc().clone(), rlab.wait())
+            };
             self.add_to_graph(LabelEnum::Block(Block::new(
                 pos,
-                BlockType::Value(
-                    self.current
-                        .graph
-                        .recv_label(pos)
-                        .unwrap()
-                        .recv_loc()
-                        .clone(),
-                ),
+                BlockType::Value(loc, wait),
             )));
             None
         }
@@ -1595,14 +1614,26 @@ impl Must {
         // timed inconsistent. Pure no-op when `timed` is `None`.
         let mut revs = revs;
         if let Some(cfg) = self.config.timed.clone() {
+            // Only allocate the rejection-tracking Vec when prune
+            // logging is opted into; otherwise this stays zero-cost.
+            let track = self.config.prune_log_file.is_some();
+            let mut rejected_revs: Vec<(Event, crate::timed_cons::TimeInterval)> =
+                if track { Vec::new() } else { Vec::with_capacity(0) };
             let g = &mut self.current.graph;
             revs.retain(|&r| {
                 let original_rf = g.recv_label(r).unwrap().rf();
                 g.change_rf(r, Some(pos));
                 let iv = crate::timed_cons::timed_consistent(g, r, &cfg);
                 g.change_rf(r, original_rf);
-                !iv.is_empty()
+                let ok = !iv.is_empty();
+                if !ok && track {
+                    rejected_revs.push((r, iv));
+                }
+                ok
             });
+            if track && !rejected_revs.is_empty() {
+                self.log_backward_revisit_prunings(pos, &rejected_revs);
+            }
         }
 
         if self.config.mode == ExplorationMode::Estimation {
@@ -1688,19 +1719,105 @@ impl Must {
             None => return,
             Some(c) => c,
         };
+        // Only allocate the rejection-tracking Vec when prune logging is
+        // opted into; otherwise this stays zero-cost.
+        let track = self.config.prune_log_file.is_some();
         let g = &mut self.current.graph;
         let original_rf = g.recv_label(pos).unwrap().rf();
+        let mut rejected: Vec<(Event, crate::timed_cons::TimeInterval)> =
+            if track { Vec::new() } else { Vec::with_capacity(0) };
         let kept: Vec<Event> = rfs
             .iter()
             .copied()
             .filter(|&s| {
                 g.change_rf(pos, Some(s));
                 let iv = crate::timed_cons::timed_consistent(g, pos, &cfg);
-                !iv.is_empty()
+                let ok = !iv.is_empty();
+                if !ok && track {
+                    rejected.push((s, iv));
+                }
+                ok
             })
             .collect();
         g.change_rf(pos, original_rf);
         *rfs = kept;
+
+        if track && !rejected.is_empty() {
+            self.log_timed_prunings("forward", pos, &rejected);
+        }
+    }
+
+    /// Backward-revisit equivalent of `log_timed_prunings`. Each entry
+    /// is a (recv, iv) pair where the rejected revisit would have re-paired
+    /// `recv` with the newly-added send `new_send`.
+    fn log_backward_revisit_prunings(
+        &mut self,
+        new_send: Event,
+        rejected: &[(Event, crate::timed_cons::TimeInterval)],
+    ) {
+        // Reuse the same writer; format the record as a backward kind by
+        // swapping recv/send roles.
+        let mapped: Vec<_> = rejected.iter().map(|(r, iv)| (*r, *iv)).collect();
+        // For the "backward" form the rejected pair is (r, new_send), not
+        // (recv, candidate_send). Encode that distinction with a `kind`.
+        self.log_timed_prunings_kind("backward", new_send, &mapped);
+    }
+
+    /// Append one JSONL record per pruned candidate to `prune_log_file`.
+    fn log_timed_prunings(
+        &mut self,
+        kind: &'static str,
+        recv: Event,
+        rejected: &[(Event, crate::timed_cons::TimeInterval)],
+    ) {
+        self.log_timed_prunings_kind(kind, recv, rejected);
+    }
+
+    fn log_timed_prunings_kind(
+        &mut self,
+        kind: &'static str,
+        anchor: Event,
+        rejected: &[(Event, crate::timed_cons::TimeInterval)],
+    ) {
+        let path = match &self.config.prune_log_file {
+            Some(p) => p.clone(),
+            None => return,
+        };
+        // The in-progress execution is the next eid that EXECS will reach
+        // when it completes, i.e. (current EXECS counter) + 1.
+        let exec_done = self.telemetry.read_counter(EXECS.to_owned()).unwrap_or(0);
+        let in_progress_eid = exec_done + 1;
+        let mut buf = String::new();
+        for (other, iv) in rejected {
+            // For "forward": anchor is the receive, other is the rejected send.
+            // For "backward": anchor is the new send, other is the receive
+            // whose backward-revisit would have re-paired with the new send.
+            let (recv, send) = if kind == "forward" {
+                (anchor, *other)
+            } else {
+                (*other, anchor)
+            };
+            // Skip records we've already emitted in *this* execution. The
+            // model checker re-runs filter_timed_consistent_rfs many
+            // times along the worklist, so without this dedup the log can
+            // grow to millions of duplicate lines for the same rejection.
+            if !self.prune_dedup.insert((kind, recv, send)) {
+                continue;
+            }
+            let line = format!(
+                "{{\"eid\":{},\"kind\":\"{}\",\"recv\":\"{}\",\"send\":\"{}\",\"reason\":\"timed\",\"iv_lo\":{},\"iv_hi\":{}}}\n",
+                in_progress_eid, kind, recv, send, iv.lo, iv.hi
+            );
+            buf.push_str(&line);
+        }
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            use std::io::Write;
+            let _ = f.write_all(buf.as_bytes());
+        }
     }
 
     fn filter_symmetric_rfs(&self, rfs: &mut Vec<Event>, pos: Event) {
@@ -1886,11 +2003,11 @@ impl Must {
                 slab.set_dropped();
                 self.current.graph.incr_dropped_sends();
             }
-            LabelEnum::Sleep(_) => unreachable!("sleep events are not revisitable"),
             #[cfg(feature = "symbolic")]
             LabelEnum::ConstraintEval(c) => {
                 c.set_branch_taken(!c.branch_taken());
             }
+            LabelEnum::Sleep(_) => unreachable!("sleep events are not revisitable"),
             _ => panic!(),
         };
         self.current.graph.cut_to_stamp(stamp);
@@ -2142,15 +2259,35 @@ impl Must {
                 &mut out_file,
                 format!("\tlabel=\"thread {}\"\n", tid).as_bytes(),
             )?;
-            for j in 1..ind {
+            for j in 1..=ind {
                 let pos = Event::new(tid, j);
+                // Skip the synthetic End terminator (carries no useful info).
+                if matches!(g.label(pos), LabelEnum::End(_)) {
+                    continue;
+                }
                 let is_error = error.is_some() && error.unwrap() == pos;
+                // When timed mode is enabled, append the [τ_lo, τ_hi]
+                // window that `timed_consistent` would assign to this event.
+                let time_str = if let Some(ref cfg) = self.config.timed {
+                    let iv = crate::timed_cons::timed_consistent(g, pos, cfg);
+                    if iv.is_empty() {
+                        "<br/><font point-size=\"10\" color=\"#cc3333\">τ ∈ ∅</font>".to_string()
+                    } else {
+                        format!(
+                            "<br/><font point-size=\"10\" color=\"#3366aa\">τ ∈ [{}, {}]</font>",
+                            iv.lo, iv.hi
+                        )
+                    }
+                } else {
+                    String::new()
+                };
                 std::io::Write::write(
                     &mut out_file,
                     format!(
-                        "\t\"{}\" [label=<{}>{}]\n",
+                        "\t\"{}\" [label=<{}{}>{}]\n",
                         pos,
                         g.label(pos),
+                        time_str,
                         if is_error {
                             ",style=filled,fillcollor=yellow"
                         } else {
@@ -2167,11 +2304,16 @@ impl Must {
             for j in 1..ind + 1 {
                 let pos = Event::new(tid, j);
                 if j < ind {
-                    // last event for this thread
-                    std::io::Write::write(
-                        &mut out_file,
-                        format!("\"{}\" -> \"{}\"\n", pos, pos.next()).as_bytes(),
-                    )?;
+                    let next = pos.next();
+                    // The label loop drops the synthetic End terminator;
+                    // skip the edge into it too so it doesn't render as
+                    // a dangling unlabeled node.
+                    if !matches!(g.label(next), LabelEnum::End(_)) {
+                        std::io::Write::write(
+                            &mut out_file,
+                            format!("\"{}\" -> \"{}\"\n", pos, next).as_bytes(),
+                        )?;
+                    }
                 }
                 if g.is_recv(pos) {
                     let rlab = g.recv_label(pos).unwrap();

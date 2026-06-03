@@ -236,6 +236,13 @@ pub struct Config {
     pub(crate) trace_file: Option<String>,
     pub(crate) error_trace_file: Option<String>,
     pub(crate) turmoil_trace_file: Option<String>,
+    /// If true, write the per-execution dot/trace files for *blocked*
+    /// executions too, at every verbose level, without printing the
+    /// graph to stdout. Default: false (preserves the legacy
+    /// stdout-coupled behaviour where blocked graphs are only emitted
+    /// at verbose >= 2).
+    #[serde(default)]
+    pub(crate) dot_out_blocked: bool,
     pub(crate) parallel: bool,
     pub(crate) parallel_workers: Option<usize>,
     pub(crate) partitioned_parallelization: bool,
@@ -253,6 +260,12 @@ pub struct Config {
     /// `Some(_)` enables the timed consistency filter.
     #[serde(default)]
     pub(crate) timed: Option<TimedConfig>,
+
+    /// Optional path for a JSONL log of pruning decisions. Each line is one
+    /// rejected rf-mapping with the receive event, the rejected send, and
+    /// the reason (timed-inconsistent or symmetric-duplicate).
+    #[serde(default)]
+    pub(crate) prune_log_file: Option<String>,
     #[serde(skip)]
     pub(crate) callbacks: Arc<Mutex<Vec<Box<dyn ExecutionObserver + Send>>>>,
 
@@ -314,6 +327,7 @@ impl ConfigBuilder {
             trace_file: None,
             error_trace_file: None,
             turmoil_trace_file: None,
+            dot_out_blocked: false,
             parallel: false,
             parallel_workers: None,
             partitioned_parallelization: false,
@@ -327,6 +341,7 @@ impl ConfigBuilder {
             predetermined_global_choices: HashMap::new(),
             pretty_graph_printing: false,
             timed: None,
+            prune_log_file: None,
             callbacks: Arc::new(Mutex::new(Vec::new())),
             #[cfg(feature = "symbolic")]
             symbolic: false,
@@ -493,6 +508,23 @@ impl ConfigBuilder {
         self
     }
 
+    /// Append a JSONL record for every rf-mapping the timed /
+    /// symmetric filters reject. One line per pruned candidate.
+    ///
+    /// Each record carries the in-progress execution id, the receive
+    /// position, the pruned send, the rejection reason (`"timed"` or
+    /// `"symmetric"`), and any auxiliary detail (the empty interval for
+    /// timed; the surviving rf for symmetric).
+    ///
+    /// Only meaningful when `with_timed` is set (the timed filter
+    /// is the only producer; symmetric pruning may emit records too if
+    /// added later). The file is truncated on first call to verify and
+    /// appended to thereafter.
+    pub fn with_prune_log(mut self, filename: &str) -> Self {
+        self.0.prune_log_file = Some(filename.to_string());
+        self
+    }
+
     /// Whenever the execution graph is printed, the same
     /// information will be written to this file in DOT format.
     ///
@@ -501,6 +533,25 @@ impl ConfigBuilder {
     /// See with_verbose() for more information
     pub fn with_dot_out(mut self, filename: &str) -> Self {
         self.0.dot_file = Some(filename.to_string());
+        self
+    }
+
+    /// Also write the dot / trace files for *blocked* executions
+    /// (e.g. an unmatched receive, or a `traceforge::assert` violation
+    /// when `keep_going_after_error` is set), capturing the graph as
+    /// it stood right when the run got stuck.
+    ///
+    /// By default, the per-execution dot/trace output is gated by
+    /// [`with_verbose`]: completed execs are emitted at verbose ≥ 1
+    /// and blocked execs only at verbose ≥ 2. Visualizer harnesses
+    /// often want every blocked graph on disk *without* the
+    /// stdout-flooding side-effect of verbose=2; that's what this
+    /// flag is for.
+    ///
+    /// No effect unless [`with_dot_out`] (or [`with_trace_out`]) is
+    /// also set.
+    pub fn with_dot_out_blocked(mut self, b: bool) -> Self {
+        self.0.dot_out_blocked = b;
         self
     }
 

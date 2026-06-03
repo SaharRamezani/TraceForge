@@ -1,15 +1,11 @@
 //! Timed consistency
 //!
 //! This module implements the timed extension of the Must algorithm.
-//! It provides the [`WaitTime`] user-facing wait type, the [`TimedConfig`]
+//! It provides the [`WaitTime`] wait type, the [`TimedConfig`]
 //! that holds the global transit bounds (`L`, `U`) and storage delay (`sd`)
 //! (with optional per-node `sd` overrides), and the [`timed_consistent`] walker
-//! that computes the feasible time window `[τ_lo, τ_hi]` for a given event
+//! that computes the time window `[τ_lo, τ_hi]` for a given event
 //! by recursing over the program order.
-//!
-//! Per-send `L` / `U` overrides live on the `SendMsg` label itself
-//! (see [`crate::event_label::SendMsg`]). When a send does not carry its
-//! own bounds, the walker falls back to the globals on `TimedConfig`.
 //!
 //! The module is independent of the structural consistency check in
 //! [`crate::cons`]. If the config's `timed` field is `None`, none
@@ -28,10 +24,7 @@ use crate::thread::ThreadId;
 ///
 /// `Finite(w)` is a concrete timeout in time units; `Infinite` corresponds to
 /// `+∞` which is a blocking receive that must be paired with a
-/// matching send. Timeout (`rf = ⊥`) is inadmissible when `W_r = +∞`.
-///
-/// `WaitTime` is *not* `Option<u64>`: `Option<u64>` would conflate
-/// "no wait specified / legacy untimed receive" with "infinite wait".
+/// matching send. Timeout (`rf = ⊥`) is inadmissible when `W_r = +∞`
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WaitTime {
     Finite(u64),
@@ -40,7 +33,7 @@ pub enum WaitTime {
 
 /// Timed parameters.
 ///
-/// The fields `l`, `u`, `sd` are *defaults* used for any send / node that
+/// The fields `l`, `u`, `sd` are defaults used for any send / node that
 /// does not carry its own override:
 ///
 /// * `l`, `u`: fallback transit-time bounds used when a send event
@@ -50,10 +43,10 @@ pub enum WaitTime {
 ///   not present in `node_sd`.
 ///
 /// Per-node storage-delay overrides live in `node_sd`, keyed by the
-/// *destination* thread's id.
+/// destination thread's id.
 ///
 /// A run with `timed = None` on the parent [`crate::Config`] is a
-/// legacy verification and this struct is ignored.
+/// legacy verification.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TimedConfig {
     pub l: u64,
@@ -124,10 +117,9 @@ impl TimeInterval {
 /// returns `[max(τ_lo(pred), τ_lo(s) + L), min(hi_cap, τ_hi(s) + U + sd)]`.
 /// An empty `pred_iv` or `send_iv` yields an empty interval.
 ///
-/// Single source of truth for the receive-reading-from-send arithmetic:
-/// shared by [`timed_consistent`] and by `Must::is_block_timed_feasible`,
-/// which can no longer call the walker once the receive label has been
-/// overwritten by a `Block`.
+/// shared by [`timed_consistent`] and by
+/// `Must::is_block_timed_feasible`, which can no longer call the
+/// walker once the receive label has been overwritten by a `Block`.
 pub(crate) fn recv_from_send_window(
     pred_iv: TimeInterval,
     send_iv: TimeInterval,
