@@ -231,6 +231,60 @@ fn timed_consistent_rec(
                 },
             }
         }
+        LabelEnum::Inbox(ilab) => {
+            // Legacy (untimed) inbox: contributes no timed constraint.
+            let Some(wait) = ilab.wait() else {
+                cache.insert(e, pred_iv);
+                return pred_iv;
+            };
+            match ilab.rfs() {
+                // Inbox collected a non-empty subset. The inbox event
+                // must happen at a time t such that every send `s` in
+                // the subset has already arrived and none has yet expired.
+                Some(subset) if !subset.is_empty() => {
+                    let hi_cap = match wait {
+                        WaitTime::Finite(w) => pred_iv.hi.saturating_add(w),
+                        WaitTime::Infinite => u64::MAX,
+                    };
+                    let mut iv = TimeInterval::new(pred_iv.lo, hi_cap);
+                    let sd = cfg.sd_for(e.thread);
+                    for s in subset {
+                        let send_iv = timed_consistent_rec(g, s, cfg, cache);
+                        if send_iv.is_empty() {
+                            iv = TimeInterval::empty();
+                            break;
+                        }
+                        let transit = g
+                            .send_label(s)
+                            .and_then(|slab| slab.transit())
+                            .unwrap_or((cfg.l, cfg.u));
+                        let (l_val, u_val) = transit;
+                        let send_lo = send_iv.lo.saturating_add(l_val);
+                        let send_hi =
+                            send_iv.hi.saturating_add(u_val).saturating_add(sd);
+                        iv.lo = iv.lo.max(send_lo);
+                        iv.hi = iv.hi.min(send_hi);
+                        if iv.is_empty() {
+                            break;
+                        }
+                    }
+                    iv
+                }
+                // The inbox returned without waiting,
+                // so it happens at the predecessor time.
+                Some(_empty) => pred_iv,
+                // The inbox waited the full W_r and
+                // returned nothing. An infinite
+                // wait cannot time out, so the graph is dropped.
+                None => match wait {
+                    WaitTime::Finite(w) => TimeInterval::new(
+                        pred_iv.lo.saturating_add(w),
+                        pred_iv.hi.saturating_add(w),
+                    ),
+                    WaitTime::Infinite => TimeInterval::empty(),
+                },
+            }
+        }
         // Any other label: pass through unchanged.
         _ => pred_iv,
     };

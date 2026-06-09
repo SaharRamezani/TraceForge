@@ -669,7 +669,7 @@ impl ExecutionGraph {
                 v.update(self.send_label(send).unwrap().porf());
             }
             RevisitPlacement::Inbox(sends) => {
-                for send in sends {
+                for send in sends.into_iter().flatten() {
                     v.update(self.send_label(send).unwrap().porf());
                 }
             }

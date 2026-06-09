@@ -2,6 +2,9 @@
 //!
 //! Implements the ballot leader-election protocol of Damian, Drăgoi,
 //! Militaru & Widder, "Communication-closed asynchronous protocols"
+//!
+//! To see the elapsed time:
+//! cargo run --release --example comm_closed_leader_election -- --mode timed --l 1 --u 1 --nodes 5 2>&1 | ts -s '%.s'
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -111,20 +114,14 @@ fn all_same_leader(msgs: &[ProtoMsg], leader: usize) -> bool {
     msgs.iter().all(|m| m.leader == leader)
 }
 
-fn collect_phase(ballot: u64, phase: Phase, enough: usize, max: usize, w: u64) -> Vec<ProtoMsg> {
+fn collect_phase(ballot: u64, phase: Phase, _enough: usize, max: usize, w: u64) -> Vec<ProtoMsg> {
     let want = tag_of(ballot, phase);
-    let mut got: Vec<ProtoMsg> = Vec::new();
-    loop {
-        if got.len() >= enough || got.len() >= max {
-            break;
-        }
-        let matches = move |_sender: ThreadId, tag: Option<u32>| tag == Some(want);
-        match traceforge::recv_tagged_msg_timed::<_, ProtoMsg>(matches, WaitTime::Finite(w)) {
-            Some(msg) => got.push(msg),
-            None => break, // timeout
-        }
-    }
-    got
+    let matches = move |_sender: ThreadId, tag: Option<u32>| tag == Some(want);
+    let raw = traceforge::inbox_with_tag_timed(matches, 0, Some(max), WaitTime::Finite(w));
+    raw.into_iter()
+        .flatten()
+        .filter_map(|val| val.as_any_ref().downcast_ref::<ProtoMsg>().copied())
+        .collect()
 }
 
 fn phase_ack_ballot(node: &mut Node, ballot: u64, w: u64) {
@@ -233,7 +230,7 @@ fn apply_parallel(builder: traceforge::ConfigBuilder, parallel: Parallel) -> tra
 
 fn build_config(mode: Mode, _n: usize, tb: TimedBounds, parallel: Parallel) -> Config {
     let builder = Config::builder()
-        .with_progress_report(0)
+        .with_progress_report(usize::MAX)
         .with_verbose(0);
     let builder = apply_parallel(builder, parallel);
     match mode {

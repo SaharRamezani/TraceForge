@@ -516,9 +516,12 @@ impl Consistency {
         ilab: &Inbox,
         rev: &Revisit,
     ) -> bool {
-        // Non-blocking inbox is maximal when it currently takes the empty subset.
+        // Non-blocking inbox (min==0): the maximal outcome is the
+        // immediate empty. The timeout empty is a
+        // separate, non-maximal forward-revisit alternative, so it must NOT
+        // count as maximal here.
         if ilab.is_non_blocking() {
-            return ilab.rfs().map_or(true, |rfs| rfs.is_empty());
+            return matches!(ilab.rfs(), Some(rfs) if rfs.is_empty());
         }
 
         let Some(current) = ilab.rfs() else {
@@ -615,7 +618,7 @@ impl Consistency {
         &self,
         g: &ExecutionGraph,
         inbox: &Inbox,
-        sends: &Vec<Event>,
+        sends: &[Event],
     ) -> bool {
         if let Some(max) = inbox.max() {
             if sends.len() > max {

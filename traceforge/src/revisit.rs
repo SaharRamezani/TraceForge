@@ -32,7 +32,10 @@ impl RevisitEnum {
     }
 
     /// Forward revisit for an inbox event, replacing its chosen send set.
-    pub(crate) fn new_forward_inbox(pos: Event, placements: Vec<Event>) -> Self {
+    /// `placements` mirrors the inbox `rfs` representation:
+    /// `None` is the timeout empty, `Some(vec![])` the immediate empty, and
+    /// `Some(non-empty)` a collected subset.
+    pub(crate) fn new_forward_inbox(pos: Event, placements: Option<Vec<Event>>) -> Self {
         RevisitEnum::ForwardRevisit(Revisit {
             pos,
             rev: RevisitPlacement::Inbox(placements),
@@ -59,14 +62,17 @@ pub(crate) enum RevisitPlacement {
     /// Classic revisit placement: single rf send.
     Default(Event),
     /// Inbox revisit placement: the whole (order-insensitive) chosen send set.
-    Inbox(Vec<Event>),
+    /// Mirrors the inbox `rfs`: `None` is the timeout empty, `Some(vec![])` the
+    /// immediate empty, and `Some(non-empty)` a collected subset.
+    Inbox(Option<Vec<Event>>),
 }
 
 impl fmt::Display for RevisitPlacement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RevisitPlacement::Default(ev) => write!(f, "{}", ev),
-            RevisitPlacement::Inbox(events) => {
+            RevisitPlacement::Inbox(None) => write!(f, "{{timeout}}"),
+            RevisitPlacement::Inbox(Some(events)) => {
                 write!(f, "{{")?;
                 for (i, ev) in events.iter().enumerate() {
                     if i > 0 {
@@ -97,7 +103,7 @@ impl Revisit {
         }
     }
 
-    pub(crate) fn new_inbox(pos: Event, rev: Vec<Event>) -> Self {
+    pub(crate) fn new_inbox(pos: Event, rev: Option<Vec<Event>>) -> Self {
         Self {
             pos,
             rev: RevisitPlacement::Inbox(rev),

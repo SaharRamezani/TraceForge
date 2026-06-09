@@ -1215,20 +1215,7 @@ impl Must {
             false
         }
     }
-
-    /// Check whether unblocking the receive at `block_pos` to read from
-    /// `send` could possibly be timed consistent. Used by
-    /// `is_waiting_on_written` to avoid the runtime spinning on a blocked
-    /// receive whose only matching send would still be rejected by the
-    /// timed filter (unblock → re-run → re-block, forever).
-    ///
-    /// Returns true when no timed config is set. The receive label has
-    /// already been overwritten by the `Block`, so this cannot call the
-    /// `timed_consistent` walker on the receive directly; instead it feeds the
-    /// predecessor and send windows into the shared
-    /// [`crate::timed_cons::recv_from_send_window`] helper. A blocked
-    /// receive is always `W_r = +∞` (`BlockType::Value` only ever holds
-    /// blocking receives), so the upper wait cap is `u64::MAX`.
+    
     fn is_block_timed_feasible(&self, block_pos: Event, send: &SendMsg) -> bool {
         let cfg = match &self.config.timed {
             Some(c) => c,
@@ -1592,46 +1579,97 @@ impl Must {
 
         let min = ilab.min();
         let max = ilab.max();
+        let wait = ilab.wait();
+        // A finite wait can time out (returning the empty set); an infinite
+        // or untimed inbox cannot, and instead blocks until >= min messages
+        // are available.
+        let finite = matches!(wait, Some(crate::timed_cons::WaitTime::Finite(_)));
 
-        // If even the maximum feasible size cannot satisfy `min`, this inbox blocks.
-        let upper = max.map_or(rfs.len(), |m| m.min(rfs.len()));
-        if min > upper {
-            self.add_to_graph(LabelEnum::Block(Block::new(
-                pos,
-                BlockType::Value(ilab.recv_loc().clone(), None, min),
-            )));
-            return Vec::new();
+        // Enumerate only the non-empty success subsets. An empty result is
+        // is represented separately as one of two outcomes that share the
+        // return value `{}` but differ in time (mirroring the timed receive):
+        //   Some(vec![]) = immediate empty (min==0 success, t = pred)
+        //   None         = timeout  empty (waited W_r, t = pred + W_r)
+        let mut combinations =
+            compute_inbox_possible_subsets_from_rfs(&rfs, min.max(1), max, None);
+
+        // Drop non-empty subsets whose `timed_consistent` window on the inbox
+        // event would be empty. Pure no-op when `config.timed` is `None` or
+        // when this inbox was constructed without a wait time.
+        if let Some(cfg) = self.config.timed.clone() {
+            if wait.is_some() {
+                let g = &mut self.current.graph;
+                let original = ilab.rfs();
+                combinations.retain(|subset| {
+                    g.change_inbox_rfs(pos, Some(subset.clone()));
+                    let iv = crate::timed_cons::timed_consistent(g, pos, &cfg);
+                    !iv.is_empty()
+                });
+                // Restore the label's read set exactly (preserving the
+                // None / Some(empty) distinction).
+                g.change_inbox_rfs(pos, original);
+            }
         }
 
-        let mut combinations = compute_inbox_possible_subsets_from_rfs(&rfs, min, max, None);
+        // Choose the canonical outcome; the rest become forward
+        // inbox revisits.
+        let mut revisits: Vec<Option<Vec<Event>>> = Vec::new();
 
-        // Canonical inbox read used by the base execution:
-        // non-blocking inbox reads {}, otherwise read the first `min` coherent sends.
-        // All other feasible subsets are explored through forward revisits.
-        let canonical = if ilab.is_non_blocking() {
-            Vec::new()
+        let canonical: Option<Vec<Event>> = if min == 0 {
+            // Non-blocking inbox: the immediate empty `{}` is the canonical
+            // (maximal) base. A finite wait can additionally time out, which
+            // returns `{}` at a later time, so it is an extra outcome.
+            if finite {
+                revisits.push(None);
+            }
+            for subset in combinations.drain(..) {
+                revisits.push(Some(subset));
+            }
+            Some(Vec::new())
         } else {
-            rfs.iter().take(min).cloned().collect::<Vec<_>>()
+            // min >= 1: an empty result can only be a (finite) timeout; there
+            // is no immediate-empty success. The base is the first `min`
+            // coherent sends when timed-feasible, else the first surviving
+            // subset, else the timeout empty (finite, never blocks), else the
+            // inbox blocks (infinite / untimed).
+            let default: Vec<Event> = rfs.iter().take(min).cloned().collect();
+            let base = if combinations.iter().any(|s| *s == default) {
+                Some(default)
+            } else if let Some(first) = combinations.first().cloned() {
+                Some(first)
+            } else if finite {
+                None
+            } else {
+                // No feasible `min`-subset and no timeout fallback: block.
+                self.add_to_graph(LabelEnum::Block(Block::new(
+                    pos,
+                    BlockType::Value(ilab.recv_loc().clone(), wait, min),
+                )));
+                return Vec::new();
+            };
+            // The remaining non-empty subsets become forward revisits.
+            for subset in combinations.drain(..) {
+                if Some(&subset) != base.as_ref() {
+                    revisits.push(Some(subset));
+                }
+            }
+            // The timeout empty is an additional outcome whenever the base is
+            // a real subset (otherwise the base already is the timeout).
+            if finite && base.is_some() {
+                revisits.push(None);
+            }
+            base
         };
 
-        combinations.retain(|subset| *subset != canonical);
-
-        // Remaining subsets are explored through forward inbox revisits.
-        for subset in combinations.drain(..) {
+        for placement in revisits.drain(..) {
             push_worklist(
                 &mut self.current.rqueue,
                 self.current.graph.label(pos).stamp(),
-                RevisitEnum::new_forward_inbox(pos, subset),
+                RevisitEnum::new_forward_inbox(pos, placement),
             );
         }
 
-        if canonical.is_empty() {
-            self.current.graph.change_inbox_rfs(pos, None);
-        } else {
-            self.current
-                .graph
-                .change_inbox_rfs(pos, Some(canonical.clone()));
-        }
+        self.current.graph.change_inbox_rfs(pos, canonical);
 
         self.inbox_vals_copy(pos)
     }
@@ -1651,7 +1689,7 @@ impl Must {
         match &rev.rev {
             RevisitPlacement::Default(s) => prefix.update(g.send_label(*s).unwrap().porf()),
             RevisitPlacement::Inbox(sends) => {
-                for &s in sends {
+                for &s in sends.iter().flatten() {
                     prefix.update(g.send_label(s).unwrap().porf());
                 }
             }
@@ -1722,7 +1760,7 @@ impl Must {
                     }
                 }
                 RecvLike::Inbox(i) => {
-                    let seed_rev = Revisit::new_inbox(i.pos(), vec![pos]);
+                    let seed_rev = Revisit::new_inbox(i.pos(), Some(vec![pos]));
                     // Backward revisits are generated only from maximal inbox events.
                     if !self.is_maximal_inbox(i, &seed_rev) {
                         break;
@@ -1755,7 +1793,7 @@ impl Must {
                             i.pos(),
                             self.fmt_event_set(&subset)
                         );
-                        let rev_inbox = Revisit::new_inbox(i.pos(), subset.clone());
+                        let rev_inbox = Revisit::new_inbox(i.pos(), Some(subset.clone()));
                         // Paper-style inbox revisit condition:
                         // keep only subsets that are consistent and preserve maximality.
                         if self.checker.is_revisit_consistent_inbox(g, i, &subset)
@@ -1770,9 +1808,9 @@ impl Must {
         }
 
         // Drop backward revisits whose resulting graph would be timed
-        // inconsistent. Pure no-op when `timed` is `None`. Only plain
-        // RecvMsg backward revisits are checked here; Inbox-style
-        // revisits need their own timed handling (future work).
+        // inconsistent. No-op when `timed` is `None`. Handles both
+        // RecvMsg backward revisits (single rf swap) and Inbox backward
+        // revisits (whole-subset swap).
         if let Some(cfg) = self.config.timed.clone() {
             // Only allocate the rejection-tracking Vec when prune logging
             // is opted into; otherwise this stays zero-cost.
@@ -1784,14 +1822,40 @@ impl Must {
                 let RevisitEnum::BackwardRevisit(rev) = rev_enum else {
                     return true;
                 };
-                let RevisitPlacement::Default(_) = rev.rev else {
-                    return true;
-                };
                 let r = rev.pos;
-                let original_rf = g.recv_label(r).unwrap().rf();
-                g.change_rf(r, Some(pos));
-                let iv = crate::timed_cons::timed_consistent(g, r, &cfg);
-                g.change_rf(r, original_rf);
+                let iv = match &rev.rev {
+                    RevisitPlacement::Default(_) => {
+                        // Skip recv revisits whose inbox has no wait
+                        // set (untimed recv inside timed config is
+                        // transparent); the walker already handles that.
+                        let original_rf = g.recv_label(r).unwrap().rf();
+                        g.change_rf(r, Some(pos));
+                        let iv = crate::timed_cons::timed_consistent(g, r, &cfg);
+                        g.change_rf(r, original_rf);
+                        iv
+                    }
+                    RevisitPlacement::Inbox(sends) => {
+                        // Skip if this inbox is untimed (no wait): the
+                        // walker passes it through unchanged anyway.
+                        let ilab = g.inbox_label(r).unwrap();
+                        if ilab.wait().is_none() {
+                            return true;
+                        }
+                        let original = ilab.rfs();
+                        match sends {
+                            None => g.change_inbox_rfs(r, None),
+                            Some(v) => {
+                                let mut sorted = v.clone();
+                                sorted.sort();
+                                g.change_inbox_rfs(r, Some(sorted));
+                            }
+                        }
+                        let iv = crate::timed_cons::timed_consistent(g, r, &cfg);
+                        // Restore the read set
+                        g.change_inbox_rfs(r, original);
+                        iv
+                    }
+                };
                 let ok = !iv.is_empty();
                 if !ok && track {
                     rejected_revs.push((r, iv));
@@ -1842,7 +1906,7 @@ impl Must {
                 target_prefix.update(g.send_label(*send).unwrap().porf());
             }
             RevisitPlacement::Inbox(sends) => {
-                for &s in sends {
+                for &s in sends.iter().flatten() {
                     target_prefix.update(g.send_label(s).unwrap().porf());
                 }
             }
@@ -1865,7 +1929,7 @@ impl Must {
         let mut target_prefix = VectorClock::new();
         match &rev.rev {
             RevisitPlacement::Inbox(sends) => {
-                for &s in sends {
+                for &s in sends.iter().flatten() {
                     target_prefix.update(g.send_label(s).unwrap().porf());
                 }
             }
@@ -2215,6 +2279,7 @@ impl Must {
             if let RevisitPlacement::Inbox(sends) = &rev.rev {
                 // For inbox forward revisits, validate the chosen subset in the
                 // prefix first; if invalid, skip before mutating the current graph.
+                let sends_slice: &[Event] = sends.as_deref().unwrap_or(&[]);
                 let view = self.current.graph.view_from_stamp(stamp);
                 let prefix = self.current.graph.copy_to_view(&view);
                 let Some(inbox) = prefix.inbox_label(pos) else {
@@ -2222,12 +2287,12 @@ impl Must {
                 };
                 if !self
                     .checker
-                    .is_revisit_consistent_inbox(&prefix, inbox, sends)
+                    .is_revisit_consistent_inbox(&prefix, inbox, sends_slice)
                 {
                     info!(
                         "  [revisit] skip inbox {} due to inconsistent subset {}",
                         pos,
-                        self.fmt_event_set(sends)
+                        self.fmt_event_set(sends_slice)
                     );
                     return false;
                 }
@@ -2292,7 +2357,7 @@ impl Must {
             }
             RevisitPlacement::Inbox(sends) => {
                 // Inbox revisit prefix is the union of porf-prefixes of all chosen sends.
-                for s in sends {
+                for s in sends.into_iter().flatten() {
                     prefix.update(self.current.graph.send_label(s).unwrap().porf());
                 }
             }
@@ -2388,16 +2453,18 @@ impl Must {
                 self.current.graph.change_rf(rev.pos, Some(*vv));
             }
             RevisitPlacement::Inbox(vv) => {
-                // Inbox revisit: whole set of chosen sends.
-                if vv.is_empty() {
-                    self.current.graph.change_inbox_rfs(rev.pos, None);
-                } else {
-                    let mut vv_sorted = vv.clone();
-                    // Keep a canonical order for deterministic comparisons/printing.
-                    vv_sorted.sort();
-                    self.current
-                        .graph
-                        .change_inbox_rfs(rev.pos, Some(vv_sorted));
+                // Inbox revisit: whole set of chosen sends. `None` is the
+                // timeout empty, `Some(vec![])` the immediate empty.
+                match vv {
+                    None => self.current.graph.change_inbox_rfs(rev.pos, None),
+                    Some(v) => {
+                        let mut vv_sorted = v.clone();
+                        // Keep a canonical order for deterministic comparisons/printing.
+                        vv_sorted.sort();
+                        self.current
+                            .graph
+                            .change_inbox_rfs(rev.pos, Some(vv_sorted));
+                    }
                 }
             }
         }
@@ -2772,7 +2839,8 @@ impl Must {
     fn fmt_revisit_placement(&self, placement: &RevisitPlacement) -> String {
         match placement {
             RevisitPlacement::Default(ev) => ev.to_string(),
-            RevisitPlacement::Inbox(v) => self.fmt_event_set(v),
+            RevisitPlacement::Inbox(None) => "{timeout}".to_string(),
+            RevisitPlacement::Inbox(Some(v)) => self.fmt_event_set(v),
         }
     }
 }

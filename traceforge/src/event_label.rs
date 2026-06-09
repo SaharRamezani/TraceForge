@@ -1423,11 +1423,17 @@ pub(crate) struct Inbox {
     label: EventLabel,
     loc: RecvLoc,
     comm: CommunicationModel,
-    // None denotes the empty inbox subset.
+    // The chosen read set, mirroring the timed receive's `rf`:
+    //   None            = timeout empty (waited the full W_r, t = pred + W_r)
+    //   Some(vec![])    = immediate empty (a min==0 success that collected
+    //                     nothing, t = pred)
+    //   Some(non-empty) = a collected subset
     rfs: Option<Vec<Event>>,
     min: usize,
     max: Option<usize>,
     revisitable: bool,
+    #[serde(default)]
+    wait: Option<WaitTime>,
 }
 
 impl Inbox {
@@ -1447,7 +1453,34 @@ impl Inbox {
             min,
             max,
             revisitable: true,
+            wait: None,
         }
+    }
+
+    // Constructor for a timed inbox
+    pub(crate) fn new_timed(
+        pos: Event,
+        loc: RecvLoc,
+        comm: CommunicationModel,
+        rfs: Option<Vec<Event>>,
+        min: usize,
+        max: Option<usize>,
+        wait: WaitTime,
+    ) -> Self {
+        Self {
+            label: EventLabel::new(pos),
+            loc,
+            comm,
+            rfs,
+            min,
+            max,
+            revisitable: true,
+            wait: Some(wait),
+        }
+    }
+
+    pub(crate) fn wait(&self) -> Option<WaitTime> {
+        self.wait
     }
 
     pub(crate) fn rfs(&self) -> Option<Vec<Event>> {

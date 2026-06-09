@@ -1683,6 +1683,106 @@ fn inbox_internal(tag: Option<PredicateType>, min: usize, max: Option<usize>) ->
     }
 }
 
+// =======================================================================
+// Timed inbox primitives
+// =======================================================================
+
+/// Timed inbox: the non-blocking version of the inbox.
+///
+/// It returns either the empty set or a set of at least `min` and at
+/// most `max` matching messages; it never returns a non-empty set smaller than
+/// `min`. The timed walker rejects any subset whose sends do not all overlap a
+/// common time window of size `wait` after the inbox's predecessor.
+///
+/// With a finite `wait` the inbox never blocks: if it cannot collect `min`
+/// messages in time it times out and returns `{}`. When `min == 0` the empty
+/// result is explored in both of its time-distinct forms (returned immediately
+/// vs. after the full timeout).
+///
+/// `WaitTime::Infinite` is the blocking paper inbox: `min` is a hard requirement and the inbox blocks
+/// (can deadlock) rather than timing out.
+pub fn inbox_timed(min: usize, max: Option<usize>, wait: WaitTime) -> Vec<Option<Val>> {
+    inbox_internal_timed(None, min, max, wait)
+}
+
+/// Timed inbox with a single-tag predicate.
+pub fn inbox_with_tag_timed<F>(
+    f: F,
+    min: usize,
+    max: Option<usize>,
+    wait: WaitTime,
+) -> Vec<Option<Val>>
+where
+    F: Fn(ThreadId, Option<u32>) -> bool + 'static + Send + Sync,
+{
+    inbox_internal_timed(
+        Some(PredicateType(Arc::new(move |tid, tag| {
+            let tag = tag.and_then(|tags| tags.first().copied());
+            f(tid, tag)
+        }))),
+        min,
+        max,
+        wait,
+    )
+}
+
+/// Timed inbox with a vector-tag predicate.
+pub fn inbox_with_vec_tag_timed<F>(
+    f: F,
+    min: usize,
+    max: Option<usize>,
+    wait: WaitTime,
+) -> Vec<Option<Val>>
+where
+    F: Fn(ThreadId, Option<Vec<u32>>) -> bool + 'static + Send + Sync,
+{
+    inbox_internal_timed(Some(PredicateType(Arc::new(f))), min, max, wait)
+}
+
+fn inbox_internal_timed(
+    tag: Option<PredicateType>,
+    min: usize,
+    max: Option<usize>,
+    wait: WaitTime,
+) -> Vec<Option<Val>> {
+    let (loc, comm) = self_loc_comm();
+    let locs = iter::once(&loc).collect::<Vec<_>>();
+    validate_locs(&locs);
+
+    loop {
+        switch();
+        let locs = locs.clone();
+        let tag = tag.clone();
+        let (vals, blocked, _pos) = ExecutionState::with(|s| {
+            let pos = s.next_pos();
+            let (vals, _inds, blocked) = s.must.borrow_mut().handle_inbox(Inbox::new_timed(
+                pos,
+                RecvLoc::new(locs, tag),
+                comm,
+                None,
+                min,
+                max,
+                wait,
+            ));
+            (vals, blocked, pos)
+        });
+
+        if blocked {
+            ExecutionState::with(|s| s.prev_pos());
+            continue;
+        }
+
+        let stuck = vals.iter().flatten().any(Val::is_pending);
+        if stuck {
+            ExecutionState::with(|s| {
+                s.current_mut().stuck();
+                s.prev_pos();
+            });
+        } else {
+            return vals;
+        }
+    }
+}
 
 /// Models a nondeterministic choice in the model
 /// #[deprecated(since="0.2", note="please use `<bool>::nondet()` instead")]
