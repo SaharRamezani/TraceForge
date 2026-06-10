@@ -8,6 +8,7 @@ use std::ops::RangeInclusive;
 use crate::event::Event;
 use crate::loc::{CommunicationModel, Loc, RecvLoc, SendLoc, WakeMsg};
 use crate::msg::Val;
+use crate::timed_cons::WaitTime;
 use crate::thread::main_thread_id;
 use crate::vector_clock::VectorClock;
 use crate::ThreadId;
@@ -29,6 +30,7 @@ pub(crate) enum LabelEnum {
     Choice(Choice),
     Sample(Sample),
     Block(Block),
+    Sleep(Sleep),
     Inbox(Inbox),
 
     #[cfg(feature = "symbolic")]
@@ -51,6 +53,7 @@ macro_rules! match_and_run {
             LabelEnum::Choice(l) => l.as_event_label().$name($($arg),*),
             LabelEnum::Sample(l) => l.as_event_label().$name($($arg),*),
             LabelEnum::Block(l) => l.as_event_label().$name($($arg),*),
+            LabelEnum::Sleep(l) => l.as_event_label().$name($($arg),*),
             LabelEnum::Inbox(l) => l.as_event_label().$name($($arg),*),
 
             #[cfg(feature = "symbolic")]
@@ -75,6 +78,7 @@ macro_rules! match_and_run_mut {
             LabelEnum::Choice(l) => l.as_event_label_mut().$name($($arg),*),
             LabelEnum::Sample(l) => l.as_event_label_mut().$name($($arg),*),
             LabelEnum::Block(l) => l.as_event_label_mut().$name($($arg),*),
+            LabelEnum::Sleep(l) => l.as_event_label_mut().$name($($arg),*),
             LabelEnum::Inbox(l) => l.as_event_label_mut().$name($($arg),*),
 
             #[cfg(feature = "symbolic")]
@@ -263,6 +267,18 @@ impl LabelEnum {
                     return Ok(());
                 }
             }
+            LabelEnum::Sleep(s) => {
+                if let LabelEnum::Sleep(o) = other {
+                    if s.duration() != o.duration() {
+                        return Err(format!(
+                            "Expected to sleep for {} but got {}",
+                            s.duration(),
+                            o.duration()
+                        ));
+                    }
+                    return Ok(());
+                }
+            }
             LabelEnum::Inbox(s) => {
                 if let LabelEnum::Inbox(o) = other {
                     if s.senders() != o.senders() {
@@ -347,6 +363,7 @@ impl LabelEnum {
             LabelEnum::Choice(s) => format!("called Range({:?})::nondet", s.range()),
             LabelEnum::Sample(_) => "called sample()".to_string(),
             LabelEnum::Block(_) => "became blocked".to_string(),
+            LabelEnum::Sleep(s) => format!("slept for {}", s.duration()),
             LabelEnum::Inbox(_) => "requested an inbox collection".to_string(),
             #[cfg(feature = "symbolic")]
             LabelEnum::SymbolicVar(_) => "declared a symbolic variable".to_string(),
@@ -370,6 +387,7 @@ impl fmt::Display for LabelEnum {
             LabelEnum::Choice(lab) => write!(f, "{}", lab),
             LabelEnum::Sample(lab) => write!(f, "{}", lab),
             LabelEnum::Block(lab) => write!(f, "{}", lab),
+            LabelEnum::Sleep(lab) => write!(f, "{}", lab),
             LabelEnum::Inbox(lab) => write!(f, "{}", lab),
             #[cfg(feature = "symbolic")]
             LabelEnum::SymbolicVar(lab) => write!(f, "{}", lab),
@@ -393,6 +411,7 @@ impl fmt::Debug for LabelEnum {
             LabelEnum::Choice(lab) => write!(f, "{}", lab),
             LabelEnum::Sample(lab) => write!(f, "{}", lab),
             LabelEnum::Block(lab) => write!(f, "{}", lab),
+            LabelEnum::Sleep(lab) => write!(f, "{}", lab),
             LabelEnum::Inbox(lab) => write!(f, "{}", lab),
             #[cfg(feature = "symbolic")]
             LabelEnum::SymbolicVar(lab) => write!(f, "{}", lab),
@@ -722,6 +741,14 @@ pub(crate) struct RecvMsg {
     rf: Option<Event>,
     non_blocking: bool,
     revisitable: bool,
+    /// Per-receive wait time `W_r`
+    ///
+    /// * `None`: legacy untimed receive;
+    /// * `Some(WaitTime::Finite(w))`: timed receive with finite wait.
+    /// * `Some(WaitTime::Infinite)`: timed receive with `W_r = +∞`
+    ///   (blocking receive: timeout / `rf = ⊥` is inadmissible).
+    #[serde(default)]
+    wait: Option<WaitTime>,
 }
 
 impl RecvMsg {
@@ -739,7 +766,36 @@ impl RecvMsg {
             rf,
             non_blocking,
             revisitable: true,
+            wait: None,
         }
+    }
+
+    /// Constructor for a timed receive. Identical to [`RecvMsg::new`]
+    /// but records `wait` so that [`crate::timed_cons::timed_consistent`]
+    /// can bound this receive.
+    pub(crate) fn new_timed(
+        pos: Event,
+        loc: RecvLoc,
+        comm: CommunicationModel,
+        rf: Option<Event>,
+        non_blocking: bool,
+        wait: WaitTime,
+    ) -> Self {
+        Self {
+            label: EventLabel::new(pos),
+            loc,
+            comm,
+            rf,
+            non_blocking,
+            revisitable: true,
+            wait: Some(wait),
+        }
+    }
+
+    /// Wait time `W_r` for this receive, if this is a timed receive.
+    /// Returns `None` for legacy untimed receives.
+    pub(crate) fn wait(&self) -> Option<WaitTime> {
+        self.wait
     }
 
     pub(crate) fn rf(&self) -> Option<Event> {
@@ -773,6 +829,7 @@ impl RecvMsg {
 
     pub(crate) fn recover_lost(&mut self, other: Self) {
         self.loc = other.loc;
+        self.wait = other.wait;
     }
 
     /// Return if either the send is monitored by the receive or the locations match
@@ -848,6 +905,12 @@ pub(crate) struct SendMsg {
     /// and the respective value they would observe.
     #[serde(skip)]
     monitor_sends: MonitorSends,
+    /// Per-send transit bounds `(L(s), U(s))`.
+    /// `None` means the global `TimedConfig::{l, u}` applies;
+    /// `Some((l, u))` overrides them for this send only. Set via the
+    /// timed-send primitives in [`crate::lib`] (e.g. `send_msg_timed`).
+    #[serde(default)]
+    transit: Option<(u64, u64)>,
 }
 
 impl SendMsg {
@@ -870,8 +933,23 @@ impl SendMsg {
             reader: None,
             monitor_readers: Vec::new(),
             monitor_sends,
+            transit: None,
             cancelled_recv_readers: std::cell::RefCell::new(Vec::new()),
         }
+    }
+
+    /// Builder-style setter for per-send transit bounds.
+    /// Requires `l <= u`.
+    pub(crate) fn with_transit(mut self, l: u64, u: u64) -> Self {
+        assert!(l <= u, "SendMsg transit requires L <= U");
+        self.transit = Some((l, u));
+        self
+    }
+
+    /// Per-send transit bounds `(L(s), U(s))` if the send was issued via
+    /// a timed-send primitive; `None` otherwise (globals apply).
+    pub(crate) fn transit(&self) -> Option<(u64, u64)> {
+        self.transit
     }
 
     pub(crate) fn recover_val(&mut self, other: Self) {
@@ -1295,6 +1373,36 @@ as_label!(Block);
 impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: BLK {:?}", self.as_event_label(), self.btype())
+    }
+}
+
+/// A sleep event. Advances the local clock by exactly
+/// `duration` units (`d`). It is not a branching point
+/// and has no `rf` / revisits.
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct Sleep {
+    label: EventLabel,
+    duration: u64,
+}
+
+impl Sleep {
+    pub(crate) fn new(pos: Event, duration: u64) -> Self {
+        Self {
+            label: EventLabel::new(pos),
+            duration,
+        }
+    }
+
+    pub(crate) fn duration(&self) -> u64 {
+        self.duration
+    }
+}
+
+as_label!(Sleep);
+
+impl fmt::Display for Sleep {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: SLEEP({})", self.as_event_label(), self.duration)
     }
 }
 

@@ -1071,6 +1071,12 @@ impl ExecutionGraph {
 
         // println!("After recv cut to view");
 
+        for i in 0..deleted_receives.len() {
+            self.remove_from_readers(deleted_receives[i], &deleted_receives);
+        }
+
+        // println!("After recv cut to view");
+
         // Erase all the threads not found in the vector clock.
         let threads = &mut self.threads;
         let tasks = &mut self.task_id_map;

@@ -2,9 +2,9 @@ use crate::cons::Consistency;
 use crate::event::Event;
 use crate::exec_graph::{ExecutionGraph, RecvLike};
 use crate::exec_pool::ExecutionPool;
-use crate::revisit::{Revisit, RevisitEnum, RevisitPlacement};
 use crate::future::PollerMsg;
 use crate::loc::{Loc, WakeMsg};
+use crate::revisit::{Revisit, RevisitEnum, RevisitPlacement};
 use crate::runtime::failure::init_panic_hook;
 use crate::runtime::task::TaskId;
 use crate::telemetry::{Recorder, Telemetry};
@@ -458,6 +458,20 @@ impl Must {
 
     pub(crate) fn handle_register_mon(&mut self, monitor_info: MonitorInfo) {
         self.monitors.insert(monitor_info.thread_id, monitor_info);
+    }
+
+    /// `case e ∈ sleep(d)`: add the event to the graph and continue.
+    /// The only effect is to advance the thread's local clock.
+    pub(crate) fn handle_sleep(&mut self, slab: Sleep) {
+        if self.is_replay(slab.pos()) {
+            info!("| Replay Mode for sleep {}", slab);
+            let lab = LabelEnum::Sleep(slab);
+            self.current.graph.validate_replay_event(&lab);
+            self.process_event(lab);
+            return;
+        }
+        info!("| Handle Mode for {}", slab);
+        self.add_to_graph(LabelEnum::Sleep(slab));
     }
 
     /// Returns the value read, if any, along with the rlab's receiving channel index, if any.
@@ -1051,7 +1065,10 @@ impl Must {
 
         let view = self.current.graph.revisit_view(rev);
         let mut g = self.current.graph.copy_to_view(&view);
-        g.change_rf(rev.pos, Some(rev.rev));
+        // Symbolic checks only apply to plain-receive backward revisits.
+        if let RevisitPlacement::Default(send) = &rev.rev {
+            g.change_rf(rev.pos, Some(*send));
+        }
 
         self.symbolic_solver_for_graph(&g).is_sat()
     }
@@ -1060,7 +1077,10 @@ impl Must {
     fn is_maximal_constraint(&self, c: &ConstraintEval, rev: &Revisit) -> bool {
         let view = self.current.graph.revisit_view(rev);
         let mut g = self.current.graph.copy_to_view(&view);
-        g.change_rf(rev.pos, Some(rev.rev));
+        // Symbolic checks only apply to plain-receive backward revisits.
+        if let RevisitPlacement::Default(send) = &rev.rev {
+            g.change_rf(rev.pos, Some(*send));
+        }
 
         let solver = self.symbolic_solver_for_graph(&g);
 
@@ -1164,15 +1184,20 @@ impl Must {
                 let available = g
                     .matching_stores(loc)
                     .filter(|send| {
-                        // We need to consider two cases:
-                        // . Monitor reading from the send:
-                        // . . We are monitoring it and we haven't read it already
-                        send.can_be_monitor_read(&blab.pos()) ||
+                        let structurally_ok =
+                            // We need to consider two cases:
+                            // . Monitor reading from the send:
+                            // . . We are monitoring it and we haven't read it already
+                            send.can_be_monitor_read(&blab.pos())
                             // . Plain read from the send:
                             // . . It is unread and the location *really* matches (not via monitoring)
-                            (send.can_be_read_from(loc) &&
-                                // disregard cancelled sends
-                                !send.is_cancelled_wrt(blab.as_event_label()))
+                                || (send.can_be_read_from(loc)
+                                    // disregard cancelled sends
+                                    && !send.is_cancelled_wrt(blab.as_event_label()));
+                        // Only count sends that could also be timed consistent,
+                        // so the runtime does not spin on a blocked receive whose
+                        // only matching send would still be rejected by the timed filter.
+                        structurally_ok && self.is_block_timed_feasible(blab.pos(), send)
                     })
                     .count();
                 available >= *min
@@ -1182,6 +1207,44 @@ impl Must {
         } else {
             false
         }
+    }
+
+    /// Check whether unblocking the receive at `block_pos` to read from
+    /// `send` could possibly be timed consistent. Used by
+    /// `is_waiting_on_written` to avoid the runtime spinning on a blocked
+    /// receive whose only matching send would still be rejected by the
+    /// timed filter (unblock → re-run → re-block, forever).
+    ///
+    /// Returns true when no timed config is set. The receive label has
+    /// already been overwritten by the `Block`, so this cannot call the
+    /// `timed_consistent` walker on the receive directly; instead it feeds the
+    /// predecessor and send windows into the shared
+    /// [`crate::timed_cons::recv_from_send_window`] helper. A blocked
+    /// receive is always `W_r = +∞` (`BlockType::Value` only ever holds
+    /// blocking receives), so the upper wait cap is `u64::MAX`.
+    fn is_block_timed_feasible(&self, block_pos: Event, send: &SendMsg) -> bool {
+        let cfg = match &self.config.timed {
+            Some(c) => c,
+            None => return true,
+        };
+        let g = &self.current.graph;
+        if block_pos.index == 0 {
+            // Defensive: a Block can't be the thread's first event, but
+            // if it ever is, fall back to "feasible".
+            return true;
+        }
+        let pred = Event::new(block_pos.thread, block_pos.index - 1);
+        let pred_iv = crate::timed_cons::timed_consistent(g, pred, cfg);
+        let send_iv = crate::timed_cons::timed_consistent(g, send.pos(), cfg);
+        let transit = send.transit().unwrap_or((cfg.l, cfg.u));
+        let iv = crate::timed_cons::recv_from_send_window(
+            pred_iv,
+            send_iv,
+            transit,
+            cfg.sd_for(block_pos.thread),
+            u64::MAX,
+        );
+        !iv.is_empty()
     }
 
     fn is_waiting_on_finished(&self, t: ThreadId) -> bool {
@@ -1436,6 +1499,7 @@ impl Must {
         );
 
         self.filter_symmetric_rfs(&mut rfs, pos);
+        self.filter_timed_consistent_rfs(&mut rfs, pos);
 
         // At this point, we have handled all the cases for nonblocking receive
         // so we know blocking == true
@@ -1636,10 +1700,16 @@ impl Must {
                     if !self.is_maximal_recv(r, &rev) {
                         break;
                     }
+                    // Filter out revisits that are not maximal w.r.t. condpor.
+                    #[cfg(feature = "symbolic")]
+                    if !self.symbolic_backward_revisit_is_sat(&rev) {
+                        continue;
+                    }
                     if self
                         .checker
                         .is_revisit_consistent(g, r, slab, self.is_monitor(&r.pos()))
                         && self.is_maximal_extension(&rev)
+                        && self.is_backward_revisit_timed_consistent(&rev)
                     {
                         revs.push(RevisitEnum::BackwardRevisit(Revisit::new(r.pos(), pos)));
                     }
@@ -1828,6 +1898,56 @@ impl Must {
             LabelEnum::SymbolicVar(_) => true,
             _ => true,
         }
+    }
+
+    /// Drop candidate sends whose `setRF(G, pos, s)`
+    /// would make `timed_consistent(G, pos)` empty. When `config.timed` is
+    /// `None` this is a no-op.
+    ///
+    /// The check is performed by temporarily mutating `rlab.rf` to each
+    /// candidate and running `timed_consistent`, then restoring the prior rf
+    /// so the caller's view of the graph is unchanged.
+    fn filter_timed_consistent_rfs(&mut self, rfs: &mut Vec<Event>, pos: Event) {
+        let cfg = match self.config.timed.clone() {
+            None => return,
+            Some(c) => c,
+        };
+        let g = &mut self.current.graph;
+        let original_rf = g.recv_label(pos).unwrap().rf();
+        let kept: Vec<Event> = rfs
+            .iter()
+            .copied()
+            .filter(|&s| {
+                g.change_rf(pos, Some(s));
+                let iv = crate::timed_cons::timed_consistent(g, pos, &cfg);
+                !iv.is_empty()
+            })
+            .collect();
+        g.change_rf(pos, original_rf);
+        *rfs = kept;
+    }
+
+    /// Backward-revisit counterpart of [`filter_timed_consistent_rfs`].
+    /// Returns whether applying `rev` would leave the revisited receive timed
+    /// consistent. Unlike the forward case the revisited receive is not at the
+    /// frontier, so we cannot check on the current graph: a backward revisit
+    /// deletes every event outside the revisit view. We therefore restrict the
+    /// graph to that view (like [`Consistency::is_revisit_consistent`]) and
+    /// point the receive at the new send before walking `timed_consistent`,
+    /// mirroring how `symbolic_backward_revisit_is_sat` builds its candidate
+    /// graph. No-op (`true`) when `config.timed` is `None`; only plain-receive
+    /// (Default placement) revisits are gated.
+    fn is_backward_revisit_timed_consistent(&self, rev: &Revisit) -> bool {
+        let Some(cfg) = &self.config.timed else {
+            return true;
+        };
+        let RevisitPlacement::Default(send) = &rev.rev else {
+            return true;
+        };
+        let view = self.current.graph.revisit_view(rev);
+        let mut g = self.current.graph.copy_to_view(&view);
+        g.change_rf(rev.pos, Some(*send));
+        !crate::timed_cons::timed_consistent(&g, rev.pos, cfg).is_empty()
     }
 
     fn filter_symmetric_rfs(&self, rfs: &mut Vec<Event>, pos: Event) {
@@ -2046,6 +2166,7 @@ impl Must {
                 slab.set_dropped();
                 self.current.graph.incr_dropped_sends();
             }
+            LabelEnum::Sleep(_) => unreachable!("sleep events are not revisitable"),
             #[cfg(feature = "symbolic")]
             LabelEnum::ConstraintEval(c) => {
                 c.set_branch_taken(!c.branch_taken());
@@ -2102,6 +2223,8 @@ impl Must {
         self.current.graph = ng;
 
         self.mark_prefix_non_revisitable(rev.rev.clone());
+
+        // println!("After marking prefix");
 
         // println!("After marking prefix");
 
@@ -2288,7 +2411,7 @@ impl Must {
             self.print_graph_trace(pos)
                 .expect("could not print trace to supplied file");
         }
-
+        
         out
     }
 
