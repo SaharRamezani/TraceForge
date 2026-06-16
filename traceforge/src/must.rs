@@ -1191,6 +1191,11 @@ impl Must {
                 // (when a timed config is set) timed-feasible. The block
                 // unblocks once at least `min` such sends exist. A plain
                 // blocked recv has min=1, so the count must reach 1.
+                //
+                // The graph is not mutated in this loop, so one memo cache is
+                // shared across every send: pred(block) is walked once instead
+                // of once per send, and sends sharing prefixes also reuse it.
+                let mut cache: HashMap<Event, crate::timed_cons::TimeInterval> = HashMap::new();
                 let available = g
                     .matching_stores(loc)
                     .filter(|send| {
@@ -1203,7 +1208,7 @@ impl Must {
                                 || (send.can_be_read_from(loc)
                                     && !send.is_cancelled_wrt(blab.as_event_label()));
                         structurally_ok
-                            && self.is_block_timed_feasible(blab.pos(), send)
+                            && self.is_block_timed_feasible(blab.pos(), send, &mut cache)
                     })
                     .count();
                 available >= *min
@@ -1216,7 +1221,17 @@ impl Must {
         }
     }
     
-    fn is_block_timed_feasible(&self, block_pos: Event, send: &SendMsg) -> bool {
+    /// Whether unblocking the receive at `block_pos` to read from `send` could
+    /// be timed consistent. Takes a caller-owned memo cache so the predecessor
+    /// walk (identical for every matching send) and any shared send prefixes
+    /// are not recomputed per send; valid because the graph is not mutated
+    /// across the calls that share the cache. Returns true when `timed` is unset.
+    fn is_block_timed_feasible(
+        &self,
+        block_pos: Event,
+        send: &SendMsg,
+        cache: &mut HashMap<Event, crate::timed_cons::TimeInterval>,
+    ) -> bool {
         let cfg = match &self.config.timed {
             Some(c) => c,
             None => return true,
@@ -1228,8 +1243,8 @@ impl Must {
             return true;
         }
         let pred = Event::new(block_pos.thread, block_pos.index - 1);
-        let pred_iv = crate::timed_cons::timed_consistent(g, pred, cfg);
-        let send_iv = crate::timed_cons::timed_consistent(g, send.pos(), cfg);
+        let pred_iv = crate::timed_cons::timed_consistent_with(g, pred, cfg, cache);
+        let send_iv = crate::timed_cons::timed_consistent_with(g, send.pos(), cfg, cache);
         let transit = send.transit().unwrap_or((cfg.l, cfg.u));
         let iv = crate::timed_cons::recv_from_send_window(
             pred_iv,
@@ -2024,12 +2039,18 @@ impl Must {
         let original_rf = g.recv_label(pos).unwrap().rf();
         let mut rejected: Vec<(Event, crate::timed_cons::TimeInterval)> =
             if track { Vec::new() } else { Vec::with_capacity(0) };
+        // One memo cache shared across all candidates: only `pos`'s own window
+        // depends on which send it reads, so every other entry (pred(pos) and
+        // each candidate send's prefix) stays valid as we flip pos's rf. We
+        // evict just `pos` each iteration. See plan: behavior-preserving.
+        let mut cache: HashMap<Event, crate::timed_cons::TimeInterval> = HashMap::new();
         let kept: Vec<Event> = rfs
             .iter()
             .copied()
             .filter(|&s| {
                 g.change_rf(pos, Some(s));
-                let iv = crate::timed_cons::timed_consistent(g, pos, &cfg);
+                cache.remove(&pos);
+                let iv = crate::timed_cons::timed_consistent_with(g, pos, &cfg, &mut cache);
                 let ok = !iv.is_empty();
                 if !ok && track {
                     rejected.push((s, iv));

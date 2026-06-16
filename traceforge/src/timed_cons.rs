@@ -151,8 +151,24 @@ pub(crate) fn timed_consistent(
     e: Event,
     cfg: &TimedConfig,
 ) -> TimeInterval {
-    let mut cache = HashMap::new();
-    timed_consistent_rec(g, e, cfg, &mut cache)
+    timed_consistent_with(g, e, cfg, &mut HashMap::new())
+}
+
+/// Like [`timed_consistent`] but reuses a caller-owned memo cache so that
+/// repeated calls sharing po/rf prefixes don't re-walk them.
+///
+/// The cache is keyed by [`Event`] and is only valid for a fixed graph
+/// state. The caller MUST evict any event whose interval may have changed
+/// since the cache was last populated, e.g. a receive whose `rf` was just
+/// flipped via [`ExecutionGraph::change_rf`]. When the graph is not mutated
+/// between calls, no eviction is needed.
+pub(crate) fn timed_consistent_with(
+    g: &ExecutionGraph,
+    e: Event,
+    cfg: &TimedConfig,
+    cache: &mut HashMap<Event, TimeInterval>,
+) -> TimeInterval {
+    timed_consistent_rec(g, e, cfg, cache)
 }
 
 fn timed_consistent_rec(
