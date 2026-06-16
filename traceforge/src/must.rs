@@ -148,6 +148,10 @@ pub(crate) struct Must {
     pub(crate) global_named_choices: HashMap<String, bool>,
     // Maximum number of events across all complete (non-blocked) execution graphs
     max_graph_events: usize,
+
+    /// Dedup set for prune-log records: Cleared at the start of every
+    /// new execution. Only used when `config.prune_log_file` is set.
+    pub(crate) prune_dedup: HashSet<(&'static str, Event, Event)>,
 }
 
 impl Must {
@@ -185,6 +189,7 @@ impl Must {
             symbolic_solver: SymbolicSolver::new(),
             global_named_choices: HashMap::new(),
             max_graph_events: 0,
+            prune_dedup: HashSet::new(),
         }
     }
 
@@ -284,6 +289,13 @@ impl Must {
     }
 
     pub(crate) fn run_metrics_before(&mut self) {
+        // Reset per-execution prune-dedup state so each execution gets
+        // its own distinct set of rejected rfs in the log. Only does this
+        // when the user opted into prune logging, otherwise
+        // the set is empty and we'd be paying for nothing.
+        if self.config.prune_log_file.is_some() {
+            self.prune_dedup.clear();
+        }
         let eid = self.telemetry.coverage.current_eid();
         for cb in &mut self
             .config
@@ -458,6 +470,20 @@ impl Must {
 
     pub(crate) fn handle_register_mon(&mut self, monitor_info: MonitorInfo) {
         self.monitors.insert(monitor_info.thread_id, monitor_info);
+    }
+
+    /// `case e ∈ sleep(d)`: add the event to the graph and continue.
+    /// The only effect is to advance the thread's local clock.
+    pub(crate) fn handle_sleep(&mut self, slab: Sleep) {
+        if self.is_replay(slab.pos()) {
+            info!("| Replay Mode for sleep {}", slab);
+            let lab = LabelEnum::Sleep(slab);
+            self.current.graph.validate_replay_event(&lab);
+            self.process_event(lab);
+            return;
+        }
+        info!("| Handle Mode for {}", slab);
+        self.add_to_graph(LabelEnum::Sleep(slab));
     }
 
     /// Returns the value read, if any, along with the rlab's receiving channel index, if any.
@@ -1132,7 +1158,7 @@ impl Must {
             LabelEnum::Block(blab) => match blab.btype() {
                 // it's an internal blocking and the instruction points
                 // at least *2* instructions before it (see event_label::Block)
-                BlockType::Join(_) | BlockType::Value(_, _) => (*i as u32) < blab.pos().index - 1,
+                BlockType::Join(_) | BlockType::Value(..) => (*i as u32) < blab.pos().index - 1,
                 // it's a user blocking and the instruction points before it
                 BlockType::Assume | BlockType::Assert => (*i as u32) < blab.pos().index,
             },
@@ -1160,28 +1186,74 @@ impl Must {
     fn is_waiting_on_written(&self, t: ThreadId) -> bool {
         let g = &self.current.graph;
         if let LabelEnum::Block(blab) = g.thread_last(t).unwrap() {
-            if let BlockType::Value(loc, min) = blab.btype() {
+            if let BlockType::Value(loc, _wait, min) = blab.btype() {
+                // Count sends that are structurally available AND
+                // (when a timed config is set) timed-feasible. The block
+                // unblocks once at least `min` such sends exist. A plain
+                // blocked recv has min=1, so the count must reach 1.
+                //
+                // The graph is not mutated in this loop, so one memo cache is
+                // shared across every send: pred(block) is walked once instead
+                // of once per send, and sends sharing prefixes also reuse it.
+                let mut cache: HashMap<Event, crate::timed_cons::TimeInterval> = HashMap::new();
                 let available = g
                     .matching_stores(loc)
                     .filter(|send| {
-                        // We need to consider two cases:
-                        // . Monitor reading from the send:
-                        // . . We are monitoring it and we haven't read it already
-                        send.can_be_monitor_read(&blab.pos()) ||
-                            // . Plain read from the send:
-                            // . . It is unread and the location *really* matches (not via monitoring)
-                            (send.can_be_read_from(loc) &&
-                                // disregard cancelled sends
-                                !send.is_cancelled_wrt(blab.as_event_label()))
+                        let structurally_ok =
+                            // Monitor reading from the send: we are monitoring
+                            // it and we haven't read it already.
+                            send.can_be_monitor_read(&blab.pos())
+                            // Plain read: the location really matches and the
+                            // send isn't cancelled.
+                                || (send.can_be_read_from(loc)
+                                    && !send.is_cancelled_wrt(blab.as_event_label()));
+                        structurally_ok
+                            && self.is_block_timed_feasible(blab.pos(), send, &mut cache)
                     })
                     .count();
                 available >= *min
+
             } else {
                 false
             }
         } else {
             false
         }
+    }
+    
+    /// Whether unblocking the receive at `block_pos` to read from `send` could
+    /// be timed consistent. Takes a caller-owned memo cache so the predecessor
+    /// walk (identical for every matching send) and any shared send prefixes
+    /// are not recomputed per send; valid because the graph is not mutated
+    /// across the calls that share the cache. Returns true when `timed` is unset.
+    fn is_block_timed_feasible(
+        &self,
+        block_pos: Event,
+        send: &SendMsg,
+        cache: &mut HashMap<Event, crate::timed_cons::TimeInterval>,
+    ) -> bool {
+        let cfg = match &self.config.timed {
+            Some(c) => c,
+            None => return true,
+        };
+        let g = &self.current.graph;
+        if block_pos.index == 0 {
+            // Defensive: a Block can't be the thread's first event, but
+            // if it ever is, fall back to "feasible".
+            return true;
+        }
+        let pred = Event::new(block_pos.thread, block_pos.index - 1);
+        let pred_iv = crate::timed_cons::timed_consistent_with(g, pred, cfg, cache);
+        let send_iv = crate::timed_cons::timed_consistent_with(g, send.pos(), cfg, cache);
+        let transit = send.transit().unwrap_or((cfg.l, cfg.u));
+        let iv = crate::timed_cons::recv_from_send_window(
+            pred_iv,
+            send_iv,
+            transit,
+            cfg.sd_for(block_pos.thread),
+            u64::MAX,
+        );
+        !iv.is_empty()
     }
 
     fn is_waiting_on_finished(&self, t: ThreadId) -> bool {
@@ -1237,7 +1309,7 @@ impl Must {
             None => EndCondition::AllThreadsCompleted,
             Some(block) => match block {
                 BlockType::Assume | BlockType::Assert => EndCondition::FailedAssumption,
-                BlockType::Value(_, _) | BlockType::Join(_) => EndCondition::Deadlock,
+                BlockType::Value(..) | BlockType::Join(_) => EndCondition::Deadlock,
             },
         };
 
@@ -1279,6 +1351,14 @@ impl Must {
                     println!("One more blocked execution");
                     println!("{}", self.print_graph(None));
                     println!("Finished printing graph");
+                } else if self.config.dot_out_blocked
+                    && (self.config.dot_file.is_some() || self.config.trace_file.is_some())
+                {
+                    // Opt-in: write the dot/trace file for the blocked
+                    // execution without emitting the graph to stdout.
+                    // `print_graph` is the same routine the verbose
+                    // path calls; we just discard its returned string.
+                    let _ = self.print_graph(None);
                 }
             }
         } else if self.is_consistent() {
@@ -1436,6 +1516,7 @@ impl Must {
         );
 
         self.filter_symmetric_rfs(&mut rfs, pos);
+        self.filter_timed_consistent_rfs(&mut rfs, pos);
 
         // At this point, we have handled all the cases for nonblocking receive
         // so we know blocking == true
@@ -1492,18 +1573,16 @@ impl Must {
             }
             self.current.graph.val_copy(pos)
         } else {
-            // Overwrites RecvMsg
+            // Overwrites RecvMsg. Capture the original recv's wait
+            // before the overwrite so the resulting Block can still tell
+            // visualizers which kind of timed recv this was.
+            let (loc, wait) = {
+                let rlab = self.current.graph.recv_label(pos).unwrap();
+                (rlab.recv_loc().clone(), rlab.wait())
+            };
             self.add_to_graph(LabelEnum::Block(Block::new(
                 pos,
-                BlockType::Value(
-                    self.current
-                        .graph
-                        .recv_label(pos)
-                        .unwrap()
-                        .recv_loc()
-                        .clone(),
-                    1,
-                ),
+                BlockType::Value(loc, wait, 1),
             )));
             None
         }
@@ -1515,46 +1594,97 @@ impl Must {
 
         let min = ilab.min();
         let max = ilab.max();
+        let wait = ilab.wait();
+        // A finite wait can time out (returning the empty set); an infinite
+        // or untimed inbox cannot, and instead blocks until >= min messages
+        // are available.
+        let finite = matches!(wait, Some(crate::timed_cons::WaitTime::Finite(_)));
 
-        // If even the maximum feasible size cannot satisfy `min`, this inbox blocks.
-        let upper = max.map_or(rfs.len(), |m| m.min(rfs.len()));
-        if min > upper {
-            self.add_to_graph(LabelEnum::Block(Block::new(
-                pos,
-                BlockType::Value(ilab.recv_loc().clone(), min),
-            )));
-            return Vec::new();
+        // Enumerate only the non-empty success subsets. An empty result is
+        // is represented separately as one of two outcomes that share the
+        // return value `{}` but differ in time (mirroring the timed receive):
+        //   Some(vec![]) = immediate empty (min==0 success, t = pred)
+        //   None         = timeout  empty (waited W_r, t = pred + W_r)
+        let mut combinations =
+            compute_inbox_possible_subsets_from_rfs(&rfs, min.max(1), max, None);
+
+        // Drop non-empty subsets whose `timed_consistent` window on the inbox
+        // event would be empty. Pure no-op when `config.timed` is `None` or
+        // when this inbox was constructed without a wait time.
+        if let Some(cfg) = self.config.timed.clone() {
+            if wait.is_some() {
+                let g = &mut self.current.graph;
+                let original = ilab.rfs();
+                combinations.retain(|subset| {
+                    g.change_inbox_rfs(pos, Some(subset.clone()));
+                    let iv = crate::timed_cons::timed_consistent(g, pos, &cfg);
+                    !iv.is_empty()
+                });
+                // Restore the label's read set exactly (preserving the
+                // None / Some(empty) distinction).
+                g.change_inbox_rfs(pos, original);
+            }
         }
 
-        let mut combinations = compute_inbox_possible_subsets_from_rfs(&rfs, min, max, None);
+        // Choose the canonical outcome; the rest become forward
+        // inbox revisits.
+        let mut revisits: Vec<Option<Vec<Event>>> = Vec::new();
 
-        // Canonical inbox read used by the base execution:
-        // non-blocking inbox reads {}, otherwise read the first `min` coherent sends.
-        // All other feasible subsets are explored through forward revisits.
-        let canonical = if ilab.is_non_blocking() {
-            Vec::new()
+        let canonical: Option<Vec<Event>> = if min == 0 {
+            // Non-blocking inbox: the immediate empty `{}` is the canonical
+            // (maximal) base. A finite wait can additionally time out, which
+            // returns `{}` at a later time, so it is an extra outcome.
+            if finite {
+                revisits.push(None);
+            }
+            for subset in combinations.drain(..) {
+                revisits.push(Some(subset));
+            }
+            Some(Vec::new())
         } else {
-            rfs.iter().take(min).cloned().collect::<Vec<_>>()
+            // min >= 1: an empty result can only be a (finite) timeout; there
+            // is no immediate-empty success. The base is the first `min`
+            // coherent sends when timed-feasible, else the first surviving
+            // subset, else the timeout empty (finite, never blocks), else the
+            // inbox blocks (infinite / untimed).
+            let default: Vec<Event> = rfs.iter().take(min).cloned().collect();
+            let base = if combinations.iter().any(|s| *s == default) {
+                Some(default)
+            } else if let Some(first) = combinations.first().cloned() {
+                Some(first)
+            } else if finite {
+                None
+            } else {
+                // No feasible `min`-subset and no timeout fallback: block.
+                self.add_to_graph(LabelEnum::Block(Block::new(
+                    pos,
+                    BlockType::Value(ilab.recv_loc().clone(), wait, min),
+                )));
+                return Vec::new();
+            };
+            // The remaining non-empty subsets become forward revisits.
+            for subset in combinations.drain(..) {
+                if Some(&subset) != base.as_ref() {
+                    revisits.push(Some(subset));
+                }
+            }
+            // The timeout empty is an additional outcome whenever the base is
+            // a real subset (otherwise the base already is the timeout).
+            if finite && base.is_some() {
+                revisits.push(None);
+            }
+            base
         };
 
-        combinations.retain(|subset| *subset != canonical);
-
-        // Remaining subsets are explored through forward inbox revisits.
-        for subset in combinations.drain(..) {
+        for placement in revisits.drain(..) {
             push_worklist(
                 &mut self.current.rqueue,
                 self.current.graph.label(pos).stamp(),
-                RevisitEnum::new_forward_inbox(pos, subset),
+                RevisitEnum::new_forward_inbox(pos, placement),
             );
         }
 
-        if canonical.is_empty() {
-            self.current.graph.change_inbox_rfs(pos, None);
-        } else {
-            self.current
-                .graph
-                .change_inbox_rfs(pos, Some(canonical.clone()));
-        }
+        self.current.graph.change_inbox_rfs(pos, canonical);
 
         self.inbox_vals_copy(pos)
     }
@@ -1574,7 +1704,7 @@ impl Must {
         match &rev.rev {
             RevisitPlacement::Default(s) => prefix.update(g.send_label(*s).unwrap().porf()),
             RevisitPlacement::Inbox(sends) => {
-                for &s in sends {
+                for &s in sends.iter().flatten() {
                     prefix.update(g.send_label(s).unwrap().porf());
                 }
             }
@@ -1645,7 +1775,7 @@ impl Must {
                     }
                 }
                 RecvLike::Inbox(i) => {
-                    let seed_rev = Revisit::new_inbox(i.pos(), vec![pos]);
+                    let seed_rev = Revisit::new_inbox(i.pos(), Some(vec![pos]));
                     // Backward revisits are generated only from maximal inbox events.
                     if !self.is_maximal_inbox(i, &seed_rev) {
                         break;
@@ -1678,7 +1808,7 @@ impl Must {
                             i.pos(),
                             self.fmt_event_set(&subset)
                         );
-                        let rev_inbox = Revisit::new_inbox(i.pos(), subset.clone());
+                        let rev_inbox = Revisit::new_inbox(i.pos(), Some(subset.clone()));
                         // Paper-style inbox revisit condition:
                         // keep only subsets that are consistent and preserve maximality.
                         if self.checker.is_revisit_consistent_inbox(g, i, &subset)
@@ -1689,6 +1819,66 @@ impl Must {
                         }
                     }
                 }
+            }
+        }
+
+        // Drop backward revisits whose resulting graph would be timed
+        // inconsistent. No-op when `timed` is `None`. Handles both
+        // RecvMsg backward revisits (single rf swap) and Inbox backward
+        // revisits (whole-subset swap).
+        if let Some(cfg) = self.config.timed.clone() {
+            // Only allocate the rejection-tracking Vec when prune logging
+            // is opted into; otherwise this stays zero-cost.
+            let track = self.config.prune_log_file.is_some();
+            let mut rejected_revs: Vec<(Event, crate::timed_cons::TimeInterval)> =
+                if track { Vec::new() } else { Vec::with_capacity(0) };
+            let g = &mut self.current.graph;
+            revs.retain(|rev_enum| {
+                let RevisitEnum::BackwardRevisit(rev) = rev_enum else {
+                    return true;
+                };
+                let r = rev.pos;
+                let iv = match &rev.rev {
+                    RevisitPlacement::Default(_) => {
+                        // Skip recv revisits whose inbox has no wait
+                        // set (untimed recv inside timed config is
+                        // transparent); the walker already handles that.
+                        let original_rf = g.recv_label(r).unwrap().rf();
+                        g.change_rf(r, Some(pos));
+                        let iv = crate::timed_cons::timed_consistent(g, r, &cfg);
+                        g.change_rf(r, original_rf);
+                        iv
+                    }
+                    RevisitPlacement::Inbox(sends) => {
+                        // Skip if this inbox is untimed (no wait): the
+                        // walker passes it through unchanged anyway.
+                        let ilab = g.inbox_label(r).unwrap();
+                        if ilab.wait().is_none() {
+                            return true;
+                        }
+                        let original = ilab.rfs();
+                        match sends {
+                            None => g.change_inbox_rfs(r, None),
+                            Some(v) => {
+                                let mut sorted = v.clone();
+                                sorted.sort();
+                                g.change_inbox_rfs(r, Some(sorted));
+                            }
+                        }
+                        let iv = crate::timed_cons::timed_consistent(g, r, &cfg);
+                        // Restore the read set
+                        g.change_inbox_rfs(r, original);
+                        iv
+                    }
+                };
+                let ok = !iv.is_empty();
+                if !ok && track {
+                    rejected_revs.push((r, iv));
+                }
+                ok
+            });
+            if track && !rejected_revs.is_empty() {
+                self.log_backward_revisit_prunings(pos, &rejected_revs);
             }
         }
 
@@ -1731,7 +1921,7 @@ impl Must {
                 target_prefix.update(g.send_label(*send).unwrap().porf());
             }
             RevisitPlacement::Inbox(sends) => {
-                for &s in sends {
+                for &s in sends.iter().flatten() {
                     target_prefix.update(g.send_label(s).unwrap().porf());
                 }
             }
@@ -1754,7 +1944,7 @@ impl Must {
         let mut target_prefix = VectorClock::new();
         match &rev.rev {
             RevisitPlacement::Inbox(sends) => {
-                for &s in sends {
+                for &s in sends.iter().flatten() {
                     target_prefix.update(g.send_label(s).unwrap().porf());
                 }
             }
@@ -1827,6 +2017,125 @@ impl Must {
             #[cfg(feature = "symbolic")]
             LabelEnum::SymbolicVar(_) => true,
             _ => true,
+        }
+    }
+
+    /// Drop candidate sends whose `setRF(G, pos, s)`
+    /// would make `timed_consistent(G, pos)` empty. When `config.timed` is
+    /// `None` this is a no-op.
+    ///
+    /// The check is performed by temporarily mutating `rlab.rf` to each
+    /// candidate and running `timed_consistent`, then restoring the prior rf
+    /// so the caller's view of the graph is unchanged.
+    fn filter_timed_consistent_rfs(&mut self, rfs: &mut Vec<Event>, pos: Event) {
+        let cfg = match self.config.timed.clone() {
+            None => return,
+            Some(c) => c,
+        };
+        // Only allocate the rejection-tracking Vec when prune logging is
+        // opted into; otherwise this stays zero-cost.
+        let track = self.config.prune_log_file.is_some();
+        let g = &mut self.current.graph;
+        let original_rf = g.recv_label(pos).unwrap().rf();
+        let mut rejected: Vec<(Event, crate::timed_cons::TimeInterval)> =
+            if track { Vec::new() } else { Vec::with_capacity(0) };
+        // One memo cache shared across all candidates: only `pos`'s own window
+        // depends on which send it reads, so every other entry (pred(pos) and
+        // each candidate send's prefix) stays valid as we flip pos's rf. We
+        // evict just `pos` each iteration. See plan: behavior-preserving.
+        let mut cache: HashMap<Event, crate::timed_cons::TimeInterval> = HashMap::new();
+        let kept: Vec<Event> = rfs
+            .iter()
+            .copied()
+            .filter(|&s| {
+                g.change_rf(pos, Some(s));
+                cache.remove(&pos);
+                let iv = crate::timed_cons::timed_consistent_with(g, pos, &cfg, &mut cache);
+                let ok = !iv.is_empty();
+                if !ok && track {
+                    rejected.push((s, iv));
+                }
+                ok
+            })
+            .collect();
+        g.change_rf(pos, original_rf);
+        *rfs = kept;
+
+        if track && !rejected.is_empty() {
+            self.log_timed_prunings("forward", pos, &rejected);
+        }
+    }
+
+    /// Backward-revisit equivalent of `log_timed_prunings`. Each entry
+    /// is a (recv, iv) pair where the rejected revisit would have re-paired
+    /// `recv` with the newly-added send `new_send`.
+    fn log_backward_revisit_prunings(
+        &mut self,
+        new_send: Event,
+        rejected: &[(Event, crate::timed_cons::TimeInterval)],
+    ) {
+        // Reuse the same writer; format the record as a backward kind by
+        // swapping recv/send roles.
+        let mapped: Vec<_> = rejected.iter().map(|(r, iv)| (*r, *iv)).collect();
+        // For the "backward" form the rejected pair is (r, new_send), not
+        // (recv, candidate_send). Encode that distinction with a `kind`.
+        self.log_timed_prunings_kind("backward", new_send, &mapped);
+    }
+
+    /// Append one JSONL record per pruned candidate to `prune_log_file`.
+    fn log_timed_prunings(
+        &mut self,
+        kind: &'static str,
+        recv: Event,
+        rejected: &[(Event, crate::timed_cons::TimeInterval)],
+    ) {
+        self.log_timed_prunings_kind(kind, recv, rejected);
+    }
+
+    fn log_timed_prunings_kind(
+        &mut self,
+        kind: &'static str,
+        anchor: Event,
+        rejected: &[(Event, crate::timed_cons::TimeInterval)],
+    ) {
+        let path = match &self.config.prune_log_file {
+            Some(p) => p.clone(),
+            None => return,
+        };
+        // The in-progress execution is the next eid that EXECS will reach
+        // when it completes, i.e. (current EXECS counter) + 1.
+        let exec_done = self.telemetry.read_counter(EXECS.to_owned()).unwrap_or(0);
+        let in_progress_eid = exec_done + 1;
+        let mut buf = String::new();
+        for (other, iv) in rejected {
+            // For "forward": anchor is the receive, other is the rejected send.
+            // For "backward": anchor is the new send, other is the receive
+            // whose backward-revisit would have re-paired with the new send.
+            let (recv, send) = if kind == "forward" {
+                (anchor, *other)
+            } else {
+                (*other, anchor)
+            };
+            // Skip records we've already emitted in *this* execution. The
+            // model checker re-runs filter_timed_consistent_rfs many
+            // times along the worklist, so without this dedup the log can
+            // grow to millions of duplicate lines for the same rejection.
+            if !self.prune_dedup.insert((kind, recv, send)) {
+                continue;
+            }
+            let line = format!(
+                "{{\"eid\":{},\"kind\":\"{}\",\"recv\":\"{}\",\"send\":\"{}\",\"reason\":\"timed\",\"iv_lo\":{},\"iv_hi\":{}}}\n",
+                in_progress_eid, kind, recv, send, iv.lo, iv.hi
+            );
+            buf.push_str(&line);
+        }
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            use std::io::Write;
+            let _ = f.write_all(buf.as_bytes());
         }
     }
 
@@ -1991,6 +2300,7 @@ impl Must {
             if let RevisitPlacement::Inbox(sends) = &rev.rev {
                 // For inbox forward revisits, validate the chosen subset in the
                 // prefix first; if invalid, skip before mutating the current graph.
+                let sends_slice: &[Event] = sends.as_deref().unwrap_or(&[]);
                 let view = self.current.graph.view_from_stamp(stamp);
                 let prefix = self.current.graph.copy_to_view(&view);
                 let Some(inbox) = prefix.inbox_label(pos) else {
@@ -1998,12 +2308,12 @@ impl Must {
                 };
                 if !self
                     .checker
-                    .is_revisit_consistent_inbox(&prefix, inbox, sends)
+                    .is_revisit_consistent_inbox(&prefix, inbox, sends_slice)
                 {
                     info!(
                         "  [revisit] skip inbox {} due to inconsistent subset {}",
                         pos,
-                        self.fmt_event_set(sends)
+                        self.fmt_event_set(sends_slice)
                     );
                     return false;
                 }
@@ -2050,6 +2360,7 @@ impl Must {
             LabelEnum::ConstraintEval(c) => {
                 c.set_branch_taken(!c.branch_taken());
             }
+            LabelEnum::Sleep(_) => unreachable!("sleep events are not revisitable"),
             _ => panic!(),
         };
         self.current.graph.cut_to_stamp(stamp);
@@ -2067,7 +2378,7 @@ impl Must {
             }
             RevisitPlacement::Inbox(sends) => {
                 // Inbox revisit prefix is the union of porf-prefixes of all chosen sends.
-                for s in sends {
+                for s in sends.into_iter().flatten() {
                     prefix.update(self.current.graph.send_label(s).unwrap().porf());
                 }
             }
@@ -2163,16 +2474,18 @@ impl Must {
                 self.current.graph.change_rf(rev.pos, Some(*vv));
             }
             RevisitPlacement::Inbox(vv) => {
-                // Inbox revisit: whole set of chosen sends.
-                if vv.is_empty() {
-                    self.current.graph.change_inbox_rfs(rev.pos, None);
-                } else {
-                    let mut vv_sorted = vv.clone();
-                    // Keep a canonical order for deterministic comparisons/printing.
-                    vv_sorted.sort();
-                    self.current
-                        .graph
-                        .change_inbox_rfs(rev.pos, Some(vv_sorted));
+                // Inbox revisit: whole set of chosen sends. `None` is the
+                // timeout empty, `Some(vec![])` the immediate empty.
+                match vv {
+                    None => self.current.graph.change_inbox_rfs(rev.pos, None),
+                    Some(v) => {
+                        let mut vv_sorted = v.clone();
+                        // Keep a canonical order for deterministic comparisons/printing.
+                        vv_sorted.sort();
+                        self.current
+                            .graph
+                            .change_inbox_rfs(rev.pos, Some(vv_sorted));
+                    }
                 }
             }
         }
@@ -2331,15 +2644,35 @@ impl Must {
                 &mut out_file,
                 format!("\tlabel=\"thread {}\"\n", tid).as_bytes(),
             )?;
-            for j in 1..ind {
+            for j in 1..=ind {
                 let pos = Event::new(tid, j);
+                // Skip the synthetic End terminator (carries no useful info).
+                if matches!(g.label(pos), LabelEnum::End(_)) {
+                    continue;
+                }
                 let is_error = error.is_some() && error.unwrap() == pos;
+                // When timed mode is enabled, append the [τ_lo, τ_hi]
+                // window that `timed_consistent` would assign to this event.
+                let time_str = if let Some(ref cfg) = self.config.timed {
+                    let iv = crate::timed_cons::timed_consistent(g, pos, cfg);
+                    if iv.is_empty() {
+                        "<br/><font point-size=\"10\" color=\"#cc3333\">τ ∈ ∅</font>".to_string()
+                    } else {
+                        format!(
+                            "<br/><font point-size=\"10\" color=\"#3366aa\">τ ∈ [{}, {}]</font>",
+                            iv.lo, iv.hi
+                        )
+                    }
+                } else {
+                    String::new()
+                };
                 std::io::Write::write(
                     &mut out_file,
                     format!(
-                        "\t\"{}\" [label=<{}>{}]\n",
+                        "\t\"{}\" [label=<{}{}>{}]\n",
                         pos,
                         g.label(pos),
+                        time_str,
                         if is_error {
                             ",style=filled,fillcollor=yellow"
                         } else {
@@ -2356,11 +2689,16 @@ impl Must {
             for j in 1..ind + 1 {
                 let pos = Event::new(tid, j);
                 if j < ind {
-                    // last event for this thread
-                    std::io::Write::write(
-                        &mut out_file,
-                        format!("\"{}\" -> \"{}\"\n", pos, pos.next()).as_bytes(),
-                    )?;
+                    let next = pos.next();
+                    // The label loop drops the synthetic End terminator;
+                    // skip the edge into it too so it doesn't render as
+                    // a dangling unlabeled node.
+                    if !matches!(g.label(next), LabelEnum::End(_)) {
+                        std::io::Write::write(
+                            &mut out_file,
+                            format!("\"{}\" -> \"{}\"\n", pos, next).as_bytes(),
+                        )?;
+                    }
                 }
                 if g.is_recv(pos) {
                     let rlab = g.recv_label(pos).unwrap();
@@ -2522,7 +2860,8 @@ impl Must {
     fn fmt_revisit_placement(&self, placement: &RevisitPlacement) -> String {
         match placement {
             RevisitPlacement::Default(ev) => ev.to_string(),
-            RevisitPlacement::Inbox(v) => self.fmt_event_set(v),
+            RevisitPlacement::Inbox(None) => "{timeout}".to_string(),
+            RevisitPlacement::Inbox(Some(v)) => self.fmt_event_set(v),
         }
     }
 }
