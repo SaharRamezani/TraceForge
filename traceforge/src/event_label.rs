@@ -1425,8 +1425,8 @@ pub(crate) struct Inbox {
     comm: CommunicationModel,
     // The chosen read set, mirroring the timed receive's `rf`:
     //   None            = timeout empty (waited the full W_r, t = pred + W_r)
-    //   Some(vec![])    = immediate empty (a min==0 success that collected
-    //                     nothing, t = pred)
+    //   Some(vec![])    = immediate empty (an untimed min==0 success that
+    //                     collected nothing, t = pred)
     //   Some(non-empty) = a collected subset
     rfs: Option<Vec<Event>>,
     min: usize,

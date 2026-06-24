@@ -1600,11 +1600,24 @@ impl Must {
         // are available.
         let finite = matches!(wait, Some(crate::timed_cons::WaitTime::Finite(_)));
 
+        // Timed inboxes now require `min >= 1` (enforced at the public API in
+        // lib.rs); only the *untimed* non-blocking inbox still uses `min == 0`.
+        // So a `min == 0` reaching this checker boundary always implies an
+        // untimed (`wait == None`) inbox.
+        debug_assert!(
+            wait.is_none() || min >= 1,
+            "timed inbox (wait = {wait:?}) must have min >= 1"
+        );
+
         // Enumerate only the non-empty success subsets. An empty result is
-        // is represented separately as one of two outcomes that share the
-        // return value `{}` but differ in time (mirroring the timed receive):
-        //   Some(vec![]) = immediate empty (min==0 success, t = pred)
-        //   None         = timeout  empty (waited W_r, t = pred + W_r)
+        // represented separately, in one of two forms that share the return
+        // value `{}` but differ in time:
+        //   Some(vec![]) = immediate empty (untimed min==0 success, t = pred)
+        //   None         = timeout  empty (finite wait, t = pred + W_r)
+        // A timed inbox requires `min >= 1`, so its only empty is the
+        // timeout (None); the immediate empty belongs to the untimed
+        // non-blocking inbox alone. The `.max(1)` keeps the non-empty subset
+        // floor at 1 for that untimed `min == 0` case (no-op when min >= 1).
         let mut combinations =
             compute_inbox_possible_subsets_from_rfs(&rfs, min.max(1), max, None);
 
@@ -1631,9 +1644,12 @@ impl Must {
         let mut revisits: Vec<Option<Vec<Event>>> = Vec::new();
 
         let canonical: Option<Vec<Event>> = if min == 0 {
-            // Non-blocking inbox: the immediate empty `{}` is the canonical
-            // (maximal) base. A finite wait can additionally time out, which
-            // returns `{}` at a later time, so it is an extra outcome.
+            // Non-blocking UNTIMED inbox: the immediate empty `{}` is the
+            // canonical (maximal) base. Timed inboxes now require `min >= 1`
+            // (enforced in lib.rs), so `finite` is always false on this branch
+            // and the timeout-empty push below is unreachable in-tree; it is
+            // kept as a defensive no-op should a finite-wait `min == 0` inbox
+            // ever be constructed internally.
             if finite {
                 revisits.push(None);
             }

@@ -1687,25 +1687,50 @@ fn inbox_internal(tag: Option<PredicateType>, min: usize, max: Option<usize>) ->
 // Timed inbox primitives
 // =======================================================================
 
-/// Timed inbox: the non-blocking version of the inbox.
+/// Panic message for the `min >= 1` contract shared by every timed inbox entry
+/// point. `min == 0` is the *untimed* inbox's non-blocking marker (see
+/// [`inbox`] / [`inbox_with_bounds`]); it has no meaning for a timed inbox,
+/// where non-blocking is expressed through the timeout instead.
+const TIMED_INBOX_MIN_MSG: &str =
+    "timed inbox requires min >= 1; min == 0 is forbidden. \
+     For non-blocking (do not wait at all) use WaitTime::Finite(0); \
+     to receive one message with a timeout use (1, Some(1), wait).";
+
+/// Timed inbox: collects `[min, max]` matching messages within a `wait` window.
 ///
-/// It returns either the empty set or a set of at least `min` and at
-/// most `max` matching messages; it never returns a non-empty set smaller than
-/// `min`. The timed walker rejects any subset whose sends do not all overlap a
-/// common time window of size `wait` after the inbox's predecessor.
+/// `min` must be `>= 1` (passing `min == 0` panics, see [Panics](#panics)). It
+/// returns either the empty set or a set of at least `min` and at most `max`
+/// matching messages; it never returns a non-empty set smaller than `min`. The
+/// timed walker rejects any subset whose sends do not all overlap a common time
+/// window of size `wait` after the inbox's predecessor.
 ///
 /// With a finite `wait` the inbox never blocks: if it cannot collect `min`
-/// messages in time it times out and returns `{}`. When `min == 0` the empty
-/// result is explored in both of its time-distinct forms (returned immediately
-/// vs. after the full timeout).
+/// messages in time it times out and returns `{}` (the timeout empty, at time
+/// `pred + wait`).
 ///
-/// `WaitTime::Infinite` is the blocking paper inbox: `min` is a hard requirement and the inbox blocks
-/// (can deadlock) rather than timing out.
+/// `WaitTime::Infinite` is the blocking paper inbox: `min` is a hard requirement
+/// and the inbox blocks (can deadlock) rather than timing out.
+///
+/// # Why `min == 0` is forbidden
+///
+/// `min == 0` exists only to make the *untimed* paper inbox ([`inbox`],
+/// [`inbox_with_bounds`], ...) non-blocking. With a timeout that meaning is
+/// redundant, and `inbox_timed(0, _, Finite(w))` reads misleadingly (it looks
+/// like "wait up to `w`" but returns immediately and ignores `w`). All
+/// non-blocking / receive-with-timeout behaviour is unified through the timeout:
+/// - non-blocking (do not wait at all): use `wait = WaitTime::Finite(0)`;
+/// - receive one message with a timeout: use `inbox_timed(1, Some(1), wait)`.
+///
+/// # Panics
+///
+/// Panics if `min == 0`.
 pub fn inbox_timed(min: usize, max: Option<usize>, wait: WaitTime) -> Vec<Option<Val>> {
+    assert!(min >= 1, "{}", TIMED_INBOX_MIN_MSG);
     inbox_internal_timed(None, min, max, wait)
 }
 
-/// Timed inbox with a single-tag predicate.
+/// Timed inbox with a single-tag predicate. Like [`inbox_timed`], `min` must be
+/// `>= 1`; passing `min == 0` panics.
 pub fn inbox_with_tag_timed<F>(
     f: F,
     min: usize,
@@ -1715,6 +1740,7 @@ pub fn inbox_with_tag_timed<F>(
 where
     F: Fn(ThreadId, Option<u32>) -> bool + 'static + Send + Sync,
 {
+    assert!(min >= 1, "{}", TIMED_INBOX_MIN_MSG);
     inbox_internal_timed(
         Some(PredicateType(Arc::new(move |tid, tag| {
             let tag = tag.and_then(|tags| tags.first().copied());
@@ -1726,7 +1752,8 @@ where
     )
 }
 
-/// Timed inbox with a vector-tag predicate.
+/// Timed inbox with a vector-tag predicate. Like [`inbox_timed`], `min` must be
+/// `>= 1`; passing `min == 0` panics.
 pub fn inbox_with_vec_tag_timed<F>(
     f: F,
     min: usize,
@@ -1736,6 +1763,7 @@ pub fn inbox_with_vec_tag_timed<F>(
 where
     F: Fn(ThreadId, Option<Vec<u32>>) -> bool + 'static + Send + Sync,
 {
+    assert!(min >= 1, "{}", TIMED_INBOX_MIN_MSG);
     inbox_internal_timed(Some(PredicateType(Arc::new(f))), min, max, wait)
 }
 

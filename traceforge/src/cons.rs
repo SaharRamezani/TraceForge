@@ -516,10 +516,10 @@ impl Consistency {
         ilab: &Inbox,
         rev: &Revisit,
     ) -> bool {
-        // Non-blocking inbox (min==0): the maximal outcome is the
-        // immediate empty. The timeout empty is a
-        // separate, non-maximal forward-revisit alternative, so it must NOT
-        // count as maximal here.
+        // Non-blocking inbox (min==0): the maximal outcome is the immediate
+        // empty. Only the untimed non-blocking inbox reaches this now (timed
+        // inboxes require min >= 1); for it there is no timeout empty, so the
+        // immediate empty `Some([])` is the sole maximal empty outcome.
         if ilab.is_non_blocking() {
             return matches!(ilab.rfs(), Some(rfs) if rfs.is_empty());
         }

@@ -117,7 +117,13 @@ fn all_same_leader(msgs: &[ProtoMsg], leader: usize) -> bool {
 fn collect_phase(ballot: u64, phase: Phase, _enough: usize, max: usize, w: u64) -> Vec<ProtoMsg> {
     let want = tag_of(ballot, phase);
     let matches = move |_sender: ThreadId, tag: Option<u32>| tag == Some(want);
-    let raw = traceforge::inbox_with_tag_timed(matches, 0, Some(max), WaitTime::Finite(w));
+    // Wait up to `w` for at least one matching message, collecting up to `max`,
+    // else time out to `{}`. A process that collects nothing
+    // is already covered by the timeout empty (waited `w`, got
+    // nothing), so dropping it removes interleavings without changing the
+    // protocol's reachable states (a follower with no proposal still skips its
+    // ack; a leader with too few acks still records no LogEntry).
+    let raw = traceforge::inbox_with_tag_timed(matches, 1, Some(max), WaitTime::Finite(w));
     raw.into_iter()
         .flatten()
         .filter_map(|val| val.as_any_ref().downcast_ref::<ProtoMsg>().copied())
