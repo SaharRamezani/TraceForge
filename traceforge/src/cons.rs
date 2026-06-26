@@ -525,7 +525,21 @@ impl Consistency {
         }
 
         let Some(current) = ilab.rfs() else {
-            return false;
+            // Timed-out inbox (rfs() == None). A finite-wait inbox that times
+            // out is the canonical-maximal empty outcome of its branch: it is
+            // the SINGLE graph from which the non-empty feasible subsets are
+            // discovered by backward revisits (a finite inbox never blocks and
+            // reruns, so there is no forward-enumeration alternative). Treat it
+            // as maximal so Must::calc_revisits does not break before emitting
+            // those revisits.
+            //
+            // Gate strictly on Finite: an untimed inbox (wait() == None) has no
+            // timeout outcome, and an Infinite-wait inbox must block rather than
+            // time out (timed_cons.rs Inbox arm returns an empty interval for
+            // None + Infinite, and visit_inbox_rfs blocks instead of timing
+            // out), so a None + Infinite label can never legitimately exist at a
+            // completed graph; both stay non-maximal here.
+            return matches!(ilab.wait(), Some(crate::timed_cons::WaitTime::Finite(_)));
         };
 
         let view = g.revisit_view(rev);
