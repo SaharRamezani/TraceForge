@@ -5,7 +5,10 @@
 //! These exercise the interaction between the inbox subset enumeration
 //! and the timed walker arm for `LabelEnum::Inbox`.
 
-use traceforge::{thread, Config, WaitTime};
+use std::collections::BTreeSet;
+use std::sync::{Arc, Mutex};
+
+use traceforge::{thread, Config, Val, WaitTime};
 
 // ---------------------------------------------------------------------
 // The timed inbox forbids min == 0 (the untimed non-blocking marker).
@@ -119,4 +122,153 @@ fn timed_inbox_min2_infinite_one_sender_blocks() {
     // and W_r=∞ means no timeout fallback.
     assert_eq!(stats.execs, 0);
     assert!(stats.block > 0);
+}
+
+// ---------------------------------------------------------------------
+// Two sequential timed inboxes explore every reachable outcome.
+// ---------------------------------------------------------------------
+
+// min=max=1 -> the inbox is empty (timeout) or holds exactly one message.
+fn one_u32(v: &[Option<Val>]) -> Option<u32> {
+    let vals: Vec<u32> = v
+        .iter()
+        .flatten()
+        .map(|val| *val.as_any_ref().downcast_ref::<u32>().unwrap())
+        .collect();
+    assert!(vals.len() <= 1, "expected <= 1 message, got {vals:?}");
+    vals.first().copied()
+}
+
+fn two_sequential_run(use_inbox: bool) -> (usize, Vec<(Option<u32>, Option<u32>)>) {
+    let sink: Arc<Mutex<Vec<(Option<u32>, Option<u32>)>>> = Arc::new(Mutex::new(Vec::new()));
+    let s = Arc::clone(&sink);
+    let stats = traceforge::verify(Config::builder().with_timed(0, 0, 0).build(), move || {
+        let s = Arc::clone(&s);
+        let collector = thread::spawn(move || {
+            let (r1, r2) = if use_inbox {
+                (
+                    one_u32(&traceforge::inbox_timed(1, Some(1), WaitTime::Finite(10))),
+                    one_u32(&traceforge::inbox_timed(1, Some(1), WaitTime::Finite(10))),
+                )
+            } else {
+                (
+                    traceforge::recv_msg_timed::<u32>(WaitTime::Finite(10)),
+                    traceforge::recv_msg_timed::<u32>(WaitTime::Finite(10)),
+                )
+            };
+            s.lock().unwrap().push((r1, r2));
+        });
+        let cid = collector.thread().id();
+        let c1 = cid.clone();
+        thread::spawn(move || traceforge::send_msg(c1, 2u32));
+        thread::spawn(move || traceforge::send_msg(cid, 3u32));
+    });
+    let records = sink.lock().unwrap().clone();
+    (stats.execs, records)
+}
+
+fn distinct<T: Ord + Clone>(records: &[T]) -> BTreeSet<T> {
+    records.iter().cloned().collect()
+}
+
+#[test]
+fn two_sequential_timed_inboxes_explore_all_outcomes() {
+    let expected: BTreeSet<(Option<u32>, Option<u32>)> = [
+        (None, None),
+        (Some(2), None),
+        (Some(3), None),
+        (Some(2), Some(3)),
+        (Some(3), Some(2)),
+    ]
+    .into_iter()
+    .collect();
+
+    // The timed-recv oracle pins the reachable set (sanity-checks the shape).
+    let (_, recv) = two_sequential_run(false);
+    assert_eq!(
+        distinct(&recv),
+        expected,
+        "recv oracle should find all 5 reachable outcomes"
+    );
+
+    // The timed inbox must explore exactly the same outcomes.
+    let (_, inbox) = two_sequential_run(true);
+    assert_eq!(
+        distinct(&inbox),
+        expected,
+        "two sequential timed inboxes should explore every reachable outcome"
+    );
+}
+
+// ---------------------------------------------------------------------
+// Two sequential timed inboxes explore each execution exactly once.
+// ---------------------------------------------------------------------
+
+#[test]
+fn two_sequential_timed_inboxes_have_no_duplicate_executions() {
+    let (inbox_execs, inbox) = two_sequential_run(true);
+    assert_eq!(
+        inbox_execs,
+        distinct(&inbox).len(),
+        "each execution should be explored exactly once (no duplicates)"
+    );
+
+    // The recv oracle is duplicate-free by construction; the inbox should
+    // explore the same number of executions, no more.
+    let (recv_execs, _) = two_sequential_run(false);
+    assert_eq!(
+        inbox_execs, recv_execs,
+        "inbox exec count should match the duplicate-free recv oracle"
+    );
+}
+
+// ---------------------------------------------------------------------
+// A single min<max finite inbox explores every size-bounded subset once.
+// ---------------------------------------------------------------------
+
+#[test]
+fn single_timed_inbox_min1_max2_explores_all_subsets_once() {
+    let sink: Arc<Mutex<Vec<Vec<u32>>>> = Arc::new(Mutex::new(Vec::new()));
+    let s = Arc::clone(&sink);
+    let stats = traceforge::verify(Config::builder().with_timed(0, 0, 0).build(), move || {
+        let s = Arc::clone(&s);
+        let collector = thread::spawn(move || {
+            let mut got: Vec<u32> = traceforge::inbox_timed(1, Some(2), WaitTime::Finite(10))
+                .iter()
+                .flatten()
+                .map(|v| *v.as_any_ref().downcast_ref::<u32>().unwrap())
+                .collect();
+            got.sort();
+            s.lock().unwrap().push(got);
+        });
+        let cid = collector.thread().id();
+        for v in 2u32..=4 {
+            let cid = cid.clone();
+            thread::spawn(move || traceforge::send_msg(cid, v));
+        }
+    });
+    let records = sink.lock().unwrap().clone();
+
+    // Combinatorial oracle: timeout {} + all size-1 + all size-2 subsets.
+    let expected: BTreeSet<Vec<u32>> = [
+        vec![],
+        vec![2],
+        vec![3],
+        vec![4],
+        vec![2, 3],
+        vec![2, 4],
+        vec![3, 4],
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(
+        distinct(&records),
+        expected,
+        "a min=1,max=2 inbox should explore the timeout plus every size-[1,2] subset"
+    );
+    assert_eq!(
+        stats.execs,
+        expected.len(),
+        "each subset should be explored exactly once (no duplicates)"
+    );
 }

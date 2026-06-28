@@ -542,6 +542,10 @@ impl Consistency {
             return matches!(ilab.wait(), Some(crate::timed_cons::WaitTime::Finite(_)));
         };
 
+        if matches!(ilab.wait(), Some(crate::timed_cons::WaitTime::Finite(_))) {
+            return false;
+        }
+
         let view = g.revisit_view(rev);
         let exclude = match &rev.rev {
             // For recv-style revisit placement, remove the newly inserted send.

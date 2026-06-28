@@ -1657,19 +1657,27 @@ impl Must {
                 revisits.push(Some(subset));
             }
             Some(Vec::new())
+        } else if finite {
+            // min >= 1, finite wait: the timeout `None` is the single canonical
+            // (maximal) base and EVERY feasible non-empty subset is a forward
+            // revisit - mirroring a non-blocking timed recv, whose timeout is
+            // the maximal base and whose reads are all revisits. This pairs with
+            // `inbox_reads_tiebreaker` treating only the timeout as maximal, so
+            // the base execution holds the inbox in its maximal state and each
+            // outcome has exactly one launch point (no duplicate executions).
+            for subset in combinations.drain(..) {
+                revisits.push(Some(subset));
+            }
+            None
         } else {
-            // min >= 1: an empty result can only be a (finite) timeout; there
-            // is no immediate-empty success. The base is the first `min`
-            // coherent sends when timed-feasible, else the first surviving
-            // subset, else the timeout empty (finite, never blocks), else the
-            // inbox blocks (infinite / untimed).
+            // min >= 1, infinite / untimed: no timeout fallback, so the base is
+            // the first `min` coherent sends when available, else the first
+            // surviving subset, else the inbox blocks until >= min arrive.
             let default: Vec<Event> = rfs.iter().take(min).cloned().collect();
             let base = if combinations.iter().any(|s| *s == default) {
                 Some(default)
             } else if let Some(first) = combinations.first().cloned() {
                 Some(first)
-            } else if finite {
-                None
             } else {
                 // No feasible `min`-subset and no timeout fallback: block.
                 self.add_to_graph(LabelEnum::Block(Block::new(
@@ -1683,11 +1691,6 @@ impl Must {
                 if Some(&subset) != base.as_ref() {
                     revisits.push(Some(subset));
                 }
-            }
-            // The timeout empty is an additional outcome whenever the base is
-            // a real subset (otherwise the base already is the timeout).
-            if finite && base.is_some() {
-                revisits.push(None);
             }
             base
         };
