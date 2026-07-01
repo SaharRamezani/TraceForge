@@ -49,6 +49,12 @@ use std::time::{Duration, Instant};
 
 use traceforge::thread::{self, ThreadId};
 use traceforge::{Config, Stats, WaitTime};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+// Commit-outcome counters (analog of the leader-election count for commit protocols):
+// incremented once per coordinator decision; reset before each verify, read after.
+static COMMITS: AtomicUsize = AtomicUsize::new(0);
+static ABORTS: AtomicUsize = AtomicUsize::new(0);
 
 const DEFAULT_PARTICIPANTS: u32 = 3;
 const DEFAULT_U: u64 = 1;
@@ -84,17 +90,21 @@ struct Bounds {
     u: u64,
     w: u64,
     delta: u64,
+    l: u64,
+    sd: u64,
 }
 
 impl Bounds {
-    fn from_ratio(u: u64, w_ratio: u64) -> Self {
+    fn from_ratio(u: u64, w_ratio: u64, l: u64, sd: u64) -> Self {
         assert!(u >= 1);
         assert!(w_ratio >= 2);
+        assert!(l <= u, "transit lower bound L must be <= U");
         let w = u * w_ratio;
-        Self { u, w, delta: w + 1 }
+        Self { u, w, delta: w + 1, l, sd }
     }
-    fn with_delta(u: u64, w_ratio: u64, delta: u64) -> Self {
-        Self { u, w: u * w_ratio, delta }
+    fn with_delta(u: u64, w_ratio: u64, delta: u64, l: u64, sd: u64) -> Self {
+        assert!(l <= u, "transit lower bound L must be <= U");
+        Self { u, w: u * w_ratio, delta, l, sd }
     }
 }
 
@@ -146,6 +156,7 @@ fn coordinator(mode: Mode, b: Bounds, crashes: bool, rounds: u32) {
         }
 
         if received != ps.len() || yes != ps.len() {
+            ABORTS.fetch_add(1, Ordering::Relaxed);
             for id in &ps {
                 if maybe_crash(crashes) { return; }
                 traceforge::send_msg(*id, PMsg::Abort { round });
@@ -182,6 +193,7 @@ fn coordinator(mode: Mode, b: Bounds, crashes: bool, rounds: u32) {
 
         if maybe_crash(crashes) { return; }
 
+        COMMITS.fetch_add(1, Ordering::Relaxed);
         for id in &ps {
             traceforge::send_msg(*id, PMsg::Commit { round });
             if maybe_crash(crashes) { return; }
@@ -277,12 +289,14 @@ fn build_config(mode: Mode, b: Bounds) -> Config {
     let builder = Config::builder().with_progress_report(usize::MAX);
     match mode {
         Mode::Baseline => builder.build(),
-        Mode::Timed => builder.with_timed(0, b.u, 0).build(),
+        Mode::Timed => builder.with_timed(b.l, b.u, b.sd).build(),
     }
 }
 
 fn run(mode: Mode, num_ps: u32, b: Bounds, crashes: bool, rounds: u32) -> (Stats, Duration) {
     let cfg = build_config(mode, b);
+    COMMITS.store(0, Ordering::Relaxed);
+    ABORTS.store(0, Ordering::Relaxed);
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
         let mut handles = Vec::new();
@@ -302,16 +316,18 @@ fn run(mode: Mode, num_ps: u32, b: Bounds, crashes: bool, rounds: u32) -> (Stats
 // Reporting
 // =====================================================================
 
-fn print_one(label: &str, num_ps: u32, b: Bounds, rounds: u32, stats: &Stats, dur: Duration, crashes: bool) {
+fn print_one(label: &str, num_ps: u32, b: Bounds, rounds: u32, stats: &Stats, dur: Duration, crashes: bool,
+             commits: usize, aborts: usize) {
     let crash_tag = if crashes { " (crashes)" } else { "" };
     println!(
-        "{label:<10}{crash_tag} N={num_ps} R={rounds}  L=0 U={u} W={w} (W/U={r})  execs={execs:<6} \
-         blocked={block:<6} time={dur:?}",
-        u = b.u, w = b.w, r = b.w / b.u, execs = stats.execs, block = stats.block, dur = dur,
+        "{label:<10}{crash_tag} N={num_ps} R={rounds}  L={l} U={u} W={w} (W/U={r}) sd={sd}  execs={execs:<6} \
+         blocked={block:<6} commit={commits:<6} abort={aborts:<6} time={dur:?}",
+        l = b.l, u = b.u, w = b.w, r = b.w / b.u, sd = b.sd, execs = stats.execs, block = stats.block, dur = dur,
     );
 }
 
-fn print_compare(num_ps: u32, b: Bounds, rounds: u32, crashes: bool, baseline: (Stats, Duration), timed: (Stats, Duration)) {
+fn print_compare(num_ps: u32, b: Bounds, rounds: u32, crashes: bool, baseline: (Stats, Duration), timed: (Stats, Duration),
+                 b_commits: usize, b_aborts: usize, t_commits: usize, t_aborts: usize) {
     let (b_stats, b_dur) = baseline;
     let (t_stats, t_dur) = timed;
     println!();
@@ -320,7 +336,7 @@ fn print_compare(num_ps: u32, b: Bounds, rounds: u32, crashes: bool, baseline: (
         if crashes { " + crashes" } else { "" }
     );
     println!("======================================================");
-    println!("N = {num_ps}    R = {rounds}    L = 0    U = {}    W = {} (= {}·U)", b.u, b.w, b.w / b.u);
+    println!("N = {num_ps}    R = {rounds}    L = {}    U = {}    W = {} (= {}·U)    sd = {}", b.l, b.u, b.w, b.w / b.u, b.sd);
     println!();
     println!("{:<10} {:>10} {:>10} {:>14}", "mode", "execs", "blocked", "time");
     println!("{:<10} {:>10} {:>10} {:>14?}", "baseline", b_stats.execs, b_stats.block, b_dur);
@@ -330,13 +346,15 @@ fn print_compare(num_ps: u32, b: Bounds, rounds: u32, crashes: bool, baseline: (
     let time_ratio = b_dur.as_secs_f64() / t_dur.as_secs_f64().max(f64::MIN_POSITIVE);
     println!("execs reduction: {exec_ratio:.2}x");
     println!("time  speedup  : {time_ratio:.2}x");
+    println!("commit/abort (complete execs): baseline {b_commits}/{b_aborts}   timed {t_commits}/{t_aborts}");
 }
 
 fn print_sweep(num_ps: u32, u: u64, delta: u64, rounds: u32, crashes: bool, rows: &[(u64, Bounds, Stats, Duration, Stats, Duration)]) {
     println!();
     println!("Three-Phase Commit (basic): W/U sweep{}", if crashes { " + crashes" } else { "" });
     println!("====================================================================");
-    println!("N = {num_ps}    R = {rounds}    L = 0    U = {u}    DELTA = {delta} (held fixed)");
+    let (hl, hsd) = rows.first().map(|r| (r.1.l, r.1.sd)).unwrap_or((0, 0));
+    println!("N = {num_ps}    R = {rounds}    L = {hl}    U = {u}    DELTA = {delta} (held fixed)    sd = {hsd}");
     println!();
     println!("{:<6} {:<6} {:<8} {:>10} {:>10} {:>10} {:>10} {:>8}", "ratio", "W", "regime", "base.exec", "temp.exec", "base.blk", "temp.blk", "× exec");
     for (ratio, b, b_stats, _, t_stats, _) in rows {
@@ -351,7 +369,8 @@ fn print_n_sweep(u: u64, w_ratio: u64, rounds: u32, crashes: bool, rows: &[(u32,
     println!();
     println!("Three-Phase Commit (basic): N sweep{}", if crashes { " + crashes" } else { "" });
     println!("====================================================================");
-    println!("R = {rounds}    L = 0    U = {u}    W = {} (= {w_ratio}·U)", u * w_ratio);
+    let (hl, hsd) = rows.first().map(|r| (r.1.l, r.1.sd)).unwrap_or((0, 0));
+    println!("R = {rounds}    L = {hl}    U = {u}    W = {} (= {w_ratio}·U)    sd = {hsd}", u * w_ratio);
     println!();
     println!("{:<3} {:<6} {:<6} {:>10} {:>10} {:>10} {:>10} {:>8}", "N", "W", "DELTA", "base.exec", "temp.exec", "base.blk", "temp.blk", "× exec");
     for (n, b, b_stats, _, t_stats, _) in rows {
@@ -365,13 +384,15 @@ fn print_n_sweep(u: u64, w_ratio: u64, rounds: u32, crashes: bool, rows: &[(u32,
 // CLI
 // =====================================================================
 
-fn parse_args() -> (String, u32, u64, u64, u32, bool) {
+fn parse_args() -> (String, u32, u64, u64, u32, bool, f64, f64) {
     let mut mode = String::from("compare");
     let mut num_ps = DEFAULT_PARTICIPANTS;
     let mut u = DEFAULT_U;
     let mut w_ratio = DEFAULT_W_RATIO;
     let mut rounds = DEFAULT_ROUNDS;
     let mut crashes = false;
+    let mut l_ratio: f64 = 0.0;
+    let mut sd_ratio: f64 = 0.0;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -380,46 +401,55 @@ fn parse_args() -> (String, u32, u64, u64, u32, bool) {
             "--u" => u = args.next().expect("--u value").parse().expect("u64"),
             "--w-ratio" => w_ratio = args.next().expect("--w-ratio value").parse().expect("u64"),
             "--rounds" => rounds = args.next().expect("--rounds value").parse().expect("u32"),
+            "--l-ratio" => l_ratio = args.next().expect("--l-ratio value").parse().expect("f64"),
+            "--sd-ratio" => sd_ratio = args.next().expect("--sd-ratio value").parse().expect("f64"),
             "--crashes" => crashes = true,
             "--help" | "-h" => {
-                eprintln!("Usage: three_pc_timed [--mode MODE] [--participants N] [--u U] [--w-ratio R] [--rounds R] [--crashes]\n\
+                eprintln!("Usage: three_pc_timed [--mode MODE] [--participants N] [--u U] [--w-ratio R] [--rounds R] [--l-ratio LR] [--sd-ratio SR] [--crashes]\n\
                           Modes: baseline | timed | compare | sweep | n-sweep\n\
-                          Defaults: U=1, W/U=2 (Skeen), N=3, R=1.");
+                          Defaults: U=1, W/U=2 (Skeen), N=3, R=1, L/U=0, sd/U=0.");
                 std::process::exit(0);
             }
             other => panic!("unknown argument: {other}"),
         }
     }
-    (mode, num_ps, u, w_ratio, rounds, crashes)
+    (mode, num_ps, u, w_ratio, rounds, crashes, l_ratio, sd_ratio)
 }
 
 fn main() {
-    let (mode_str, num_ps, u, w_ratio, rounds, crashes) = parse_args();
+    let (mode_str, num_ps, u, w_ratio, rounds, crashes, l_ratio, sd_ratio) = parse_args();
     assert!(num_ps >= 1);
     assert!(rounds >= 1);
+    // L and sd are derived from dimensionless ratios over U (network-parameters §2).
+    let l = (l_ratio * u as f64).round() as u64;
+    let sd = (sd_ratio * u as f64).round() as u64;
     match mode_str.as_str() {
         "baseline" => {
-            let b = Bounds::from_ratio(u, w_ratio);
+            let b = Bounds::from_ratio(u, w_ratio, l, sd);
             let (s, d) = run(Mode::Baseline, num_ps, b, crashes, rounds);
-            print_one("baseline", num_ps, b, rounds, &s, d, crashes);
+            print_one("baseline", num_ps, b, rounds, &s, d, crashes,
+                      COMMITS.load(Ordering::Relaxed), ABORTS.load(Ordering::Relaxed));
         }
         "timed" => {
-            let b = Bounds::from_ratio(u, w_ratio);
+            let b = Bounds::from_ratio(u, w_ratio, l, sd);
             let (s, d) = run(Mode::Timed, num_ps, b, crashes, rounds);
-            print_one("timed", num_ps, b, rounds, &s, d, crashes);
+            print_one("timed", num_ps, b, rounds, &s, d, crashes,
+                      COMMITS.load(Ordering::Relaxed), ABORTS.load(Ordering::Relaxed));
         }
         "compare" => {
-            let b = Bounds::from_ratio(u, w_ratio);
+            let b = Bounds::from_ratio(u, w_ratio, l, sd);
             let baseline = run(Mode::Baseline, num_ps, b, crashes, rounds);
+            let (bc, ba) = (COMMITS.load(Ordering::Relaxed), ABORTS.load(Ordering::Relaxed));
             let timed = run(Mode::Timed, num_ps, b, crashes, rounds);
-            print_compare(num_ps, b, rounds, crashes, baseline, timed);
+            let (tc, ta) = (COMMITS.load(Ordering::Relaxed), ABORTS.load(Ordering::Relaxed));
+            print_compare(num_ps, b, rounds, crashes, baseline, timed, bc, ba, tc, ta);
         }
         "sweep" => {
             let mid_idx = SWEEP_RATIOS.len() / 2;
             let delta = u * SWEEP_RATIOS[mid_idx];
             let mut rows = Vec::new();
             for &r in SWEEP_RATIOS {
-                let b = Bounds::with_delta(u, r, delta);
+                let b = Bounds::with_delta(u, r, delta, l, sd);
                 let baseline = run(Mode::Baseline, num_ps, b, crashes, rounds);
                 let timed = run(Mode::Timed, num_ps, b, crashes, rounds);
                 rows.push((r, b, baseline.0, baseline.1, timed.0, timed.1));
@@ -430,7 +460,7 @@ fn main() {
             let delta = u * w_ratio + 1;
             let mut rows = Vec::new();
             for &n in SWEEP_PARTICIPANTS {
-                let b = Bounds::with_delta(u, w_ratio, delta);
+                let b = Bounds::with_delta(u, w_ratio, delta, l, sd);
                 let baseline = run(Mode::Baseline, n, b, crashes, rounds);
                 let timed = run(Mode::Timed, n, b, crashes, rounds);
                 rows.push((n, b, baseline.0, baseline.1, timed.0, timed.1));

@@ -55,14 +55,17 @@ struct Bounds {
     u: u64,
     w: u64,
     delta: u64,
+    l: u64,
+    sd: u64,
 }
 
 impl Bounds {
-    fn from_ratio(u: u64, w_ratio: u64) -> Self {
-        assert!(u >= 1, "U must be >= 1 (L=0 < U)");
+    fn from_ratio(u: u64, w_ratio: u64, l: u64, sd: u64) -> Self {
+        assert!(u >= 1, "U must be >= 1");
         assert!(w_ratio >= 2, "W/U ratio must be >= 2 (Skeen)");
+        assert!(l <= u, "transit lower bound L must be <= U");
         let w = u * w_ratio;
-        Self { u, w, delta: w + 1 }
+        Self { u, w, delta: w + 1, l, sd }
     }
 }
 
@@ -183,13 +186,16 @@ fn participant(b: Bounds, num_ps: u32, index: u32, crashes: bool) {
     }
 }
 
-fn parse_args() -> (u32, u64, u64, bool, bool) {
+fn parse_args() -> (u32, u64, u64, bool, bool, f64, f64, String) {
     let mut args = std::env::args().skip(1);
     let mut n = DEFAULT_PARTICIPANTS;
     let mut u = DEFAULT_U;
     let mut w_ratio = DEFAULT_W_RATIO;
     let mut crashes = false;
     let mut replay = false;
+    let mut l_ratio: f64 = 0.0;
+    let mut sd_ratio: f64 = 0.0;
+    let mut mode = String::from("timed"); // timed | baseline (baseline = untimed MUST)
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--participants" => {
@@ -204,12 +210,21 @@ fn parse_args() -> (u32, u64, u64, bool, bool) {
                 let v = args.next().expect("--w-ratio requires a value");
                 w_ratio = v.parse().expect("invalid --w-ratio");
             }
+            "--l-ratio" => {
+                let v = args.next().expect("--l-ratio requires a value");
+                l_ratio = v.parse().expect("invalid --l-ratio");
+            }
+            "--sd-ratio" => {
+                let v = args.next().expect("--sd-ratio requires a value");
+                sd_ratio = v.parse().expect("invalid --sd-ratio");
+            }
+            "--mode" => mode = args.next().expect("--mode requires a value"),
             "--crashes" => crashes = true,
             "--replay" => replay = true,
             other => panic!("unknown argument: {other}"),
         }
     }
-    (n, u, w_ratio, crashes, replay)
+    (n, u, w_ratio, crashes, replay, l_ratio, sd_ratio, mode)
 }
 
 fn scenario(b: Bounds, num_ps: u32, crashes: bool) -> impl Fn() + Send + Sync + 'static {
@@ -227,9 +242,17 @@ fn scenario(b: Bounds, num_ps: u32, crashes: bool) -> impl Fn() + Send + Sync + 
 }
 
 fn main() {
-    let (num_ps, u, w_ratio, crashes, replay) = parse_args();
+    let (num_ps, u, w_ratio, crashes, replay, l_ratio, sd_ratio, mode) = parse_args();
     assert!(num_ps >= 2, "need >= 2 participants for the bug to fire");
-    let b = Bounds::from_ratio(u, w_ratio);
+    let timed = match mode.as_str() {
+        "timed" => true,
+        "baseline" => false,
+        other => panic!("invalid --mode: {other} (expected timed|baseline)"),
+    };
+    // L and sd derived from dimensionless ratios over U (network-parameters §2).
+    let l = (l_ratio * u as f64).round() as u64;
+    let sd = (sd_ratio * u as f64).round() as u64;
+    let b = Bounds::from_ratio(u, w_ratio, l, sd);
 
     if replay {
         println!("Replaying captured counterexample from {BUG_FILE}");
@@ -238,8 +261,9 @@ fn main() {
     }
 
     println!("Running buggy 3PC verification (Skeen '81 skeleton, broken decision rule)");
+    println!("  mode        = {mode}");
     println!("  N           = {num_ps}");
-    println!("  L=0  U={}  W={} (= {}·U)  DELTA={}", b.u, b.w, w_ratio, b.delta);
+    println!("  L={}  U={}  W={} (= {}·U)  DELTA={}  sd={}", b.l, b.u, b.w, w_ratio, b.delta, b.sd);
     println!("  source: Skeen '81 termination bound; report § 4.2");
     println!("Coordinator commits on majority instead of unanimity — bug witness fires.");
     if crashes {
@@ -250,12 +274,21 @@ fn main() {
     println!("  replay log -> {BUG_FILE}");
     println!();
 
-    let cfg = Config::builder()
-        .with_timed(0, b.u, 0)
+    let mut builder = Config::builder();
+    if timed {
+        // FIXED: thread the swept L and sd (was hardcoded with_timed(0, b.u, 0)).
+        builder = builder.with_timed(b.l, b.u, b.sd);
+    }
+    // baseline = untimed MUST (no with_timed) -> the comparison point for the timed run.
+    let cfg = builder
         .with_dot_out(DOT_FILE)
         .with_error_trace(BUG_FILE)
         .with_verbose(1)
         .build();
 
-    traceforge::verify(cfg, scenario(b, num_ps, crashes));
+    // verify() returns Stats only if no assertion fired (a fired bug panics in
+    // lib.rs before returning). So this line runs only on the HOLD path and lets
+    // a non-firing cell report its explored state-space size for the benchmark.
+    let stats = traceforge::verify(cfg, scenario(b, num_ps, crashes));
+    println!("execs={} blocked={}", stats.execs, stats.block);
 }

@@ -39,7 +39,13 @@
 //!
 //!     cargo run --release --example two_pc_timed -- --mode timed --participants 5 --delta 5
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
+
+// Commit-outcome counters (analog of the leader-election count for commit protocols):
+// incremented once per coordinator decision; reset before each verify, read after.
+static COMMITS: AtomicUsize = AtomicUsize::new(0);
+static ABORTS: AtomicUsize = AtomicUsize::new(0);
 
 use traceforge::thread::{self, ThreadId};
 use traceforge::{Config, Stats};
@@ -97,8 +103,10 @@ fn coordinator(mode: Mode, delta: u64) {
     }
 
     let decision = if yes_count == ps.len() {
+        COMMITS.fetch_add(1, Ordering::Relaxed);
         ParticipantMsg::Commit
     } else {
+        ABORTS.fetch_add(1, Ordering::Relaxed);
         ParticipantMsg::Abort
     };
     for id in &ps {
@@ -147,6 +155,8 @@ fn build_config(mode: Mode) -> Config {
 
 fn run(mode: Mode, num_ps: u32, delta: u64) -> (Stats, Duration) {
     let cfg = build_config(mode);
+    COMMITS.store(0, Ordering::Relaxed);
+    ABORTS.store(0, Ordering::Relaxed);
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
         let c = thread::spawn(move || coordinator(mode, delta));
@@ -167,16 +177,17 @@ fn factorial(n: u32) -> u64 {
     (1..=n as u64).product()
 }
 
-fn print_one(label: &str, num_ps: u32, stats: &Stats, dur: Duration) {
+fn print_one(label: &str, num_ps: u32, stats: &Stats, dur: Duration, commits: usize, aborts: usize) {
     println!(
-        "{label:<10} participants={num_ps}  execs={execs:<8} blocked={block:<6} time={dur:?}",
+        "{label:<10} participants={num_ps}  execs={execs:<8} blocked={block:<6} commit={commits:<6} abort={aborts:<6} time={dur:?}",
         execs = stats.execs,
         block = stats.block,
         dur = dur,
     );
 }
 
-fn print_compare(num_ps: u32, baseline: (Stats, Duration), timed: (Stats, Duration)) {
+fn print_compare(num_ps: u32, baseline: (Stats, Duration), timed: (Stats, Duration),
+                 b_commits: usize, b_aborts: usize, t_commits: usize, t_aborts: usize) {
     let (b_stats, b_dur) = baseline;
     let (t_stats, t_dur) = timed;
 
@@ -209,6 +220,7 @@ fn print_compare(num_ps: u32, baseline: (Stats, Duration), timed: (Stats, Durati
     let time_ratio = b_dur.as_secs_f64() / t_dur.as_secs_f64().max(f64::MIN_POSITIVE);
     println!("execs reduction: {exec_ratio:.2}x  (= baseline / timed)");
     println!("time  speedup  : {time_ratio:.2}x");
+    println!("commit/abort (complete execs): baseline {b_commits}/{b_aborts}   timed {t_commits}/{t_aborts}");
 }
 
 fn parse_args() -> (String, u32, u64) {
@@ -263,16 +275,20 @@ fn main() {
     match mode_str.as_str() {
         "baseline" => {
             let (s, d) = run(Mode::Baseline, num_ps, delta);
-            print_one("baseline", num_ps, &s, d);
+            print_one("baseline", num_ps, &s, d,
+                      COMMITS.load(Ordering::Relaxed), ABORTS.load(Ordering::Relaxed));
         }
         "timed" => {
             let (s, d) = run(Mode::Timed, num_ps, delta);
-            print_one("timed", num_ps, &s, d);
+            print_one("timed", num_ps, &s, d,
+                      COMMITS.load(Ordering::Relaxed), ABORTS.load(Ordering::Relaxed));
         }
         "compare" => {
             let baseline = run(Mode::Baseline, num_ps, delta);
+            let (bc, ba) = (COMMITS.load(Ordering::Relaxed), ABORTS.load(Ordering::Relaxed));
             let timed = run(Mode::Timed, num_ps, delta);
-            print_compare(num_ps, baseline, timed);
+            let (tc, ta) = (COMMITS.load(Ordering::Relaxed), ABORTS.load(Ordering::Relaxed));
+            print_compare(num_ps, baseline, timed, bc, ba, tc, ta);
         }
         other => panic!("invalid --mode: {other} (expected baseline|timed|compare)"),
     }
