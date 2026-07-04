@@ -1,0 +1,6 @@
+[sweep] 4 cells across ['ccle_b2']  jobs=1 timeout=900s
+[1/4]        comm_closed_leader_election N3 l0.0 sd0.0 w5 ->    hold prune=n/a elect=40118304 ok 824.078s
+[2/4]        comm_closed_leader_election N3 l0.0 sd0.5 w5 ->    hold prune=n/a elect=40932792 ok 827.678s
+[3/4]        comm_closed_leader_election N3 l0.9 sd0.0 w5 ->    hold prune=n/a elect=6861468 ok 188.354s
+[4/4]        comm_closed_leader_election N3 l0.9 sd0.5 w5 ->    hold prune=n/a elect=15448092 ok 342.871s
+[sweep] wrote 4 rows -> benchmarks/results_ballots2.csv

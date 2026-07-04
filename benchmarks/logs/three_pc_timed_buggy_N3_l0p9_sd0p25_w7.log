@@ -1,0 +1,943 @@
+Running buggy 3PC verification (Skeen '81 skeleton, broken decision rule)
+  mode        = timed
+  N           = 3
+  L=18  U=20  W=140 (= 7·U)  DELTA=141  sd=5
+  source: Skeen '81 termination bound; report § 4.2
+Coordinator commits on majority instead of unanimity — bug witness fires.
+Artifacts on counterexample:
+  DOT graph  -> /tmp/3pc_buggy.dot
+  replay log -> /tmp/3pc_buggy.bug
+
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [TIMEOUT]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [TIMEOUT]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [TIMEOUT]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET false
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET true
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET false
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+Executions attempted so far: 1 total 1 finished normally 0 blocked.
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [TIMEOUT]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [(t4, 4)]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [TIMEOUT]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET true
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET true
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET false
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+Executions attempted so far: 2 total 2 finished normally 0 blocked.
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [TIMEOUT]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [(t4, 4)]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [TIMEOUT]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET true
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET false
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET false
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+Executions attempted so far: 3 total 3 finished normally 0 blocked.
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [TIMEOUT]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [(t4, 4)]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [TIMEOUT]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET false
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET true
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET false
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+Executions attempted so far: 4 total 4 finished normally 0 blocked.
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [TIMEOUT]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [(t4, 4)]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [TIMEOUT]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET false
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET false
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET false
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+Executions attempted so far: 5 total 5 finished normally 0 blocked.
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [TIMEOUT]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [TIMEOUT]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [TIMEOUT]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET false
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET true
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET true
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+Executions attempted so far: 6 total 6 finished normally 0 blocked.
+Executions attempted so far: 7 total 6 finished normally 1 blocked.
+Executions attempted so far: 8 total 6 finished normally 2 blocked.
+Executions attempted so far: 9 total 6 finished normally 3 blocked.
+Executions attempted so far: 10 total 6 finished normally 4 blocked.
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [TIMEOUT]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [TIMEOUT]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [TIMEOUT]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET false
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET false
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET true
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [TIMEOUT]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [TIMEOUT]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [TIMEOUT]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET false
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET false
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET false
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [(t2, 4)]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [TIMEOUT]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [TIMEOUT]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET false
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET true
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET true
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [(t2, 4)]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [(t4, 4)]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [TIMEOUT]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET false
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET true
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET true
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [(t2, 4)]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [(t4, 4)]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [TIMEOUT]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET false
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET false
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET true
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [(t2, 4)]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [TIMEOUT]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [TIMEOUT]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET false
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET true
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET false
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+Executions attempted so far: 20 total 12 finished normally 8 blocked.
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [(t2, 4)]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [(t4, 4)]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [TIMEOUT]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET false
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET false
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET false
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [(t2, 4)]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [(t4, 4)]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [TIMEOUT]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET false
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET true
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET false
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [(t2, 4)]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [(t3, 4)]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [TIMEOUT]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET false
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET true
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET false
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [(t2, 4)]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [(t3, 4)]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [(t4, 4)]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET false
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET true
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET false
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+One more complete execution
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [(t2, 4)]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [(t3, 4)]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [TIMEOUT]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Abort, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET false
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET true
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): END
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET true
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): END
+
+Executions attempted so far: 30 total 17 finished normally 13 blocked.
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Init([ThreadId { opaque_id: 2 }, ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }]), type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV() [(t0, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Prepare(ThreadId { opaque_id: 1 }), type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 5): SLEEP(141)
+	(t1, 6): RECV W_r=140() [(t2, 4)]
+	(t1, 7): SLEEP(141)
+	(t1, 8): RECV W_r=140() [(t3, 4)]
+	(t1, 9): SLEEP(141)
+	(t1, 10): RECV W_r=140() [(t4, 4)]
+	(t1, 11): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: PreCommit, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 12): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: PreCommit, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 13): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: PreCommit, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 14): SLEEP(141)
+	(t1, 15): RECV W_r=140() [(t2, 7)]
+	(t1, 16): SLEEP(141)
+	(t1, 17): RECV W_r=140() [(t3, 7)]
+	(t1, 18): SLEEP(141)
+	(t1, 19): RECV W_r=140() [(t4, 7)]
+	(t1, 20): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Commit, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 21): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Commit, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 22): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Commit, type_name: "three_pc_timed_buggy::ParticipantMsg" })
+	(t1, 23): END
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t1, 2)]
+	(t2, 2): SLEEP(141)
+	(t2, 3): NONDET false
+	(t2, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: No, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 5): RECV() [(t1, 11)]
+	(t2, 6): SLEEP(423)
+	(t2, 7): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Ack, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t2, 8): RECV() [(t1, 20)]
+	(t2, 9): BLK Assert
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t1, 3)]
+	(t3, 2): SLEEP(282)
+	(t3, 3): NONDET true
+	(t3, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t3, 5): RECV() [(t1, 12)]
+	(t3, 6): SLEEP(423)
+	(t3, 7): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Ack, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t1, 4)]
+	(t4, 2): SLEEP(423)
+	(t4, 3): NONDET true
+	(t4, 4): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Yes, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 5): RECV() [(t1, 13)]
+	(t4, 6): SLEEP(423)
+	(t4, 7): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: Ack, type_name: "three_pc_timed_buggy::CoordinatorMsg" })
+	(t4, 8): RECV() [(t1, 22)]
+	(t4, 9): END
+
+Random schedule seed: 14818219180122051245.
+A panic was detected
+
+thread 'main' (1191722) panicked at traceforge/src/lib.rs:2236:21:
+assertion failed: cond
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

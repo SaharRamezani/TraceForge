@@ -1,0 +1,3 @@
+=== tight corner (w=40 W/U=2, l=18 L/U=0.9, sd=0) timed-only, cap 900s each ===
+inbox N=4 b=2 tight: exit=124 wall=900s  
+inbox N=5 b=1 tight: exit=124 wall=900s  

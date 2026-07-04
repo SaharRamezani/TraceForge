@@ -1,0 +1,28 @@
+% 3PC (correct) pruning gradient: timed prunes more as L/U tightens. sd/U=0, N=3, U=20.
+\begin{table}[t]\centering
+\caption{3PC (correct): pruning ratio (baseline/timed \#execs) over the $L/U\times W/U$ grid, $sd/U=0$.}
+\begin{tabular}{lrrrrr}
+\toprule
+$L/U \backslash\ W/U$ & 2 & 3 & 5 & 7 & 10 \\
+\midrule
+0 & 11.92 & 17.77 & 17.93 & 17.93 & 17.93 \\
+0.25 & 13.51 & 17.93 & 17.93 & 17.93 & 17.93 \\
+0.5 & 14.90 & 20.26 & 20.26 & 20.26 & 20.26 \\
+0.9 & 14.90 & 20.26 & 20.26 & 20.26 & 20.26 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]\centering
+\caption{3PC (correct): timed \#execs over the $L/U\times W/U$ grid, $sd/U=0$, $N=3$ (lower = more pruning).}
+\begin{tabular}{lrrrrr}
+\toprule
+$L/U \backslash\ W/U$ & 2 & 3 & 5 & 7 & 10 \\
+\midrule
+0 & 170 & 114 & 113 & 113 & 113 \\
+0.25 & 150 & 113 & 113 & 113 & 113 \\
+0.5 & 136 & 100 & 100 & 100 & 100 \\
+0.9 & 136 & 100 & 100 & 100 & 100 \\
+\bottomrule
+\end{tabular}
+\end{table}

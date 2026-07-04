@@ -1,0 +1,4 @@
+[sweep] 2 cells across ['inbox_n45']  jobs=1 timeout=5100s
+[1/2]  comm_closed_leader_election_inbox N4 l0.9 sd0.0 w2 -> timeout prune=n/a elect= timeout 5100.114s
+[2/2]  comm_closed_leader_election_inbox N5 l0.9 sd0.0 w2 ->    hold prune=n/a elect=6925445 ok 2869.687s
+[sweep] wrote 2 rows -> benchmarks/results.csv

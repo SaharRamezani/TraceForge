@@ -1,0 +1,65 @@
+[chain] core regen finished: 250 rows
+[sweep] 60 cells across ['3pc4']  jobs=2 timeout=600s
+[1/60]                     three_pc_timed N4 l0.0 sd0.0 w3 ->    hold prune=109.246 elect=— ok 5.330s
+[2/60]                     three_pc_timed N4 l0.0 sd0.0 w2 ->    hold prune=63.622 elect=— ok 5.415s
+[3/60]                     three_pc_timed N4 l0.0 sd0.0 w5 ->    hold prune=109.969 elect=— ok 5.226s
+[4/60]                     three_pc_timed N4 l0.0 sd0.0 w7 ->    hold prune=109.969 elect=— ok 5.214s
+[5/60]                     three_pc_timed N4 l0.0 sd0.25 w2 ->    hold prune=63.541 elect=— ok 5.309s
+[6/60]                     three_pc_timed N4 l0.0 sd0.0 w10 ->    hold prune=109.969 elect=— ok 5.395s
+[7/60]                     three_pc_timed N4 l0.0 sd0.25 w3 ->    hold prune=109.246 elect=— ok 5.221s
+[8/60]                     three_pc_timed N4 l0.0 sd0.25 w5 ->    hold prune=109.486 elect=— ok 5.313s
+[9/60]                     three_pc_timed N4 l0.0 sd0.25 w7 ->    hold prune=109.969 elect=— ok 5.487s
+[10/60]                     three_pc_timed N4 l0.0 sd0.25 w10 ->    hold prune=109.969 elect=— ok 5.481s
+[11/60]                     three_pc_timed N4 l0.0 sd0.5 w2 ->    hold prune=63.541 elect=— ok 5.723s
+[12/60]                     three_pc_timed N4 l0.0 sd0.5 w3 ->    hold prune=63.622 elect=— ok 5.690s
+[13/60]                     three_pc_timed N4 l0.0 sd0.5 w7 ->    hold prune=109.969 elect=— ok 5.575s
+[14/60]                     three_pc_timed N4 l0.0 sd0.5 w5 ->    hold prune=109.246 elect=— ok 5.704s
+[15/60]                     three_pc_timed N4 l0.0 sd0.5 w10 ->    hold prune=109.969 elect=— ok 5.519s
+[16/60]                     three_pc_timed N4 l0.25 sd0.0 w2 ->    hold prune=74.131 elect=— ok 5.475s
+[17/60]                     three_pc_timed N4 l0.25 sd0.0 w3 ->    hold prune=109.486 elect=— ok 5.450s
+[18/60]                     three_pc_timed N4 l0.25 sd0.0 w5 ->    hold prune=109.969 elect=— ok 5.482s
+[19/60]                     three_pc_timed N4 l0.25 sd0.0 w7 ->    hold prune=109.969 elect=— ok 5.424s
+[20/60]                     three_pc_timed N4 l0.25 sd0.0 w10 ->    hold prune=109.969 elect=— ok 5.585s
+[21/60]                     three_pc_timed N4 l0.25 sd0.25 w2 ->    hold prune=63.622 elect=— ok 5.444s
+[22/60]                     three_pc_timed N4 l0.25 sd0.25 w3 ->    hold prune=109.246 elect=— ok 5.501s
+[23/60]                     three_pc_timed N4 l0.25 sd0.25 w5 ->    hold prune=109.969 elect=— ok 5.532s
+[24/60]                     three_pc_timed N4 l0.25 sd0.25 w7 ->    hold prune=109.969 elect=— ok 5.700s
+[25/60]                     three_pc_timed N4 l0.25 sd0.25 w10 ->    hold prune=109.969 elect=— ok 5.471s
+[26/60]                     three_pc_timed N4 l0.25 sd0.5 w2 ->    hold prune=63.622 elect=— ok 5.601s
+[27/60]                     three_pc_timed N4 l0.25 sd0.5 w3 ->    hold prune=74.131 elect=— ok 5.498s
+[28/60]                     three_pc_timed N4 l0.25 sd0.5 w5 ->    hold prune=109.486 elect=— ok 5.585s
+[29/60]                     three_pc_timed N4 l0.25 sd0.5 w7 ->    hold prune=109.969 elect=— ok 5.634s
+[30/60]                     three_pc_timed N4 l0.25 sd0.5 w10 ->    hold prune=109.969 elect=— ok 5.485s
+[31/60]                     three_pc_timed N4 l0.5 sd0.0 w2 ->    hold prune=77.115 elect=— ok 5.768s
+[32/60]                     three_pc_timed N4 l0.5 sd0.0 w3 ->    hold prune=115.851 elect=— ok 5.751s
+[33/60]                     three_pc_timed N4 l0.5 sd0.0 w5 ->    hold prune=116.121 elect=— ok 5.415s
+[34/60]                     three_pc_timed N4 l0.5 sd0.0 w7 ->    hold prune=116.121 elect=— ok 5.547s
+[35/60]                     three_pc_timed N4 l0.5 sd0.0 w10 ->    hold prune=116.121 elect=— ok 5.486s
+[36/60]                     three_pc_timed N4 l0.5 sd0.25 w2 ->    hold prune=76.995 elect=— ok 5.765s
+[37/60]                     three_pc_timed N4 l0.5 sd0.25 w3 ->    hold prune=115.582 elect=— ok 5.406s
+[38/60]                     three_pc_timed N4 l0.5 sd0.25 w5 ->    hold prune=115.851 elect=— ok 5.440s
+[39/60]                     three_pc_timed N4 l0.5 sd0.25 w7 ->    hold prune=115.851 elect=— ok 5.518s
+[40/60]                     three_pc_timed N4 l0.5 sd0.25 w10 ->    hold prune=115.851 elect=— ok 5.572s
+[41/60]                     three_pc_timed N4 l0.5 sd0.5 w2 ->    hold prune=65.290 elect=— ok 5.721s
+[42/60]                     three_pc_timed N4 l0.5 sd0.5 w3 ->    hold prune=76.055 elect=— ok 5.655s
+[43/60]                     three_pc_timed N4 l0.5 sd0.5 w5 ->    hold prune=113.476 elect=— ok 5.476s
+[44/60]                     three_pc_timed N4 l0.5 sd0.5 w7 ->    hold prune=113.735 elect=— ok 5.481s
+[45/60]                     three_pc_timed N4 l0.5 sd0.5 w10 ->    hold prune=113.735 elect=— ok 5.398s
+[46/60]                     three_pc_timed N4 l0.9 sd0.0 w2 ->    hold prune=77.115 elect=— ok 5.438s
+[47/60]                     three_pc_timed N4 l0.9 sd0.0 w3 ->    hold prune=116.121 elect=— ok 5.413s
+[48/60]                     three_pc_timed N4 l0.9 sd0.0 w5 ->    hold prune=116.121 elect=— ok 5.372s
+[49/60]                     three_pc_timed N4 l0.9 sd0.0 w7 ->    hold prune=116.121 elect=— ok 5.526s
+[50/60]                     three_pc_timed N4 l0.9 sd0.0 w10 ->    hold prune=116.121 elect=— ok 5.486s
+[51/60]                     three_pc_timed N4 l0.9 sd0.25 w2 ->    hold prune=77.115 elect=— ok 5.638s
+[52/60]                     three_pc_timed N4 l0.9 sd0.25 w3 ->    hold prune=115.851 elect=— ok 5.560s
+[53/60]                     three_pc_timed N4 l0.9 sd0.25 w5 ->    hold prune=116.121 elect=— ok 5.798s
+[54/60]                     three_pc_timed N4 l0.9 sd0.25 w7 ->    hold prune=116.121 elect=— ok 5.651s
+[55/60]                     three_pc_timed N4 l0.9 sd0.25 w10 ->    hold prune=116.121 elect=— ok 5.384s
+[56/60]                     three_pc_timed N4 l0.9 sd0.5 w2 ->    hold prune=77.115 elect=— ok 5.596s
+[57/60]                     three_pc_timed N4 l0.9 sd0.5 w3 ->    hold prune=77.115 elect=— ok 5.411s
+[58/60]                     three_pc_timed N4 l0.9 sd0.5 w5 ->    hold prune=116.121 elect=— ok 5.477s
+[59/60]                     three_pc_timed N4 l0.9 sd0.5 w7 ->    hold prune=116.121 elect=— ok 5.453s
+[60/60]                     three_pc_timed N4 l0.9 sd0.5 w10 ->    hold prune=116.121 elect=— ok 5.400s
+[sweep] wrote 60 rows -> benchmarks/results_tail.csv
+[chain] migrated 10 N=5 rows into results_tail.csv (baseline=intractable)
+[chain] DONE. tail rows: 70

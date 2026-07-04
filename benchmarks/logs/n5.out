@@ -1,0 +1,12 @@
+[sweep] 10 cells across ['raft5_timed', 'ccle5_timed']  jobs=1 timeout=600s
+[1/10]               raft_leader_election N5 l sd w -> timeout prune=n/a elect= timeout 600.027s
+[2/10]               raft_leader_election N5 l sd w -> timeout prune=n/a elect= timeout 600.015s
+[3/10]               raft_leader_election N5 l sd w -> timeout prune=n/a elect= timeout 600.022s
+[4/10]        comm_closed_leader_election N5 l0.0 sd0.0 w5 -> timeout prune=n/a elect= timeout 600.106s
+[5/10]        comm_closed_leader_election N5 l0.25 sd0.0 w5 -> timeout prune=n/a elect= timeout 600.108s
+[6/10]        comm_closed_leader_election N5 l0.5 sd0.0 w5 -> timeout prune=n/a elect= timeout 600.104s
+[7/10]        comm_closed_leader_election N5 l0.9 sd0.0 w5 -> timeout prune=n/a elect= timeout 600.084s
+[8/10]        comm_closed_leader_election N5 l0.0 sd0.0 w2 -> timeout prune=n/a elect= timeout 600.107s
+[9/10]        comm_closed_leader_election N5 l0.0 sd0.0 w10 -> timeout prune=n/a elect= timeout 600.109s
+[10/10]        comm_closed_leader_election N5 l0.0 sd0.5 w5 -> timeout prune=n/a elect= timeout 600.104s
+[sweep] wrote 10 rows -> benchmarks/results_tail.csv
