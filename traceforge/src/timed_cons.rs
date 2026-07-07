@@ -254,16 +254,34 @@ fn timed_consistent_rec(
                 return pred_iv;
             };
             match ilab.rfs() {
-                // Inbox collected a non-empty subset. The inbox event
-                // must happen at a time t such that every send `s` in
-                // the subset has already arrived and none has yet expired.
+                // Inbox collected a non-empty subset. Operational
+                // semantics: executing at time t0 with at least `min`
+                // matching messages already in storage returns them
+                // immediately (t = t0, zero time passed); with fewer
+                // than `min` it waits and returns at the arrival of the
+                // message that completes `min` (t = max(t0, latest
+                // arrival), capped by t0 + W_r). A subset larger than
+                // `min` can therefore only be read immediately, and a
+                // waited read never happens later than an actual
+                // arrival, so it gets no `sd` lingering slack itself
+                // (sd only keeps the *other* messages alive until t).
                 Some(subset) if !subset.is_empty() => {
-                    let hi_cap = match wait {
-                        WaitTime::Finite(w) => pred_iv.hi.saturating_add(w),
-                        WaitTime::Infinite => u64::MAX,
+                    // Only a `min`-sized subset can be the outcome of
+                    // waiting; anything larger was read at t0.
+                    let can_wait = subset.len() <= ilab.min();
+                    let hi_cap = if can_wait {
+                        match wait {
+                            WaitTime::Finite(w) => pred_iv.hi.saturating_add(w),
+                            WaitTime::Infinite => u64::MAX,
+                        }
+                    } else {
+                        pred_iv.hi
                     };
                     let mut iv = TimeInterval::new(pred_iv.lo, hi_cap);
                     let sd = cfg.sd_for(e.thread);
+                    // Latest possible arrival among the subset (no sd):
+                    // a waited read returns exactly at an arrival.
+                    let mut last_arrival_hi = pred_iv.hi;
                     for s in subset {
                         let send_iv = timed_consistent_rec(g, s, cfg, cache);
                         if send_iv.is_empty() {
@@ -276,13 +294,17 @@ fn timed_consistent_rec(
                             .unwrap_or((cfg.l, cfg.u));
                         let (l_val, u_val) = transit;
                         let send_lo = send_iv.lo.saturating_add(l_val);
-                        let send_hi =
-                            send_iv.hi.saturating_add(u_val).saturating_add(sd);
+                        let arrive_hi = send_iv.hi.saturating_add(u_val);
+                        let send_hi = arrive_hi.saturating_add(sd);
                         iv.lo = iv.lo.max(send_lo);
                         iv.hi = iv.hi.min(send_hi);
+                        last_arrival_hi = last_arrival_hi.max(arrive_hi);
                         if iv.is_empty() {
                             break;
                         }
+                    }
+                    if can_wait && !iv.is_empty() {
+                        iv.hi = iv.hi.min(last_arrival_hi);
                     }
                     iv
                 }

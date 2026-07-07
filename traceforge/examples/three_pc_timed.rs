@@ -89,7 +89,6 @@ enum Mode {
 struct Bounds {
     u: u64,
     w: u64,
-    delta: u64,
     l: u64,
     sd: u64,
 }
@@ -100,11 +99,7 @@ impl Bounds {
         assert!(w_ratio >= 2);
         assert!(l <= u, "transit lower bound L must be <= U");
         let w = u * w_ratio;
-        Self { u, w, delta: w + 1, l, sd }
-    }
-    fn with_delta(u: u64, w_ratio: u64, delta: u64, l: u64, sd: u64) -> Self {
-        assert!(l <= u, "transit lower bound L must be <= U");
-        Self { u, w: u * w_ratio, delta, l, sd }
+        Self { u, w, l, sd }
     }
 }
 
@@ -116,7 +111,7 @@ fn maybe_crash(crashes: bool) -> bool {
 // Coordinator
 // =====================================================================
 
-fn coordinator(mode: Mode, b: Bounds, crashes: bool, rounds: u32) {
+fn coordinator(b: Bounds, crashes: bool, rounds: u32) {
     let ps: Vec<ThreadId> = loop {
         match traceforge::recv_msg_block::<CMsg>() {
             CMsg::Init { peers } => break peers,
@@ -136,9 +131,6 @@ fn coordinator(mode: Mode, b: Bounds, crashes: bool, rounds: u32) {
         let mut yes = 0usize;
         let mut received = 0usize;
         for _ in 0..ps.len() {
-            if mode == Mode::Timed {
-                traceforge::sleep(b.delta);
-            }
             let vote = loop {
                 match traceforge::recv_msg_timed::<CMsg>(WaitTime::Finite(b.w)) {
                     Some(CMsg::Yes { round: r }) if r == round => break Some(true),
@@ -173,9 +165,6 @@ fn coordinator(mode: Mode, b: Bounds, crashes: bool, rounds: u32) {
 
         let mut acks = 0usize;
         for _ in 0..ps.len() {
-            if mode == Mode::Timed {
-                traceforge::sleep(b.delta);
-            }
             let ack = loop {
                 match traceforge::recv_msg_timed::<CMsg>(WaitTime::Finite(b.w)) {
                     Some(CMsg::Ack { round: r }) if r == round => break Some(()),
@@ -205,7 +194,7 @@ fn coordinator(mode: Mode, b: Bounds, crashes: bool, rounds: u32) {
 // Participant
 // =====================================================================
 
-fn participant(mode: Mode, b: Bounds, num_ps: u32, index: u32, crashes: bool, rounds: u32) {
+fn participant(b: Bounds, crashes: bool, rounds: u32) {
     if maybe_crash(crashes) { return; }
 
     let mut dead = false;
@@ -226,9 +215,6 @@ fn participant(mode: Mode, b: Bounds, num_ps: u32, index: u32, crashes: bool, ro
         };
 
         if maybe_crash(crashes) { return; }
-        if mode == Mode::Timed {
-            traceforge::sleep(b.delta * (index as u64 + 1));
-        }
 
         let voted_yes: bool = traceforge::nondet();
         let vote = if voted_yes {
@@ -258,9 +244,6 @@ fn participant(mode: Mode, b: Bounds, num_ps: u32, index: u32, crashes: bool, ro
         }
 
         if maybe_crash(crashes) { return; }
-        if mode == Mode::Timed {
-            traceforge::sleep(b.delta * num_ps as u64);
-        }
         traceforge::send_msg(coord_id, CMsg::Ack { round });
         if maybe_crash(crashes) { return; }
 
@@ -300,11 +283,11 @@ fn run(mode: Mode, num_ps: u32, b: Bounds, crashes: bool, rounds: u32) -> (Stats
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
         let mut handles = Vec::new();
-        for i in 0..num_ps {
-            handles.push(thread::spawn(move || participant(mode, b, num_ps, i, crashes, rounds)));
+        for _ in 0..num_ps {
+            handles.push(thread::spawn(move || participant(b, crashes, rounds)));
         }
         let peer_ids: Vec<ThreadId> = handles.iter().map(|h| h.thread().id()).collect();
-        let c = thread::spawn(move || coordinator(mode, b, crashes, rounds));
+        let c = thread::spawn(move || coordinator(b, crashes, rounds));
         traceforge::send_msg(c.thread().id(), CMsg::Init { peers: peer_ids });
         for h in handles { let _ = h.join(); }
         let _ = c.join();
@@ -349,19 +332,18 @@ fn print_compare(num_ps: u32, b: Bounds, rounds: u32, crashes: bool, baseline: (
     println!("commit/abort (complete execs): baseline {b_commits}/{b_aborts}   timed {t_commits}/{t_aborts}");
 }
 
-fn print_sweep(num_ps: u32, u: u64, delta: u64, rounds: u32, crashes: bool, rows: &[(u64, Bounds, Stats, Duration, Stats, Duration)]) {
+fn print_sweep(num_ps: u32, u: u64, rounds: u32, crashes: bool, rows: &[(u64, Bounds, Stats, Duration, Stats, Duration)]) {
     println!();
     println!("Three-Phase Commit (basic): W/U sweep{}", if crashes { " + crashes" } else { "" });
     println!("====================================================================");
     let (hl, hsd) = rows.first().map(|r| (r.1.l, r.1.sd)).unwrap_or((0, 0));
-    println!("N = {num_ps}    R = {rounds}    L = {hl}    U = {u}    DELTA = {delta} (held fixed)    sd = {hsd}");
+    println!("N = {num_ps}    R = {rounds}    L = {hl}    U = {u}    sd = {hsd}");
     println!();
-    println!("{:<6} {:<6} {:<8} {:>10} {:>10} {:>10} {:>10} {:>8}", "ratio", "W", "regime", "base.exec", "temp.exec", "base.blk", "temp.blk", "× exec");
+    println!("{:<6} {:<6} {:>10} {:>10} {:>10} {:>10} {:>8}", "ratio", "W", "base.exec", "temp.exec", "base.blk", "temp.blk", "× exec");
     for (ratio, b, b_stats, _, t_stats, _) in rows {
-        let regime = if b.w < delta { "tight" } else { "loose" };
         let r = b_stats.execs as f64 / t_stats.execs.max(1) as f64;
-        println!("{:<6} {:<6} {:<8} {:>10} {:>10} {:>10} {:>10} {:>7.2}x",
-            ratio, b.w, regime, b_stats.execs, t_stats.execs, b_stats.block, t_stats.block, r);
+        println!("{:<6} {:<6} {:>10} {:>10} {:>10} {:>10} {:>7.2}x",
+            ratio, b.w, b_stats.execs, t_stats.execs, b_stats.block, t_stats.block, r);
     }
 }
 
@@ -372,11 +354,11 @@ fn print_n_sweep(u: u64, w_ratio: u64, rounds: u32, crashes: bool, rows: &[(u32,
     let (hl, hsd) = rows.first().map(|r| (r.1.l, r.1.sd)).unwrap_or((0, 0));
     println!("R = {rounds}    L = {hl}    U = {u}    W = {} (= {w_ratio}·U)    sd = {hsd}", u * w_ratio);
     println!();
-    println!("{:<3} {:<6} {:<6} {:>10} {:>10} {:>10} {:>10} {:>8}", "N", "W", "DELTA", "base.exec", "temp.exec", "base.blk", "temp.blk", "× exec");
+    println!("{:<3} {:<6} {:>10} {:>10} {:>10} {:>10} {:>8}", "N", "W", "base.exec", "temp.exec", "base.blk", "temp.blk", "× exec");
     for (n, b, b_stats, _, t_stats, _) in rows {
         let r = b_stats.execs as f64 / t_stats.execs.max(1) as f64;
-        println!("{:<3} {:<6} {:<6} {:>10} {:>10} {:>10} {:>10} {:>7.2}x",
-            n, b.w, b.delta, b_stats.execs, t_stats.execs, b_stats.block, t_stats.block, r);
+        println!("{:<3} {:<6} {:>10} {:>10} {:>10} {:>10} {:>7.2}x",
+            n, b.w, b_stats.execs, t_stats.execs, b_stats.block, t_stats.block, r);
     }
 }
 
@@ -445,22 +427,19 @@ fn main() {
             print_compare(num_ps, b, rounds, crashes, baseline, timed, bc, ba, tc, ta);
         }
         "sweep" => {
-            let mid_idx = SWEEP_RATIOS.len() / 2;
-            let delta = u * SWEEP_RATIOS[mid_idx];
             let mut rows = Vec::new();
             for &r in SWEEP_RATIOS {
-                let b = Bounds::with_delta(u, r, delta, l, sd);
+                let b = Bounds::from_ratio(u, r, l, sd);
                 let baseline = run(Mode::Baseline, num_ps, b, crashes, rounds);
                 let timed = run(Mode::Timed, num_ps, b, crashes, rounds);
                 rows.push((r, b, baseline.0, baseline.1, timed.0, timed.1));
             }
-            print_sweep(num_ps, u, delta, rounds, crashes, &rows);
+            print_sweep(num_ps, u, rounds, crashes, &rows);
         }
         "n-sweep" => {
-            let delta = u * w_ratio + 1;
             let mut rows = Vec::new();
             for &n in SWEEP_PARTICIPANTS {
-                let b = Bounds::with_delta(u, w_ratio, delta, l, sd);
+                let b = Bounds::from_ratio(u, w_ratio, l, sd);
                 let baseline = run(Mode::Baseline, n, b, crashes, rounds);
                 let timed = run(Mode::Timed, n, b, crashes, rounds);
                 rows.push((n, b, baseline.0, baseline.1, timed.0, timed.1));
