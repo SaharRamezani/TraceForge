@@ -1,0 +1,278 @@
+=== RUN pc3_g_l0.0_sd0.0_w2 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 2 --l-ratio 0.0 --sd-ratio 0.0
+timed      N=5 R=1  L=0 U=20 W=40 (W/U=2) sd=0  execs=1285983 blocked=0      commit=460800 abort=245343 time=177.590910756s
+=== END pc3_g_l0.0_sd0.0_w2 rc=0 elapsed=177.615096600
+
+=== RUN pc3_g_l0.0_sd0.0_w3 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 3 --l-ratio 0.0 --sd-ratio 0.0
+timed      N=5 R=1  L=0 U=20 W=60 (W/U=3) sd=0  execs=872373 blocked=0      commit=460800 abort=71733  time=129.881865041s
+=== END pc3_g_l0.0_sd0.0_w3 rc=0 elapsed=129.889479219
+
+=== RUN pc3_g_l0.0_sd0.0_w5 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 5 --l-ratio 0.0 --sd-ratio 0.0
+timed      N=5 R=1  L=0 U=20 W=100 (W/U=5) sd=0  execs=622773 blocked=0      commit=460800 abort=71733  time=104.983876881s
+=== END pc3_g_l0.0_sd0.0_w5 rc=0 elapsed=104.992176897
+
+=== RUN pc3_g_l0.0_sd0.0_w7 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.0
+timed      N=5 R=1  L=0 U=20 W=140 (W/U=7) sd=0  execs=622773 blocked=0      commit=460800 abort=71733  time=106.085301776s
+=== END pc3_g_l0.0_sd0.0_w7 rc=0 elapsed=106.094031439
+
+=== RUN pc3_g_l0.0_sd0.0_w10 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 10 --l-ratio 0.0 --sd-ratio 0.0
+timed      N=5 R=1  L=0 U=20 W=200 (W/U=10) sd=0  execs=622773 blocked=0      commit=460800 abort=71733  time=106.283263891s
+=== END pc3_g_l0.0_sd0.0_w10 rc=0 elapsed=106.291089925
+
+=== RUN pc3_g_l0.0_sd0.25_w2 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 2 --l-ratio 0.0 --sd-ratio 0.25
+timed      N=5 R=1  L=0 U=20 W=40 (W/U=2) sd=5  execs=1285983 blocked=0      commit=460800 abort=245343 time=175.610527443s
+=== END pc3_g_l0.0_sd0.25_w2 rc=0 elapsed=175.618675740
+
+=== RUN pc3_g_l0.0_sd0.25_w3 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 3 --l-ratio 0.0 --sd-ratio 0.25
+timed      N=5 R=1  L=0 U=20 W=60 (W/U=3) sd=5  execs=872373 blocked=0      commit=460800 abort=71733  time=133.752643858s
+=== END pc3_g_l0.0_sd0.25_w3 rc=0 elapsed=133.760615593
+
+=== RUN pc3_g_l0.0_sd0.25_w5 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 5 --l-ratio 0.0 --sd-ratio 0.25
+timed      N=5 R=1  L=0 U=20 W=100 (W/U=5) sd=5  execs=872373 blocked=0      commit=460800 abort=71733  time=130.884077721s
+=== END pc3_g_l0.0_sd0.25_w5 rc=0 elapsed=130.892223972
+
+=== RUN pc3_g_l0.0_sd0.25_w7 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25
+timed      N=5 R=1  L=0 U=20 W=140 (W/U=7) sd=5  execs=622773 blocked=0      commit=460800 abort=71733  time=107.214429916s
+=== END pc3_g_l0.0_sd0.25_w7 rc=0 elapsed=107.222288896
+
+=== RUN pc3_g_l0.0_sd0.25_w10 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 10 --l-ratio 0.0 --sd-ratio 0.25
+timed      N=5 R=1  L=0 U=20 W=200 (W/U=10) sd=5  execs=622773 blocked=0      commit=460800 abort=71733  time=104.964909187s
+=== END pc3_g_l0.0_sd0.25_w10 rc=0 elapsed=104.972821584
+
+=== RUN pc3_g_l0.0_sd0.5_w2 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 2 --l-ratio 0.0 --sd-ratio 0.5
+timed      N=5 R=1  L=0 U=20 W=40 (W/U=2) sd=10  execs=1285983 blocked=0      commit=460800 abort=245343 time=173.83819946s
+=== END pc3_g_l0.0_sd0.5_w2 rc=0 elapsed=173.846017076
+
+=== RUN pc3_g_l0.0_sd0.5_w3 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 3 --l-ratio 0.0 --sd-ratio 0.5
+timed      N=5 R=1  L=0 U=20 W=60 (W/U=3) sd=10  execs=1285983 blocked=0      commit=460800 abort=245343 time=174.392761519s
+=== END pc3_g_l0.0_sd0.5_w3 rc=0 elapsed=174.400306632
+
+=== RUN pc3_g_l0.0_sd0.5_w5 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 5 --l-ratio 0.0 --sd-ratio 0.5
+timed      N=5 R=1  L=0 U=20 W=100 (W/U=5) sd=10  execs=872373 blocked=0      commit=460800 abort=71733  time=134.593018168s
+=== END pc3_g_l0.0_sd0.5_w5 rc=0 elapsed=134.600988174
+
+=== RUN pc3_g_l0.0_sd0.5_w7 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.5
+timed      N=5 R=1  L=0 U=20 W=140 (W/U=7) sd=10  execs=622773 blocked=0      commit=460800 abort=71733  time=106.518246408s
+=== END pc3_g_l0.0_sd0.5_w7 rc=0 elapsed=106.526365449
+
+=== RUN pc3_g_l0.0_sd0.5_w10 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 10 --l-ratio 0.0 --sd-ratio 0.5
+timed      N=5 R=1  L=0 U=20 W=200 (W/U=10) sd=10  execs=622773 blocked=0      commit=460800 abort=71733  time=104.697465809s
+=== END pc3_g_l0.0_sd0.5_w10 rc=0 elapsed=104.705832721
+
+=== RUN pc3_g_l0.25_sd0.0_w2 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 2 --l-ratio 0.25 --sd-ratio 0.0
+timed      N=5 R=1  L=5 U=20 W=40 (W/U=2) sd=0  execs=918543 blocked=0      commit=460800 abort=117903 time=135.305231318s
+=== END pc3_g_l0.25_sd0.0_w2 rc=0 elapsed=135.313112623
+
+=== RUN pc3_g_l0.25_sd0.0_w3 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 3 --l-ratio 0.25 --sd-ratio 0.0
+timed      N=5 R=1  L=5 U=20 W=60 (W/U=3) sd=0  execs=872373 blocked=0      commit=460800 abort=71733  time=128.444105858s
+=== END pc3_g_l0.25_sd0.0_w3 rc=0 elapsed=128.451962076
+
+=== RUN pc3_g_l0.25_sd0.0_w5 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 5 --l-ratio 0.25 --sd-ratio 0.0
+timed      N=5 R=1  L=5 U=20 W=100 (W/U=5) sd=0  execs=622773 blocked=0      commit=460800 abort=71733  time=105.52999817s
+=== END pc3_g_l0.25_sd0.0_w5 rc=0 elapsed=105.537415749
+
+=== RUN pc3_g_l0.25_sd0.0_w7 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 7 --l-ratio 0.25 --sd-ratio 0.0
+timed      N=5 R=1  L=5 U=20 W=140 (W/U=7) sd=0  execs=622773 blocked=0      commit=460800 abort=71733  time=104.728656157s
+=== END pc3_g_l0.25_sd0.0_w7 rc=0 elapsed=104.737089490
+
+=== RUN pc3_g_l0.25_sd0.0_w10 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 10 --l-ratio 0.25 --sd-ratio 0.0
+timed      N=5 R=1  L=5 U=20 W=200 (W/U=10) sd=0  execs=622773 blocked=0      commit=460800 abort=71733  time=104.19238368s
+=== END pc3_g_l0.25_sd0.0_w10 rc=0 elapsed=104.200261192
+
+=== RUN pc3_g_l0.25_sd0.25_w2 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 2 --l-ratio 0.25 --sd-ratio 0.25
+timed      N=5 R=1  L=5 U=20 W=40 (W/U=2) sd=5  execs=1180383 blocked=0      commit=460800 abort=245343 time=164.626259772s
+=== END pc3_g_l0.25_sd0.25_w2 rc=0 elapsed=164.633999469
+
+=== RUN pc3_g_l0.25_sd0.25_w3 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 3 --l-ratio 0.25 --sd-ratio 0.25
+timed      N=5 R=1  L=5 U=20 W=60 (W/U=3) sd=5  execs=872373 blocked=0      commit=460800 abort=71733  time=129.449601451s
+=== END pc3_g_l0.25_sd0.25_w3 rc=0 elapsed=129.457236336
+
+=== RUN pc3_g_l0.25_sd0.25_w5 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 5 --l-ratio 0.25 --sd-ratio 0.25
+timed      N=5 R=1  L=5 U=20 W=100 (W/U=5) sd=5  execs=622773 blocked=0      commit=460800 abort=71733  time=104.474079981s
+=== END pc3_g_l0.25_sd0.25_w5 rc=0 elapsed=104.481987102
+
+=== RUN pc3_g_l0.25_sd0.25_w7 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 7 --l-ratio 0.25 --sd-ratio 0.25
+timed      N=5 R=1  L=5 U=20 W=140 (W/U=7) sd=5  execs=622773 blocked=0      commit=460800 abort=71733  time=107.457480798s
+=== END pc3_g_l0.25_sd0.25_w7 rc=0 elapsed=107.465188501
+
+=== RUN pc3_g_l0.25_sd0.25_w10 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 10 --l-ratio 0.25 --sd-ratio 0.25
+timed      N=5 R=1  L=5 U=20 W=200 (W/U=10) sd=5  execs=622773 blocked=0      commit=460800 abort=71733  time=108.494401328s
+=== END pc3_g_l0.25_sd0.25_w10 rc=0 elapsed=108.506931844
+
+=== RUN pc3_g_l0.25_sd0.5_w2 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 2 --l-ratio 0.25 --sd-ratio 0.5
+timed      N=5 R=1  L=5 U=20 W=40 (W/U=2) sd=10  execs=1285983 blocked=0      commit=460800 abort=245343 time=176.41454002s
+=== END pc3_g_l0.25_sd0.5_w2 rc=0 elapsed=176.423811523
+
+=== RUN pc3_g_l0.25_sd0.5_w3 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 3 --l-ratio 0.25 --sd-ratio 0.5
+timed      N=5 R=1  L=5 U=20 W=60 (W/U=3) sd=10  execs=918543 blocked=0      commit=460800 abort=117903 time=137.970484549s
+=== END pc3_g_l0.25_sd0.5_w3 rc=0 elapsed=137.983950704
+
+=== RUN pc3_g_l0.25_sd0.5_w5 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 5 --l-ratio 0.25 --sd-ratio 0.5
+timed      N=5 R=1  L=5 U=20 W=100 (W/U=5) sd=10  execs=872373 blocked=0      commit=460800 abort=71733  time=128.853204624s
+=== END pc3_g_l0.25_sd0.5_w5 rc=0 elapsed=128.861769077
+
+=== RUN pc3_g_l0.25_sd0.5_w7 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 7 --l-ratio 0.25 --sd-ratio 0.5
+timed      N=5 R=1  L=5 U=20 W=140 (W/U=7) sd=10  execs=622773 blocked=0      commit=460800 abort=71733  time=103.269742472s
+=== END pc3_g_l0.25_sd0.5_w7 rc=0 elapsed=103.277387514
+
+=== RUN pc3_g_l0.25_sd0.5_w10 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 10 --l-ratio 0.25 --sd-ratio 0.5
+timed      N=5 R=1  L=5 U=20 W=200 (W/U=10) sd=10  execs=622773 blocked=0      commit=460800 abort=71733  time=103.516465456s
+=== END pc3_g_l0.25_sd0.5_w10 rc=0 elapsed=103.525073266
+
+=== RUN pc3_g_l0.5_sd0.0_w2 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 2 --l-ratio 0.5 --sd-ratio 0.0
+timed      N=5 R=1  L=10 U=20 W=40 (W/U=2) sd=0  execs=885423 blocked=0      commit=460800 abort=84783  time=129.124841009s
+=== END pc3_g_l0.5_sd0.0_w2 rc=0 elapsed=129.132169277
+
+=== RUN pc3_g_l0.5_sd0.0_w3 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 3 --l-ratio 0.5 --sd-ratio 0.0
+timed      N=5 R=1  L=10 U=20 W=60 (W/U=3) sd=0  execs=676053 blocked=0      commit=460800 abort=38613  time=107.90548186s
+=== END pc3_g_l0.5_sd0.0_w3 rc=0 elapsed=107.913209975
+
+=== RUN pc3_g_l0.5_sd0.0_w5 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 5 --l-ratio 0.5 --sd-ratio 0.0
+timed      N=5 R=1  L=10 U=20 W=100 (W/U=5) sd=0  execs=589653 blocked=0      commit=460800 abort=38613  time=103.864918278s
+=== END pc3_g_l0.5_sd0.0_w5 rc=0 elapsed=103.872662573
+
+=== RUN pc3_g_l0.5_sd0.0_w7 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 7 --l-ratio 0.5 --sd-ratio 0.0
+timed      N=5 R=1  L=10 U=20 W=140 (W/U=7) sd=0  execs=589653 blocked=0      commit=460800 abort=38613  time=100.143778824s
+=== END pc3_g_l0.5_sd0.0_w7 rc=0 elapsed=100.152474542
+
+=== RUN pc3_g_l0.5_sd0.0_w10 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 10 --l-ratio 0.5 --sd-ratio 0.0
+timed      N=5 R=1  L=10 U=20 W=200 (W/U=10) sd=0  execs=589653 blocked=0      commit=460800 abort=38613  time=99.565093103s
+=== END pc3_g_l0.5_sd0.0_w10 rc=0 elapsed=99.572746682
+
+=== RUN pc3_g_l0.5_sd0.25_w2 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 2 --l-ratio 0.5 --sd-ratio 0.25
+timed      N=5 R=1  L=10 U=20 W=40 (W/U=2) sd=5  execs=885423 blocked=0      commit=460800 abort=84783  time=131.382882188s
+=== END pc3_g_l0.5_sd0.25_w2 rc=0 elapsed=131.395750519
+
+=== RUN pc3_g_l0.5_sd0.25_w3 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 3 --l-ratio 0.5 --sd-ratio 0.25
+timed      N=5 R=1  L=10 U=20 W=60 (W/U=3) sd=5  execs=839253 blocked=0      commit=460800 abort=38613  time=125.149963557s
+=== END pc3_g_l0.5_sd0.25_w3 rc=0 elapsed=125.157760112
+
+=== RUN pc3_g_l0.5_sd0.25_w5 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 5 --l-ratio 0.5 --sd-ratio 0.25
+timed      N=5 R=1  L=10 U=20 W=100 (W/U=5) sd=5  execs=589653 blocked=0      commit=460800 abort=38613  time=100.323545123s
+=== END pc3_g_l0.5_sd0.25_w5 rc=0 elapsed=100.331945335
+
+=== RUN pc3_g_l0.5_sd0.25_w7 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 7 --l-ratio 0.5 --sd-ratio 0.25
+timed      N=5 R=1  L=10 U=20 W=140 (W/U=7) sd=5  execs=589653 blocked=0      commit=460800 abort=38613  time=102.264255356s
+=== END pc3_g_l0.5_sd0.25_w7 rc=0 elapsed=102.272012394
+
+=== RUN pc3_g_l0.5_sd0.25_w10 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 10 --l-ratio 0.5 --sd-ratio 0.25
+timed      N=5 R=1  L=10 U=20 W=200 (W/U=10) sd=5  execs=589653 blocked=0      commit=460800 abort=38613  time=99.992814974s
+=== END pc3_g_l0.5_sd0.25_w10 rc=0 elapsed=100.002606119
+
+=== RUN pc3_g_l0.5_sd0.5_w2 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 2 --l-ratio 0.5 --sd-ratio 0.5
+timed      N=5 R=1  L=10 U=20 W=40 (W/U=2) sd=10  execs=1180383 blocked=0      commit=460800 abort=245343 time=161.273973138s
+=== END pc3_g_l0.5_sd0.5_w2 rc=0 elapsed=161.281775057
+
+=== RUN pc3_g_l0.5_sd0.5_w3 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 3 --l-ratio 0.5 --sd-ratio 0.5
+timed      N=5 R=1  L=10 U=20 W=60 (W/U=3) sd=10  execs=918543 blocked=0      commit=460800 abort=117903 time=137.150060258s
+=== END pc3_g_l0.5_sd0.5_w3 rc=0 elapsed=137.157543741
+
+=== RUN pc3_g_l0.5_sd0.5_w5 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 5 --l-ratio 0.5 --sd-ratio 0.5
+timed      N=5 R=1  L=10 U=20 W=100 (W/U=5) sd=10  execs=709173 blocked=0      commit=460800 abort=71733  time=113.273457127s
+=== END pc3_g_l0.5_sd0.5_w5 rc=0 elapsed=113.281657062
+
+=== RUN pc3_g_l0.5_sd0.5_w7 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 7 --l-ratio 0.5 --sd-ratio 0.5
+timed      N=5 R=1  L=10 U=20 W=140 (W/U=7) sd=10  execs=622773 blocked=0      commit=460800 abort=71733  time=106.608249148s
+=== END pc3_g_l0.5_sd0.5_w7 rc=0 elapsed=106.616209920
+
+=== RUN pc3_g_l0.5_sd0.5_w10 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 10 --l-ratio 0.5 --sd-ratio 0.5
+timed      N=5 R=1  L=10 U=20 W=200 (W/U=10) sd=10  execs=622773 blocked=0      commit=460800 abort=71733  time=103.702610481s
+=== END pc3_g_l0.5_sd0.5_w10 rc=0 elapsed=103.710334817
+
+=== RUN pc3_g_l0.9_sd0.0_w2 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 2 --l-ratio 0.9 --sd-ratio 0.0
+timed      N=5 R=1  L=18 U=20 W=40 (W/U=2) sd=0  execs=722223 blocked=0      commit=460800 abort=84783  time=114.186613106s
+=== END pc3_g_l0.9_sd0.0_w2 rc=0 elapsed=114.194716946
+
+=== RUN pc3_g_l0.9_sd0.0_w3 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 3 --l-ratio 0.9 --sd-ratio 0.0
+timed      N=5 R=1  L=18 U=20 W=60 (W/U=3) sd=0  execs=589653 blocked=0      commit=460800 abort=38613  time=98.11403656s
+=== END pc3_g_l0.9_sd0.0_w3 rc=0 elapsed=98.121818917
+
+=== RUN pc3_g_l0.9_sd0.0_w5 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 5 --l-ratio 0.9 --sd-ratio 0.0
+timed      N=5 R=1  L=18 U=20 W=100 (W/U=5) sd=0  execs=589653 blocked=0      commit=460800 abort=38613  time=103.313566831s
+=== END pc3_g_l0.9_sd0.0_w5 rc=0 elapsed=103.321851135
+
+=== RUN pc3_g_l0.9_sd0.0_w7 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 7 --l-ratio 0.9 --sd-ratio 0.0
+timed      N=5 R=1  L=18 U=20 W=140 (W/U=7) sd=0  execs=589653 blocked=0      commit=460800 abort=38613  time=103.06749157s
+=== END pc3_g_l0.9_sd0.0_w7 rc=0 elapsed=103.074931455
+
+=== RUN pc3_g_l0.9_sd0.0_w10 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 10 --l-ratio 0.9 --sd-ratio 0.0
+timed      N=5 R=1  L=18 U=20 W=200 (W/U=10) sd=0  execs=589653 blocked=0      commit=460800 abort=38613  time=99.097405325s
+=== END pc3_g_l0.9_sd0.0_w10 rc=0 elapsed=99.106189022
+
+=== RUN pc3_g_l0.9_sd0.25_w2 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 2 --l-ratio 0.9 --sd-ratio 0.25
+timed      N=5 R=1  L=18 U=20 W=40 (W/U=2) sd=5  execs=722223 blocked=0      commit=460800 abort=84783  time=115.17287506s
+=== END pc3_g_l0.9_sd0.25_w2 rc=0 elapsed=115.180408337
+
+=== RUN pc3_g_l0.9_sd0.25_w3 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 3 --l-ratio 0.9 --sd-ratio 0.25
+timed      N=5 R=1  L=18 U=20 W=60 (W/U=3) sd=5  execs=676053 blocked=0      commit=460800 abort=38613  time=108.163432514s
+=== END pc3_g_l0.9_sd0.25_w3 rc=0 elapsed=108.170668066
+
+=== RUN pc3_g_l0.9_sd0.25_w5 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 5 --l-ratio 0.9 --sd-ratio 0.25
+timed      N=5 R=1  L=18 U=20 W=100 (W/U=5) sd=5  execs=589653 blocked=0      commit=460800 abort=38613  time=99.220229178s
+=== END pc3_g_l0.9_sd0.25_w5 rc=0 elapsed=99.228153041
+
+=== RUN pc3_g_l0.9_sd0.25_w7 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 7 --l-ratio 0.9 --sd-ratio 0.25
+timed      N=5 R=1  L=18 U=20 W=140 (W/U=7) sd=5  execs=589653 blocked=0      commit=460800 abort=38613  time=99.220032541s
+=== END pc3_g_l0.9_sd0.25_w7 rc=0 elapsed=99.227771848
+
+=== RUN pc3_g_l0.9_sd0.25_w10 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 10 --l-ratio 0.9 --sd-ratio 0.25
+timed      N=5 R=1  L=18 U=20 W=200 (W/U=10) sd=5  execs=589653 blocked=0      commit=460800 abort=38613  time=98.423971304s
+=== END pc3_g_l0.9_sd0.25_w10 rc=0 elapsed=98.431426954
+
+=== RUN pc3_g_l0.9_sd0.5_w2 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 2 --l-ratio 0.9 --sd-ratio 0.5
+timed      N=5 R=1  L=18 U=20 W=40 (W/U=2) sd=10  execs=722223 blocked=0      commit=460800 abort=84783  time=113.252684509s
+=== END pc3_g_l0.9_sd0.5_w2 rc=0 elapsed=113.260687680
+
+=== RUN pc3_g_l0.9_sd0.5_w3 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 3 --l-ratio 0.9 --sd-ratio 0.5
+timed      N=5 R=1  L=18 U=20 W=60 (W/U=3) sd=10  execs=722223 blocked=0      commit=460800 abort=84783  time=113.872250703s
+=== END pc3_g_l0.9_sd0.5_w3 rc=0 elapsed=113.880714276
+
+=== RUN pc3_g_l0.9_sd0.5_w5 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 5 --l-ratio 0.9 --sd-ratio 0.5
+timed      N=5 R=1  L=18 U=20 W=100 (W/U=5) sd=10  execs=589653 blocked=0      commit=460800 abort=38613  time=99.3840936s
+=== END pc3_g_l0.9_sd0.5_w5 rc=0 elapsed=99.392147471
+
+=== RUN pc3_g_l0.9_sd0.5_w7 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 7 --l-ratio 0.9 --sd-ratio 0.5
+timed      N=5 R=1  L=18 U=20 W=140 (W/U=7) sd=10  execs=589653 blocked=0      commit=460800 abort=38613  time=98.829903114s
+=== END pc3_g_l0.9_sd0.5_w7 rc=0 elapsed=98.838308197
+
+=== RUN pc3_g_l0.9_sd0.5_w10 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 5 --u 20 --w-ratio 10 --l-ratio 0.9 --sd-ratio 0.5
+timed      N=5 R=1  L=18 U=20 W=200 (W/U=10) sd=10  execs=589653 blocked=0      commit=460800 abort=38613  time=99.011631991s
+=== END pc3_g_l0.9_sd0.5_w10 rc=0 elapsed=99.019527568
+
+=== RUN pc3_t_n6_w2 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 6 --u 20 --w-ratio 2 --l-ratio 0.0 --sd-ratio 0.25
+timed      N=6 R=1  L=0 U=20 W=40 (W/U=2) sd=5  execs=69473241 blocked=0      commit=33177600 abort=5076441 time=11575.89553798s
+=== END pc3_t_n6_w2 rc=0 elapsed=11575.910805207
+
+=== RUN pc3_t_n6_w5 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 6 --u 20 --w-ratio 5 --l-ratio 0.0 --sd-ratio 0.25
+timed      N=6 R=1  L=0 U=20 W=100 (W/U=5) sd=5  execs=49976325 blocked=0      commit=33177600 abort=1269765 time=9379.280027849s
+=== END pc3_t_n6_w5 rc=0 elapsed=9379.320489569
+
+=== RUN pc3_t_n6_w7 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 6 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25
+=== RESUME after reboot 2026-07-09T23:58:23+02:00
+=== RUN pc3_t_n6_w7 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 6 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25
+timed      N=6 R=1  L=0 U=20 W=140 (W/U=7) sd=5  execs=37742085 blocked=0      commit=33177600 abort=1269765 time=7587.152565064s
+=== END pc3_t_n6_w7 rc=0 elapsed=7587.181552266
+
+=== RUN pc3_t_n4r2_w7 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 4 --rounds 2 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25
+timed      N=4 R=2  L=0 U=20 W=140 (W/U=7) sd=5  execs=31481433 blocked=0      commit=30113280 abort=23488434 time=5758.349406798s
+=== END pc3_t_n4r2_w7 rc=0 elapsed=5758.387925891
+
+=== RUN pc3_t_n3r3_w7 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 3 --rounds 3 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25
+timed      N=3 R=3  L=0 U=20 W=140 (W/U=7) sd=5  execs=29552841 blocked=0      commit=32137920 abort=51005715 time=5340.324398982s
+=== END pc3_t_n3r3_w7 rc=0 elapsed=5340.336734450
+
+=== RUN pc3_base_n4_r2 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode baseline --participants 4 --rounds 2 --u 20 --w-ratio 7
+=== END pc3_base_n4_r2 rc=124 elapsed=18000.011798835
+
+=== RUN pc3_base_n3_r3 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode baseline --participants 3 --rounds 3 --u 20 --w-ratio 7
+=== END pc3_base_n3_r3 rc=124 elapsed=18000.016951321
+
+=== RUN pc3_t_n7_w10 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode timed --participants 7 --u 20 --w-ratio 10 --l-ratio 0.0 --sd-ratio 0.25
+=== END pc3_t_n7_w10 rc=124 elapsed=18000.013446378
+
+=== RUN pc3_base_n7_r1 cap=18000s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/three_pc_timed --mode baseline --participants 7 --u 20 --w-ratio 10
+=== END pc3_base_n7_r1 rc=124 elapsed=18000.008400167
+
+ALL BENCH V4 RUNS DONE
+=== RUN ccx3_t_n5b2_A_12h cap=43200s CMD: /home/sahar/Desktop/MPI/TraceForge/target/release/examples/comm_closed_leader_election_inbox --mode timed --nodes 5 --ballots 2 --u 20 --w 200 --l 18 --sd 2
+=== END ccx3_t_n5b2_A_12h rc=124 elapsed=46168.567018336
+N5B2 12H ATTEMPT DONE
