@@ -771,8 +771,8 @@ impl RecvMsg {
     }
 
     /// Constructor for a timed receive. Identical to [`RecvMsg::new`]
-    /// but records `wait` so that [`crate::timed_cons::timed_consistent`]
-    /// can bound this receive.
+    /// but records `wait` so that the exact timed oracle
+    /// ([`crate::timed_dcs`]) can bound this receive.
     pub(crate) fn new_timed(
         pos: Event,
         loc: RecvLoc,
@@ -1341,14 +1341,16 @@ pub(crate) enum BlockType {
     // User-level blocking
     Assume,
     Assert,
-    // Internal blocking. The optional `WaitTime` carries the wait that
-    // the original (now-overwritten) recv/inbox was created with, so that
+    // Internal blocking. The optional `WaitTime` carries the wait, so that
     // visualization tools can still tell `recv_msg_block_timed` (W_r=∞)
     // apart from a finite-wait timed recv after the recv label has been
     // replaced by this Block. The `usize` is the minimum number of
     // matching sends required to unblock (1 for a plain recv, ≥1 for
-    // an inbox via inbox_with_bounds).
-    Value(RecvLoc, Option<WaitTime>, usize),
+    // an inbox via inbox_with_bounds). The `CommunicationModel` is there
+    // so that the unblock check can apply the same
+    // sb-minimal candidate restriction as the real rf assignment. The
+    // final `bool` is true when the overwritten read was an INBOX.
+    Value(RecvLoc, Option<WaitTime>, usize, CommunicationModel, bool),
     Join(ThreadId),
 }
 
@@ -1369,6 +1371,14 @@ pub(crate) enum BlockType {
 pub(crate) struct Block {
     label: EventLabel,
     btype: BlockType,
+    /// GC refusal block: this receive-shaped block
+    /// REFUSES every matching message, present and future; the timed
+    /// encoding forces them all dead before the wait and wake-ups
+    /// never fire for it. Worlds where the receive does read are the
+    /// read siblings (plus their backward revisits), which exist
+    /// whenever this branch was pushed.
+    #[serde(default)]
+    refuses_matching: bool,
 }
 
 impl Block {
@@ -1376,11 +1386,27 @@ impl Block {
         Self {
             label: EventLabel::new(pos),
             btype: t,
+            refuses_matching: false,
+        }
+    }
+
+    /// A refusal block reusing an existing label base (the converted
+    /// receive's), so stamp bookkeeping survives the conversion; views
+    /// are recomputed by the caller.
+    pub(crate) fn new_refusing(label: EventLabel, t: BlockType) -> Self {
+        Self {
+            label,
+            btype: t,
+            refuses_matching: true,
         }
     }
 
     pub(crate) fn btype(&self) -> &BlockType {
         &self.btype
+    }
+
+    pub(crate) fn refuses_matching(&self) -> bool {
+        self.refuses_matching
     }
 }
 
@@ -1393,7 +1419,7 @@ impl fmt::Display for Block {
             // a blocked recv still tells you whether it was W_r=∞
             // (recv_msg_block_timed) vs. a finite wait. Untimed recvs
             // omit the tag, preserving the historical format.
-            BlockType::Value(loc, wait, min) => {
+            BlockType::Value(loc, wait, min, _, _) => {
                 let wait_tag = match wait {
                     None => String::new(),
                     Some(WaitTime::Infinite) => " W_r=∞".to_string(),

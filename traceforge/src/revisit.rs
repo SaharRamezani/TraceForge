@@ -42,6 +42,14 @@ impl RevisitEnum {
         })
     }
 
+    /// Forward GC-refusal revisit: the receive at `pos` blocks forever.
+    pub(crate) fn new_forward_block(pos: Event) -> Self {
+        RevisitEnum::ForwardRevisit(Revisit {
+            pos,
+            rev: RevisitPlacement::BlockInstead,
+        })
+    }
+
     fn get_revisit(&self) -> &Revisit {
         match self {
             RevisitEnum::ForwardRevisit(r) => r,
@@ -65,6 +73,11 @@ pub(crate) enum RevisitPlacement {
     /// Mirrors the inbox `rfs`: `None` is the timeout empty, `Some(vec![])` the
     /// immediate empty, and `Some(non-empty)` a collected subset.
     Inbox(Option<Vec<Event>>),
+    /// GC refusal placement: convert the receive into a block that
+    /// never reads (every matching message dead before the wait).
+    /// Must pop LAST among the alternatives at its stamp: it changes
+    /// the label kind at `pos`.
+    BlockInstead,
 }
 
 impl fmt::Display for RevisitPlacement {
@@ -72,6 +85,7 @@ impl fmt::Display for RevisitPlacement {
         match self {
             RevisitPlacement::Default(ev) => write!(f, "{}", ev),
             RevisitPlacement::Inbox(None) => write!(f, "{{timeout}}"),
+            RevisitPlacement::BlockInstead => write!(f, "{{refuse-all}}"),
             RevisitPlacement::Inbox(Some(events)) => {
                 write!(f, "{{")?;
                 for (i, ev) in events.iter().enumerate() {

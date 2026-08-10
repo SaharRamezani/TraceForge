@@ -431,11 +431,17 @@ impl ExecutionGraph {
                         BlockType::Assert => {
                             return Some(BlockType::Assert);
                         }
-                        BlockType::Value(loc, wait, min) => {
+                        BlockType::Value(loc, wait, min, comm, from_inbox) => {
                             if self.is_thread_daemon(t) {
                                 continue;
                             } else {
-                                ret = Some(BlockType::Value(loc.clone(), *wait, *min));
+                                ret = Some(BlockType::Value(
+                                    loc.clone(),
+                                    *wait,
+                                    *min,
+                                    *comm,
+                                    *from_inbox,
+                                ));
                             }
                         }
                         block => {
@@ -673,6 +679,9 @@ impl ExecutionGraph {
                     v.update(self.send_label(send).unwrap().porf());
                 }
             }
+            // Forward-only placement: revisit views are a backward
+            // concept and never built for it.
+            RevisitPlacement::BlockInstead => unreachable!(),
         };
 
         // v.update() may cause more TCreate labs to be visible in the vector clock

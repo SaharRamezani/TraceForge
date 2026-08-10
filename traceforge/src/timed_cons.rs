@@ -1,23 +1,20 @@
-//! Timed consistency
+//! Timed types: [`WaitTime`], [`TimedConfig`] (global transit bounds
+//! `L`, `U` and storage delay `sd`, with per-node `sd` overrides), and
+//! the [`TimeInterval`] window type used by reporting/prune-log paths.
 //!
-//! This module implements the timed extension of the Must algorithm.
-//! It provides the [`WaitTime`] wait type, the [`TimedConfig`]
-//! that holds the global transit bounds (`L`, `U`) and storage delay (`sd`)
-//! (with optional per-node `sd` overrides), and the [`timed_consistent`] walker
-//! that computes the time window `[τ_lo, τ_hi]` for a given event
-//! by recursing over the program order.
+//! The interval WALKER that used to live here (per-event `[lo, hi]`
+//! chain propagation) was deleted after the exact difference-constraint
+//! engine ([`crate::timed_dcs`]) took over every feasibility decision,
+//! including the inbox case split; it survives in the pre-timed-exact
+//! branch history for A/B comparisons.
 //!
-//! The module is independent of the structural consistency check in
-//! [`crate::cons`]. If the config's `timed` field is `None`, none
-//! of this code runs and legacy behaviour is preserved.
+//! If the config's `timed` field is `None`, no timed code runs and
+//! legacy behaviour is preserved.
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::event::Event;
-use crate::event_label::LabelEnum;
-use crate::exec_graph::ExecutionGraph;
 use crate::thread::ThreadId;
 
 /// Per-receive wait time `W_r` from the Must-τ algorithm.
@@ -94,239 +91,13 @@ pub(crate) struct TimeInterval {
 }
 
 impl TimeInterval {
-    pub(crate) fn new(lo: u64, hi: u64) -> Self {
-        Self { lo, hi }
-    }
-
     pub(crate) fn empty() -> Self {
         // Any (lo > hi) works; pick a pair that's obviously empty.
         Self { lo: 1, hi: 0 }
     }
 
+    #[cfg(test)]
     pub(crate) fn is_empty(&self) -> bool {
         self.lo > self.hi
     }
-}
-
-/// Feasible window for a receive that reads from a send.
-///
-/// Given the receive predecessor's window `pred_iv`, the send's window
-/// `send_iv`, the transit bounds `(L, U)` in force for that send, the
-/// storage delay `sd` of the receiving node, and the receive's upper
-/// wait cap `hi_cap` (`τ_hi(pred) + W_r`, or `u64::MAX` when `W_r = +∞`),
-/// returns `[max(τ_lo(pred), τ_lo(s) + L), min(hi_cap, τ_hi(s) + U + sd)]`.
-/// An empty `pred_iv` or `send_iv` yields an empty interval.
-///
-/// shared by [`timed_consistent`] and by
-/// `Must::is_block_timed_feasible`, which can no longer call the
-/// walker once the receive label has been overwritten by a `Block`.
-pub(crate) fn recv_from_send_window(
-    pred_iv: TimeInterval,
-    send_iv: TimeInterval,
-    transit: (u64, u64),
-    sd: u64,
-    hi_cap: u64,
-) -> TimeInterval {
-    if pred_iv.is_empty() || send_iv.is_empty() {
-        return TimeInterval::empty();
-    }
-    let (l_val, u_val) = transit;
-    // send lower bound = τ_lo(s) + L
-    let send_lo = send_iv.lo.saturating_add(l_val);
-    // send upper bound = τ_hi(s) + U + sd
-    let send_hi = send_iv.hi.saturating_add(u_val).saturating_add(sd);
-    let lo = pred_iv.lo.max(send_lo);
-    let hi = hi_cap.min(send_hi);
-    TimeInterval::new(lo, hi)
-}
-
-/// Compute the timestamp range `[τ_lo(e), τ_hi(e)]` for event `e` by
-/// walking the program order backwards and dispatching on the
-/// label of each event.
-///
-/// The walk stops at each thread's first event (`Begin`), returning
-/// `[0, 0]`.
-pub(crate) fn timed_consistent(
-    g: &ExecutionGraph,
-    e: Event,
-    cfg: &TimedConfig,
-) -> TimeInterval {
-    timed_consistent_with(g, e, cfg, &mut HashMap::new())
-}
-
-/// Like [`timed_consistent`] but reuses a caller-owned memo cache so that
-/// repeated calls sharing po/rf prefixes don't re-walk them.
-///
-/// The cache is keyed by [`Event`] and is only valid for a fixed graph
-/// state. The caller MUST evict any event whose interval may have changed
-/// since the cache was last populated, e.g. a receive whose `rf` was just
-/// flipped via [`ExecutionGraph::change_rf`]. When the graph is not mutated
-/// between calls, no eviction is needed.
-pub(crate) fn timed_consistent_with(
-    g: &ExecutionGraph,
-    e: Event,
-    cfg: &TimedConfig,
-    cache: &mut HashMap<Event, TimeInterval>,
-) -> TimeInterval {
-    timed_consistent_rec(g, e, cfg, cache)
-}
-
-fn timed_consistent_rec(
-    g: &ExecutionGraph,
-    e: Event,
-    cfg: &TimedConfig,
-    cache: &mut HashMap<Event, TimeInterval>,
-) -> TimeInterval {
-    if let Some(cached) = cache.get(&e) {
-        return *cached;
-    }
-
-    // Base case: thread's first event (Begin) starts the local clock at 0.
-    // po connects init to every thread's first event, so
-    // recursion stops here and we do not walk across TCreate edges.
-    if e.index == 0 {
-        let iv = TimeInterval::new(0, 0);
-        cache.insert(e, iv);
-        return iv;
-    }
-
-    let pred = Event::new(e.thread, e.index - 1);
-    let pred_iv = timed_consistent_rec(g, pred, cfg, cache);
-
-    let lab = g.label(e);
-    let iv = match lab {
-        LabelEnum::Sleep(slab) => {
-            let d = slab.duration();
-            TimeInterval::new(
-                pred_iv.lo.saturating_add(d),
-                pred_iv.hi.saturating_add(d),
-            )
-        }
-        LabelEnum::RecvMsg(rlab) => {
-            // Legacy (untimed) receive: it contributes
-            // no constraint at all, neither from its own wait time nor
-            // from the send it reads from. Mixed-mode tests rely on this.
-            let Some(wait) = rlab.wait() else {
-                cache.insert(e, pred_iv);
-                return pred_iv;
-            };
-            match rlab.rf() {
-                // Receive reading from a send.
-                Some(s) => {
-                    let send_iv = timed_consistent_rec(g, s, cfg, cache);
-                    // hi_cap = τ_hi(e') + W_r
-                    let hi_cap = match wait {
-                        WaitTime::Finite(w) => pred_iv.hi.saturating_add(w),
-                        WaitTime::Infinite => u64::MAX,
-                    };
-                    // Per-send L / U overrides; fall back to globals.
-                    let transit = g
-                        .send_label(s)
-                        .and_then(|slab| slab.transit())
-                        .unwrap_or((cfg.l, cfg.u));
-                    // sd(dst(s)): destination of s is the receiver's thread.
-                    recv_from_send_window(
-                        pred_iv,
-                        send_iv,
-                        transit,
-                        cfg.sd_for(e.thread),
-                        hi_cap,
-                    )
-                }
-                // Receive timed out (rf = ⊥).
-                None => match wait {
-                    WaitTime::Finite(w) => TimeInterval::new(
-                        pred_iv.lo.saturating_add(w),
-                        pred_iv.hi.saturating_add(w),
-                    ),
-                    // Infinite-wait with rf = ⊥ should have been pruned by
-                    // the `VisitIfConsistent(G, r=⊥) ∧ W_r = +∞ → return`
-                    // short-circuit. If we somehow get here, return an
-                    // empty interval so the caller drops the graph.
-                    WaitTime::Infinite => TimeInterval::empty(),
-                },
-            }
-        }
-        LabelEnum::Inbox(ilab) => {
-            // Legacy (untimed) inbox: contributes no timed constraint.
-            let Some(wait) = ilab.wait() else {
-                cache.insert(e, pred_iv);
-                return pred_iv;
-            };
-            match ilab.rfs() {
-                // Inbox collected a non-empty subset. Operational
-                // semantics: executing at time t0 with at least `min`
-                // matching messages already in storage returns them
-                // immediately (t = t0, zero time passed); with fewer
-                // than `min` it waits and returns at the arrival of the
-                // message that completes `min` (t = max(t0, latest
-                // arrival), capped by t0 + W_r). A subset larger than
-                // `min` can therefore only be read immediately, and a
-                // waited read never happens later than an actual
-                // arrival, so it gets no `sd` lingering slack itself
-                // (sd only keeps the *other* messages alive until t).
-                Some(subset) if !subset.is_empty() => {
-                    // Only a `min`-sized subset can be the outcome of
-                    // waiting; anything larger was read at t0.
-                    let can_wait = subset.len() <= ilab.min();
-                    let hi_cap = if can_wait {
-                        match wait {
-                            WaitTime::Finite(w) => pred_iv.hi.saturating_add(w),
-                            WaitTime::Infinite => u64::MAX,
-                        }
-                    } else {
-                        pred_iv.hi
-                    };
-                    let mut iv = TimeInterval::new(pred_iv.lo, hi_cap);
-                    let sd = cfg.sd_for(e.thread);
-                    // Latest possible arrival among the subset (no sd):
-                    // a waited read returns exactly at an arrival.
-                    let mut last_arrival_hi = pred_iv.hi;
-                    for s in subset {
-                        let send_iv = timed_consistent_rec(g, s, cfg, cache);
-                        if send_iv.is_empty() {
-                            iv = TimeInterval::empty();
-                            break;
-                        }
-                        let transit = g
-                            .send_label(s)
-                            .and_then(|slab| slab.transit())
-                            .unwrap_or((cfg.l, cfg.u));
-                        let (l_val, u_val) = transit;
-                        let send_lo = send_iv.lo.saturating_add(l_val);
-                        let arrive_hi = send_iv.hi.saturating_add(u_val);
-                        let send_hi = arrive_hi.saturating_add(sd);
-                        iv.lo = iv.lo.max(send_lo);
-                        iv.hi = iv.hi.min(send_hi);
-                        last_arrival_hi = last_arrival_hi.max(arrive_hi);
-                        if iv.is_empty() {
-                            break;
-                        }
-                    }
-                    if can_wait && !iv.is_empty() {
-                        iv.hi = iv.hi.min(last_arrival_hi);
-                    }
-                    iv
-                }
-                // The inbox returned without waiting,
-                // so it happens at the predecessor time.
-                Some(_empty) => pred_iv,
-                // The inbox waited the full W_r and
-                // returned nothing. An infinite
-                // wait cannot time out, so the graph is dropped.
-                None => match wait {
-                    WaitTime::Finite(w) => TimeInterval::new(
-                        pred_iv.lo.saturating_add(w),
-                        pred_iv.hi.saturating_add(w),
-                    ),
-                    WaitTime::Infinite => TimeInterval::empty(),
-                },
-            }
-        }
-        // Any other label: pass through unchanged.
-        _ => pred_iv,
-    };
-
-    cache.insert(e, iv);
-    iv
 }

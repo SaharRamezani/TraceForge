@@ -26,6 +26,7 @@ mod runtime;
 pub mod sync;
 mod telemetry;
 mod timed_cons;
+mod timed_dcs;
 mod testmode;
 use future::spawn_receive;
 pub use testmode::{parallel_test, test};
@@ -106,8 +107,13 @@ impl Stats {
 
 /// Available scheduling policies for TraceForge.
 ///
-/// These have no outcome on the number of executions
-/// explored by TraceForge; they are mostly useful for debugging.
+/// For recv-only programs the policy does not affect which executions
+/// are explored. KNOWN ISSUE (audit 2026-08-09): for programs with
+/// INBOXES (timed or untimed), exploration is currently
+/// schedule-dependent: different policies can explore different sets
+/// of execution classes, and both can under-explore. Until fixed, do
+/// not rely on a single policy for exhaustiveness claims on
+/// inbox-heavy models.
 #[derive(PartialEq, Eq, Default, Clone, Copy, Serialize, Deserialize, Debug)]
 pub enum SchedulePolicy {
     /// left-to-right (default)
@@ -762,10 +768,12 @@ where
 
     // Enable verbose logging for counterexamples even if it wasn't enabled before.
     // This is sort of a hack until I can refactor `replay` to allow you to
-    // pass a config to replay.
-    replay_info.config().verbose = 2;
+    // pass a config to replay. (config() returns an owned clone, so the
+    // mutation must land on the clone that is actually passed on.)
+    let mut replay_config = replay_info.config();
+    replay_config.verbose = 2;
 
-    let must = Rc::new(RefCell::new(Must::new(replay_info.config(), true)));
+    let must = Rc::new(RefCell::new(Must::new(replay_config, true)));
     let f = Arc::new(f);
 
     info!("Sorted Execution Graph:");
@@ -1701,19 +1709,21 @@ const TIMED_INBOX_MIN_MSG: &str =
 /// `min` must be `>= 1` (passing `min == 0` panics, see [Panics](#panics)). It
 /// returns either the empty set or a set of at least `min` and at most `max`
 /// matching messages; it never returns a non-empty set smaller than `min`. The
-/// timed walker rejects any subset whose sends do not all overlap a common time
-/// window of size `wait` after the inbox's predecessor.
+/// exact timed oracle admits a subset iff a consistent timeline realizes the
+/// operational rule: the read returns at its invocation time when `min` were
+/// already stored, else exactly at the arrival completing `min` (within
+/// `wait`), with every member stored and still alive at the read.
 ///
 /// With a finite `wait` the inbox never blocks: if it cannot collect `min`
 /// messages in time it times out and returns `{}` (the timeout empty, at time
 /// `pred + wait`).
 ///
-/// `WaitTime::Infinite` is the blocking paper inbox: `min` is a hard requirement
+/// `WaitTime::Infinite` is the blocking inbox: `min` is a hard requirement
 /// and the inbox blocks (can deadlock) rather than timing out.
 ///
 /// # Why `min == 0` is forbidden
 ///
-/// `min == 0` exists only to make the *untimed* paper inbox ([`inbox`],
+/// `min == 0` exists only to make the *untimed* inbox ([`inbox`],
 /// [`inbox_with_bounds`], ...) non-blocking. With a timeout that meaning is
 /// redundant, and `inbox_timed(0, _, Finite(w))` reads misleadingly (it looks
 /// like "wait up to `w`" but returns immediately and ignores `w`). All
@@ -2217,7 +2227,10 @@ pub fn assert(cond: bool) {
                 must.handle_block(Block::new(pos, BlockType::Assert));
                 // the assertion violation is reported only if the execution graph is consistent
                 // needed for semantics like Mailbox which generate executions under causal delivery and which need to be filtered to satisfy the stronger mailbox semantics
-                if must.is_consistent() {
+                // ... and, under a timed config, only if it is certified
+                // to admit a consistent timeline (soundness of FIREs;
+                // suppresses legacy-walker relaxation artifacts).
+                if must.is_consistent() && must.timed_error_report_allowed(Some(pos)) {
                     let message = persist_task_failure(name, Some(pos));
                     info!("Persisted failure {message}");
                 }
@@ -2225,10 +2238,19 @@ pub fn assert(cond: bool) {
                 // call system assert and panic
                 // Add a block node to the graph
                 must.handle_block(Block::new(pos, BlockType::Assert));
-                // as above, we report the assertion violation only if the execution graph is consistent
-                if must.is_consistent() {
+                // as above, we report the assertion violation only if the
+                // execution graph is consistent AND (under a timed config)
+                // certified to admit a consistent timeline; a suppressed
+                // violation leaves the Block in place and exploration
+                // continues exactly like keep_going_after_error.
+                if must.is_consistent() && must.timed_error_report_allowed(Some(pos)) {
                     info!("Error Detected!");
                     println!("{}", must.print_graph(None));
+                    if let Some(witness) = must.timed_witness_report(Some(pos)) {
+                        // Certified counterexample: a concrete timeline
+                        // anyone can check against the graph above.
+                        println!("{witness}");
+                    }
                     // The graph is completely generated, now build the linearization
                     must.store_replay_information(Some(pos));
                     std::io::stderr().flush().unwrap();

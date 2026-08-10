@@ -41,6 +41,10 @@ use std::io::Write;
 const EXECS: &str = "execs";
 const BLOCKED: &str = "blocked";
 const EXECS_EST: &str = "execs_est";
+/// Assert violations whose graphs admit no consistent timeline
+/// (relaxation artifacts of the legacy interval walker), suppressed by
+/// the certification gate instead of being reported as counterexamples.
+const SUPPRESSED_SPURIOUS: &str = "suppressed_spurious";
 
 macro_rules! cast {
     ($target: expr, $pat: path) => {{
@@ -118,6 +122,18 @@ pub(crate) struct Must {
     current: MustState,
     replay_info: REPLAY::ReplayInformation,
     checker: Consistency,
+    /// Pending trigger for the completion-time feasibility gate: set
+    /// when a send is added that matches an already-committed waited
+    /// inbox read excluding it (the one shape whose feasibility the
+    /// exploration cannot re-check earlier: a backward revisit's cut
+    /// hid the sender). Cleared whenever a later FULL-GRAPH oracle
+    /// build reports a feasible base: feasibility is monotone in the
+    /// constraint set, so that build vouches for the poisoned pair and
+    /// every commit it admits keeps the system feasible. The
+    /// completion solve therefore only runs when no oracle was built
+    /// after the last poisoning send (e.g. the read was replayed, not
+    /// re-visited). Never cleared on infeasible builds or cuts.
+    timed_completion_check: bool,
     pub config: Config,
     monitors: BTreeMap<ThreadId, MonitorInfo>,
     rng: Pcg64Mcg,
@@ -165,6 +181,7 @@ impl Must {
         let telemetry = Telemetry::new(conf.keep_per_execution_coverage);
         let _ = telemetry.register_counter(&EXECS.to_owned());
         let _ = telemetry.register_counter(&BLOCKED.to_owned());
+        let _ = telemetry.register_counter(&SUPPRESSED_SPURIOUS.to_owned());
         let _ = telemetry.register_histogram(&EXECS_EST.to_owned());
 
         Self {
@@ -177,6 +194,7 @@ impl Must {
             rng: Pcg64Mcg::seed_from_u64(seed),
             stop: false,
             warn_limit: 1,
+            timed_completion_check: false,
             pqueue: None,
             telemetry,
             published_values: BTreeMap::new(),
@@ -209,6 +227,7 @@ impl Must {
         self.telemetry = Telemetry::default();
         let _ = self.telemetry.register_counter(&EXECS.to_owned());
         let _ = self.telemetry.register_counter(&BLOCKED.to_owned());
+        let _ = self.telemetry.register_counter(&SUPPRESSED_SPURIOUS.to_owned());
         let _ = self.telemetry.register_histogram(&EXECS_EST.to_owned());
         self.frozen_thread_index_map = None;
         self.thread_index_map.clear();
@@ -357,6 +376,7 @@ impl Must {
         self.telemetry = Telemetry::new(self.config.keep_per_execution_coverage);
         let _ = self.telemetry.register_counter(&EXECS.to_owned());
         let _ = self.telemetry.register_counter(&BLOCKED.to_owned());
+        let _ = self.telemetry.register_counter(&SUPPRESSED_SPURIOUS.to_owned());
         let _ = self.telemetry.register_histogram(&EXECS_EST.to_owned());
         // Note: frozen_thread_index_map, thread_index_map, next_thread_index,
         // config, rng are intentionally NOT reset — they are either set
@@ -1186,33 +1206,173 @@ impl Must {
     fn is_waiting_on_written(&self, t: ThreadId) -> bool {
         let g = &self.current.graph;
         if let LabelEnum::Block(blab) = g.thread_last(t).unwrap() {
-            if let BlockType::Value(loc, _wait, min) = blab.btype() {
-                // Count sends that are structurally available AND
-                // (when a timed config is set) timed-feasible. The block
-                // unblocks once at least `min` such sends exist. A plain
-                // blocked recv has min=1, so the count must reach 1.
-                //
-                // The graph is not mutated in this loop, so one memo cache is
-                // shared across every send: pred(block) is walked once instead
-                // of once per send, and sends sharing prefixes also reuse it.
-                let mut cache: HashMap<Event, crate::timed_cons::TimeInterval> = HashMap::new();
-                let available = g
+            if blab.refuses_matching() {
+                // GC refusal block: never wakes by design; the read
+                // worlds are the sibling branches.
+                return false;
+            }
+            if let BlockType::Value(loc, wait, min, comm, from_inbox) = blab.btype() {
+                // Count sends that could actually be OFFERED to the woken
+                // receive by the real rf assignment. Divergence between
+                // this predicate and the offer path was the root cause of
+                // the unblock/re-block livelock, so the candidate set
+                // mirrors the exact path the wake-up hands over to:
+                // recv-shaped blocks mirror `coherent_rfs_in_view`
+                // (monitor reads allowed, porf-minimality for monitors),
+                // inbox-shaped blocks mirror `coherent_inbox_rfs_in_view`
+                // (NO monitor branch, sb-minimals hardcoded): structural
+                // match, unread-ness, sb-minimality, then timed
+                // feasibility. Unblocks once `min` such sends exist.
+                let structurally: Vec<&SendMsg> = g
                     .matching_stores(loc)
                     .filter(|send| {
-                        let structurally_ok =
-                            // Monitor reading from the send: we are monitoring
-                            // it and we haven't read it already.
-                            send.can_be_monitor_read(&blab.pos())
-                            // Plain read: the location really matches and the
-                            // send isn't cancelled.
-                                || (send.can_be_read_from(loc)
-                                    && !send.is_cancelled_wrt(blab.as_event_label()));
-                        structurally_ok
-                            && self.is_block_timed_feasible(blab.pos(), send, &mut cache)
+                        // Monitor reading from the send: availability is
+                        // judged by monitor_readers alone (checker.rfs
+                        // never consults reader() on this branch). The
+                        // inbox offer path has no monitor branch, so an
+                        // inbox-shaped block must not count these (a
+                        // consumed monitored send is never offerable to
+                        // an inbox and would wake the block forever).
+                        (!from_inbox && send.can_be_monitor_read(&blab.pos()))
+                            // Plain read: location matches, send is not
+                            // cancelled, and not already read elsewhere
+                            // (as in filter_available_sends_in_view with
+                            // no view).
+                            || (send.can_be_read_from(loc)
+                                && !send.is_cancelled_wrt(blab.as_event_label())
+                                && send.reader().map_or(true, |r| {
+                                    // Offer-path parity: a consumed send is
+                                    // re-available when its reader's async
+                                    // receive was later cancelled.
+                                    r == blab.pos()
+                                        || Consistency::reader_cancelled_async(
+                                            g, send, r, None,
+                                        )
+                                }))
                     })
-                    .count();
-                available >= *min
-
+                    .collect();
+                // GC semantics: time-eligibility BEFORE the order choice,
+                // mirroring the offer path in coherent_rfs_in_view. A send
+                // this block can never read in any timeline is dropped, so
+                // a time-dead front no longer suppresses live candidates
+                // behind it. Mixed-mode contract: untimed blocks (wait =
+                // None) carry no timing constraints. Timing applies during
+                // replay too: a recorded blocked execution must stay
+                // blocked (offer-side replay exemption covers rf choices,
+                // not wake-ups). TotalOrder (Mailbox) keeps the old order
+                // (minimality first): skips are incoherent there.
+                // Eligibility pre-filter for every model except Mailbox
+                // (TotalOrder keeps the old order below); eviction only
+                // where an order exists to invert.
+                let gc_order = *comm != crate::loc::CommunicationModel::TotalOrder;
+                let gc_evict = gc_order
+                    && *comm != crate::loc::CommunicationModel::NoOrder;
+                let mut dcs = match &self.config.timed {
+                    Some(cfg) if wait.is_some() => Some(crate::timed_dcs::TimedDcs::build(
+                        g,
+                        cfg,
+                        None,
+                        Some(blab.pos()),
+                    )),
+                    _ => None,
+                };
+                let structurally: Vec<&SendMsg> = if gc_evict && dcs.is_some() {
+                    // GC eviction parity with the offer path.
+                    structurally
+                        .into_iter()
+                        .filter(|b| {
+                            !Consistency::send_overtaken_in_view(
+                                g,
+                                b,
+                                blab.pos(),
+                                None,
+                            )
+                        })
+                        .collect()
+                } else {
+                    structurally
+                };
+                let structurally: Vec<&SendMsg> = match dcs.as_mut() {
+                    // Tripwire parity: on an infeasible base, keep all
+                    // (the offer side keeps everything too, so wake-up
+                    // and offer stay in agreement). Inbox-shaped blocks
+                    // follow the completion-count rule, so their probe
+                    // carries the exclusion dodges (audit 2026-08-09):
+                    // a window-only wake would be looser than the offer
+                    // filter and livelock.
+                    Some(d) if gc_order && d.base_feasible() => structurally
+                        .into_iter()
+                        .filter(|send| {
+                            if *from_inbox {
+                                d.probe_unblock_inbox_subset(
+                                    blab.pos(),
+                                    &[send.pos()],
+                                    loc,
+                                    *comm,
+                                )
+                            } else {
+                                d.probe_block_unblock(blab.pos(), send.pos())
+                            }
+                        })
+                        .collect(),
+                    _ => structurally,
+                };
+                // porf-override parity: recv-shaped blocks follow
+                // checker.rfs (is_monitor); the inbox enumeration
+                // hardcodes false (coherent_inbox_rfs_in_view), so
+                // inbox-shaped blocks must too, even at min == 1.
+                let porf_override = !from_inbox && self.is_monitor(&blab.pos());
+                let candidates: Vec<&SendMsg> =
+                    if *comm != crate::loc::CommunicationModel::NoOrder {
+                        Consistency::retain_sb_minimals(
+                            structurally.iter().copied(),
+                            porf_override,
+                        )
+                    } else {
+                        structurally
+                    };
+                // NoOrder/TotalOrder: eligibility runs AFTER the order
+                // choice (the pre-GC order), matching their offer paths.
+                let candidates: Vec<&SendMsg> = match dcs.as_mut() {
+                    Some(d) if !gc_order && d.base_feasible() => candidates
+                        .into_iter()
+                        .filter(|send| {
+                            if *from_inbox {
+                                d.probe_unblock_inbox_subset(
+                                    blab.pos(),
+                                    &[send.pos()],
+                                    loc,
+                                    *comm,
+                                )
+                            } else {
+                                d.probe_block_unblock(blab.pos(), send.pos())
+                            }
+                        })
+                        .collect(),
+                    _ => candidates,
+                };
+                if candidates.len() < *min {
+                    return false;
+                }
+                // Every candidate is individually feasible now; batches
+                // (min >= 2) additionally need some min-subset readable
+                // TOGETHER (two individually feasible sends with disjoint
+                // lifetimes can never form one batch; waking on their
+                // count livelocks).
+                if *min >= 2 {
+                    if let Some(d) = dcs.as_mut() {
+                        if d.base_feasible() {
+                            return any_jointly_feasible_subset(
+                                d,
+                                blab.pos(),
+                                &candidates.iter().map(|s| s.pos()).collect::<Vec<_>>(),
+                                *min,
+                                if *from_inbox { Some((loc, *comm)) } else { None },
+                            );
+                        }
+                    }
+                }
+                candidates.len() >= *min
             } else {
                 false
             }
@@ -1220,40 +1380,58 @@ impl Must {
             false
         }
     }
-    
-    /// Whether unblocking the receive at `block_pos` to read from `send` could
-    /// be timed consistent. Takes a caller-owned memo cache so the predecessor
-    /// walk (identical for every matching send) and any shared send prefixes
-    /// are not recomputed per send; valid because the graph is not mutated
-    /// across the calls that share the cache. Returns true when `timed` is unset.
-    fn is_block_timed_feasible(
-        &self,
-        block_pos: Event,
-        send: &SendMsg,
-        cache: &mut HashMap<Event, crate::timed_cons::TimeInterval>,
-    ) -> bool {
-        let cfg = match &self.config.timed {
-            Some(c) => c,
-            None => return true,
-        };
-        let g = &self.current.graph;
-        if block_pos.index == 0 {
-            // Defensive: a Block can't be the thread's first event, but
-            // if it ever is, fall back to "feasible".
+
+    /// Certification gate for error reporting: with a timed config, a
+    /// violation is reported only when the counterexample graph admits
+    /// one consistent timeline (soundness of FIREs). The legacy
+    /// interval walker can steer exploration into relaxation artifacts
+    /// (interval endpoints assuming different times for one shared
+    /// ancestor); those are suppressed here, counted under
+    /// `suppressed_spurious`, and the execution continues as an
+    /// ordinary blocked one. Under the exact engine every explored
+    /// graph stays feasible by construction.
+    /// Certification judges the FULL committed graph, not just the
+    /// violation's porf prefix (audit 2026-08-09): the prefix omits
+    /// concurrent matching senders, so an inbox batch no operational
+    /// run produces could still be "certified" (the witness simply
+    /// left out the excluded sender's thread). Judging the whole graph
+    /// is sound: feasibility is monotone in the constraint set, so a
+    /// prefix of a feasible branch is feasible, and every realizable
+    /// violation fires again in the branch that realizes it, which
+    /// this gate then passes. The printed witness stays causal (porf
+    /// prefix), and exists whenever the full graph is feasible.
+    pub(crate) fn timed_error_report_allowed(&self, pos: Option<Event>) -> bool {
+        // Replay exists to reproduce a recorded failure verbatim; the
+        // gate must not re-judge it (a legacy-recorded artifact should
+        // fail to reproduce loudly, not vanish into a silent success).
+        if self.replay_info.replay_mode() {
             return true;
         }
-        let pred = Event::new(block_pos.thread, block_pos.index - 1);
-        let pred_iv = crate::timed_cons::timed_consistent_with(g, pred, cfg, cache);
-        let send_iv = crate::timed_cons::timed_consistent_with(g, send.pos(), cfg, cache);
-        let transit = send.transit().unwrap_or((cfg.l, cfg.u));
-        let iv = crate::timed_cons::recv_from_send_window(
-            pred_iv,
-            send_iv,
-            transit,
-            cfg.sd_for(block_pos.thread),
-            u64::MAX,
-        );
-        !iv.is_empty()
+        let Some(cfg) = &self.config.timed else {
+            return true;
+        };
+        let g = &self.current.graph;
+        let _ = pos; // witness printing stays causal; the gate is global
+        let ok = crate::timed_dcs::TimedDcs::graph_feasible(g, cfg, None);
+        if !ok {
+            self.telemetry.counter(SUPPRESSED_SPURIOUS.to_owned());
+            info!("timed certification: suppressing counterexample with no consistent timeline");
+        }
+        ok
+    }
+
+    /// Witness timeline of the current (feasible) graph, formatted for
+    /// printing next to a certified counterexample.
+    pub(crate) fn timed_witness_report(&self, pos: Option<Event>) -> Option<String> {
+        let cfg = self.config.timed.as_ref()?;
+        let g = &self.current.graph;
+        let view = pos.map(|e| g.porf(e));
+        let w = crate::timed_dcs::TimedDcs::graph_witness(g, cfg, view.as_ref())?;
+        let mut out = String::from("Certified witness timeline (event @ time):\n");
+        for (e, t) in w {
+            out.push_str(&format!("  {e} @ {t}\n"));
+        }
+        Some(out)
     }
 
     fn is_waiting_on_finished(&self, t: ThreadId) -> bool {
@@ -1341,7 +1519,25 @@ impl Must {
         }
         let elapsed = Instant::now() - self.started_at;
         if maybe_block.is_some() {
-            if self.is_consistent() {
+            // Same feasibility gate as completed executions, needed
+            // when a GC refusal block's constraints (or a post-commit
+            // matching send) make the branch timeline-impossible: it
+            // then counts as nothing at all.
+            let has_refusal = self.current.graph.threads.iter().any(|t| {
+                t.labels
+                    .last()
+                    .is_some_and(|l| matches!(l, LabelEnum::Block(b) if b.refuses_matching()))
+            });
+            let timed_impossible = (has_refusal || self.timed_completion_check)
+                && self.config.timed.as_ref().is_some_and(|tcfg| {
+                    !self.replay_info.replay_mode()
+                        && !crate::timed_dcs::TimedDcs::graph_feasible(
+                            &self.current.graph,
+                            tcfg,
+                            None,
+                        )
+                });
+            if !timed_impossible && self.is_consistent() {
                 self.telemetry.counter(BLOCKED.to_owned()); // increment BLOCKED
                 let event_count: usize = self.current.graph.threads.iter().map(|t| t.labels.len()).sum();
                 if event_count > self.max_graph_events {
@@ -1362,15 +1558,47 @@ impl Must {
                 }
             }
         } else if self.is_consistent() {
-            self.telemetry.counter(EXECS.to_owned()); // increment EXECS
-            let event_count: usize = self.current.graph.threads.iter().map(|t| t.labels.len()).sum();
-            if event_count > self.max_graph_events {
-                self.max_graph_events = event_count;
-            }
-            self.print_turmoil_trace();
-            if self.config.verbose >= 1 {
-                println!("One more complete execution");
-                println!("{}", self.print_graph(None));
+            // Completion-time feasibility gate (audit 2026-08-09): a
+            // backward revisit's cut view can hide a matching sender
+            // from the inbox exclusion probes; re-execution then
+            // rebuilds that sender into a graph whose constraint
+            // system no timeline satisfies, and no later probe
+            // re-checks it (infeasible-base probes keep-all by the
+            // never-tighter convention). Count such a completion as
+            // blocked instead: every counted execution then carries a
+            // witness timeline.
+            let timed_impossible = self.timed_completion_check
+                && self.config.timed.as_ref().is_some_and(|tcfg| {
+                    !self.replay_info.replay_mode()
+                        && !crate::timed_dcs::TimedDcs::graph_feasible(
+                            &self.current.graph,
+                            tcfg,
+                            None,
+                        )
+                });
+            if timed_impossible {
+                self.telemetry.counter(BLOCKED.to_owned());
+                let event_count: usize =
+                    self.current.graph.threads.iter().map(|t| t.labels.len()).sum();
+                if event_count > self.max_graph_events {
+                    self.max_graph_events = event_count;
+                }
+                if self.config.verbose >= 2 {
+                    println!("One more timeline-impossible execution (counted blocked)");
+                    println!("{}", self.print_graph(None));
+                }
+            } else {
+                self.telemetry.counter(EXECS.to_owned()); // increment EXECS
+                let event_count: usize =
+                    self.current.graph.threads.iter().map(|t| t.labels.len()).sum();
+                if event_count > self.max_graph_events {
+                    self.max_graph_events = event_count;
+                }
+                self.print_turmoil_trace();
+                if self.config.verbose >= 1 {
+                    println!("One more complete execution");
+                    println!("{}", self.print_graph(None));
+                }
             }
         }
 
@@ -1513,6 +1741,7 @@ impl Must {
             &self.current.graph,
             self.current.graph.recv_label(pos).unwrap(),
             self.is_monitor(&pos),
+            self.timed_for_views(),
         );
 
         self.filter_symmetric_rfs(&mut rfs, pos);
@@ -1562,6 +1791,46 @@ impl Must {
                 self.current.graph.change_rf(pos, Some(rfs[idx]));
             } else {
                 debug!("Forward revisits at {}: {:?}", pos, rfs);
+                // GC refusal sibling (audit 2026-08-09): a waiting
+                // timed receive may ALSO never read: every matching
+                // message can die before or while it waits. Push the
+                // refusal branch when some timeline realizes it, and
+                // push it FIRST so the LIFO pop applies it LAST at
+                // this stamp (it converts the receive into a block;
+                // every read alternative must already have run).
+                // Worlds where the receive reads a later send are the
+                // read siblings' backward revisits, so the refusal
+                // block never wakes.
+                let refusal_feasible = self.config.timed.is_some()
+                    && !self.replay_info.replay_mode()
+                    && !self.is_monitor(&pos)
+                    && {
+                        let rlab = self.current.graph.recv_label(pos).unwrap();
+                        matches!(rlab.wait(), Some(crate::WaitTime::Infinite))
+                            && Consistency::timed_gc_offer_arm(rlab.wait(), rlab.comm())
+                            && {
+                                let tcfg = self.config.timed.as_ref().unwrap();
+                                let mut d = crate::timed_dcs::TimedDcs::build(
+                                    &self.current.graph,
+                                    tcfg,
+                                    None,
+                                    Some(pos),
+                                );
+                                d.base_feasible()
+                                    && d.probe_gc_block(
+                                        pos,
+                                        rlab.as_event_label(),
+                                        rlab.recv_loc(),
+                                    )
+                            }
+                    };
+                if refusal_feasible {
+                    push_worklist(
+                        &mut self.current.rqueue,
+                        self.current.graph.label(pos).stamp(),
+                        RevisitEnum::new_forward_block(pos),
+                    );
+                }
                 self.current.graph.change_rf(pos, Some(rfs[0]));
                 rfs.iter().skip(1).for_each(|&rf| {
                     push_worklist(
@@ -1576,13 +1845,13 @@ impl Must {
             // Overwrites RecvMsg. Capture the original recv's wait
             // before the overwrite so the resulting Block can still tell
             // visualizers which kind of timed recv this was.
-            let (loc, wait) = {
+            let (loc, wait, comm) = {
                 let rlab = self.current.graph.recv_label(pos).unwrap();
-                (rlab.recv_loc().clone(), rlab.wait())
+                (rlab.recv_loc().clone(), rlab.wait(), rlab.comm())
             };
             self.add_to_graph(LabelEnum::Block(Block::new(
                 pos,
-                BlockType::Value(loc, wait, 1),
+                BlockType::Value(loc, wait, 1, comm, false),
             )));
             None
         }
@@ -1590,7 +1859,36 @@ impl Must {
 
     fn visit_inbox_rfs(&mut self, pos: Event) -> Vec<Option<Val>> {
         let ilab = self.current.graph.inbox_label(pos).unwrap().clone();
-        let rfs = self.checker.inbox_rfs(&self.current.graph, &ilab);
+        // One oracle per inbox visit, shared between member eligibility
+        // (inside inbox_rfs) and the joint subset probes below. Built
+        // comm-independently: a TotalOrder timed inbox skips the cons
+        // eligibility arm but still needs the oracle for subsets.
+        let timed_cfg = self.config.timed.clone();
+        let build_oracle = timed_cfg.is_some()
+            && ilab.wait().is_some()
+            && !self.replay_info.replay_mode();
+        let mut oracle = if build_oracle {
+            let d = crate::timed_dcs::TimedDcs::build(
+                &self.current.graph,
+                timed_cfg.as_ref().unwrap(),
+                None,
+                Some(pos),
+            );
+            if d.base_feasible() {
+                // Full-graph feasible base: vouches for any pending
+                // poisoned exclusion pair (see field doc).
+                self.timed_completion_check = false;
+            }
+            Some(d)
+        } else {
+            None
+        };
+        let rfs = self.checker.inbox_rfs(
+            &self.current.graph,
+            &ilab,
+            self.timed_for_views(),
+            oracle.as_mut(),
+        );
 
         let min = ilab.min();
         let max = ilab.max();
@@ -1621,21 +1919,23 @@ impl Must {
         let mut combinations =
             compute_inbox_possible_subsets_from_rfs(&rfs, min.max(1), max, None);
 
-        // Drop non-empty subsets whose `timed_consistent` window on the inbox
-        // event would be empty. Pure no-op when `config.timed` is `None` or
-        // when this inbox was constructed without a wait time.
-        if let Some(cfg) = self.config.timed.clone() {
-            if wait.is_some() {
-                let g = &mut self.current.graph;
-                let original = ilab.rfs();
-                combinations.retain(|subset| {
-                    g.change_inbox_rfs(pos, Some(subset.clone()));
-                    let iv = crate::timed_cons::timed_consistent(g, pos, &cfg);
-                    !iv.is_empty()
-                });
-                // Restore the label's read set exactly (preserving the
-                // None / Some(empty) distinction).
-                g.change_inbox_rfs(pos, original);
+        // Drop non-empty subsets that no consistent timeline admits.
+        // Pure no-op when `config.timed` is `None` or when this inbox
+        // was constructed without a wait time. The read is the last
+        // event of its thread here, so the conjunctive probe is exact
+        // (terminal-read equivalence, see timed_dcs::probe_inbox_rfs);
+        // no graph mutation is needed. Replay reproduces recorded
+        // subsets verbatim (parity with filter_timed_consistent_rfs).
+        // Reuses the oracle built above (one build per inbox visit).
+        {
+            if let Some(dcs) = oracle.as_mut() {
+                if dcs.base_feasible() {
+                    combinations.retain(|subset| dcs.probe_inbox_rfs(pos, subset));
+                }
+                // Infeasible base = engine-invariant breach tripwire
+                // (exploration keeps every committed graph feasible):
+                // keep all candidates (never tighter) and let
+                // certification gate any report.
             }
         }
 
@@ -1682,7 +1982,7 @@ impl Must {
                 // No feasible `min`-subset and no timeout fallback: block.
                 self.add_to_graph(LabelEnum::Block(Block::new(
                     pos,
-                    BlockType::Value(ilab.recv_loc().clone(), wait, min),
+                    BlockType::Value(ilab.recv_loc().clone(), wait, min, ilab.comm(), true),
                 )));
                 return Vec::new();
             };
@@ -1727,6 +2027,7 @@ impl Must {
                     prefix.update(g.send_label(s).unwrap().porf());
                 }
             }
+            RevisitPlacement::BlockInstead => unreachable!("forward-only placement"),
         }
 
         // Any receive/inbox outside this protected prefix must remain maximal.
@@ -1787,7 +2088,13 @@ impl Must {
                     }
                     if self
                         .checker
-                        .is_revisit_consistent(g, r, slab, self.is_monitor(&r.pos()))
+                        .is_revisit_consistent(
+                            g,
+                            r,
+                            slab,
+                            self.is_monitor(&r.pos()),
+                            self.timed_for_views(),
+                        )
                         && self.is_maximal_extension(&rev)
                     {
                         revs.push(RevisitEnum::BackwardRevisit(Revisit::new(r.pos(), pos)));
@@ -1851,50 +2158,75 @@ impl Must {
             let track = self.config.prune_log_file.is_some();
             let mut rejected_revs: Vec<(Event, crate::timed_cons::TimeInterval)> =
                 if track { Vec::new() } else { Vec::with_capacity(0) };
-            let g = &mut self.current.graph;
-            revs.retain(|rev_enum| {
-                let RevisitEnum::BackwardRevisit(rev) = rev_enum else {
-                    return true;
-                };
-                let r = rev.pos;
-                let iv = match &rev.rev {
-                    RevisitPlacement::Default(_) => {
-                        // Skip recv revisits whose inbox has no wait
-                        // set (untimed recv inside timed config is
-                        // transparent); the walker already handles that.
-                        let original_rf = g.recv_label(r).unwrap().rf();
-                        g.change_rf(r, Some(pos));
-                        let iv = crate::timed_cons::timed_consistent(g, r, &cfg);
-                        g.change_rf(r, original_rf);
-                        iv
-                    }
-                    RevisitPlacement::Inbox(sends) => {
-                        // Skip if this inbox is untimed (no wait): the
-                        // walker passes it through unchanged anyway.
-                        let ilab = g.inbox_label(r).unwrap();
-                        if ilab.wait().is_none() {
-                            return true;
+            // A backward revisit applies to the CUT graph
+            // copy_to_view(revisit_view(rev)), so the exact probe must
+            // be view-restricted; judging against the full graph would
+            // import constraints from events the revisit deletes and
+            // over-prune (completeness). Decided in an immutable
+            // pre-pass (exact probes never mutate the graph). The
+            // revisited read is the last event of its thread in the
+            // cut view, so the conjunctive inbox probe is exact there
+            // (terminal-read equivalence, see timed_dcs).
+            let use_exact = !self.replay_info.replay_mode();
+            let mut keep_exact: Vec<Option<bool>> = vec![None; revs.len()];
+            if use_exact {
+                let g = &self.current.graph;
+                for (i, rev_enum) in revs.iter().enumerate() {
+                    let RevisitEnum::BackwardRevisit(rev) = rev_enum else {
+                        continue;
+                    };
+                    // Untimed inbox: no timing constraints to judge.
+                    if let RevisitPlacement::Inbox(_) = &rev.rev {
+                        if g.inbox_label(rev.pos).unwrap().wait().is_none() {
+                            keep_exact[i] = Some(true);
+                            continue;
                         }
-                        let original = ilab.rfs();
-                        match sends {
-                            None => g.change_inbox_rfs(r, None),
+                    }
+                    let view = g.revisit_view(rev);
+                    let mut dcs = crate::timed_dcs::TimedDcs::build(
+                        g,
+                        &cfg,
+                        Some(&view),
+                        Some(rev.pos),
+                    );
+                    if !dcs.base_feasible() {
+                        // Infeasible cut base = engine-invariant breach
+                        // tripwire: leave None (keep the revisit; never
+                        // tighter), certification gates any report.
+                        continue;
+                    }
+                    let ok = match &rev.rev {
+                        RevisitPlacement::Default(_) => dcs.probe_recv_rf(rev.pos, pos),
+                        RevisitPlacement::BlockInstead => {
+                            unreachable!("forward-only placement")
+                        }
+                        RevisitPlacement::Inbox(sends) => match sends {
+                            None => dcs.probe_inbox_timeout(rev.pos),
                             Some(v) => {
                                 let mut sorted = v.clone();
                                 sorted.sort();
-                                g.change_inbox_rfs(r, Some(sorted));
+                                dcs.probe_inbox_rfs(rev.pos, &sorted)
                             }
-                        }
-                        let iv = crate::timed_cons::timed_consistent(g, r, &cfg);
-                        // Restore the read set
-                        g.change_inbox_rfs(r, original);
-                        iv
+                        },
+                    };
+                    keep_exact[i] = Some(ok);
+                    if !ok && track {
+                        rejected_revs
+                            .push((rev.pos, crate::timed_cons::TimeInterval::empty()));
                     }
-                };
-                let ok = !iv.is_empty();
-                if !ok && track {
-                    rejected_revs.push((r, iv));
                 }
-                ok
+            }
+            let mut rev_idx = 0usize;
+            revs.retain(|rev_enum| {
+                let i = rev_idx;
+                rev_idx += 1;
+                let RevisitEnum::BackwardRevisit(_) = rev_enum else {
+                    return true;
+                };
+                // No exact verdict = replay (reproduce verbatim) or the
+                // infeasible-cut-base tripwire: keep. Rejections were
+                // recorded in the pre-pass.
+                keep_exact[i].unwrap_or(true)
             });
             if track && !rejected_revs.is_empty() {
                 self.log_backward_revisit_prunings(pos, &rejected_revs);
@@ -1939,6 +2271,7 @@ impl Must {
             RevisitPlacement::Default(send) => {
                 target_prefix.update(g.send_label(*send).unwrap().porf());
             }
+            RevisitPlacement::BlockInstead => unreachable!("forward-only placement"),
             RevisitPlacement::Inbox(sends) => {
                 for &s in sends.iter().flatten() {
                     target_prefix.update(g.send_label(s).unwrap().porf());
@@ -1970,6 +2303,7 @@ impl Must {
             RevisitPlacement::Default(send) => {
                 target_prefix.update(g.send_label(*send).unwrap().porf());
             }
+            RevisitPlacement::BlockInstead => unreachable!("forward-only placement"),
         }
 
         match lab.rfs() {
@@ -1989,17 +2323,37 @@ impl Must {
     }
 
     fn reads_tiebreaker(&self, rlab: &RecvMsg, rev: &Revisit) -> bool {
-        self.checker
-            .reads_tiebreaker(&self.current.graph, rlab, rev, self.is_monitor(&rlab.pos()))
+        self.checker.reads_tiebreaker(
+            &self.current.graph,
+            rlab,
+            rev,
+            self.is_monitor(&rlab.pos()),
+            self.timed_for_views(),
+        )
     }
 
     fn inbox_reads_tiebreaker(&self, ilab: &Inbox, rev: &Revisit) -> bool {
-        self.checker
-            .inbox_reads_tiebreaker(&self.current.graph, ilab, rev)
+        self.checker.inbox_reads_tiebreaker(
+            &self.current.graph,
+            ilab,
+            rev,
+            self.timed_for_views(),
+        )
     }
 
     fn is_monitor(&self, recv: &Event) -> bool {
         self.monitors.contains_key(&recv.thread)
+    }
+
+    /// Timed config handed to the consistency view construction (the GC
+    /// eligibility rule). None during replay: recorded runs reproduce
+    /// verbatim, parity with filter_timed_consistent_rfs.
+    fn timed_for_views(&self) -> Option<&crate::timed_cons::TimedConfig> {
+        if self.replay_info.replay_mode() {
+            None
+        } else {
+            self.config.timed.as_ref()
+        }
     }
 
     fn is_maximal_recv(&self, rlab: &RecvMsg, rev: &Revisit) -> bool {
@@ -2039,47 +2393,90 @@ impl Must {
         }
     }
 
-    /// Drop candidate sends whose `setRF(G, pos, s)`
-    /// would make `timed_consistent(G, pos)` empty. When `config.timed` is
-    /// `None` this is a no-op.
+    /// Drop candidate sends whose `setRF(G, pos, s)` would be timed
+    /// infeasible. When `config.timed` is `None` this is a no-op.
     ///
-    /// The check is performed by temporarily mutating `rlab.rf` to each
-    /// candidate and running `timed_consistent`, then restoring the prior rf
-    /// so the caller's view of the graph is unchanged.
+    /// One difference-constraint oracle is built per batch with `pos`
+    /// floating, and each candidate is probed without mutating the
+    /// graph; a candidate is dropped iff NO consistent timeline
+    /// realizes the read (exact: maximal sound pruning). Every timed
+    /// decision, inbox included, goes through the same exact oracle;
+    /// the legacy interval walker lives only in the pre-timed-exact
+    /// branch history.
     fn filter_timed_consistent_rfs(&mut self, rfs: &mut Vec<Event>, pos: Event) {
         let cfg = match self.config.timed.clone() {
             None => return,
             Some(c) => c,
         };
+        // Replay follows a recorded schedule; filters must never
+        // out-prune it.
+        if self.replay_info.replay_mode() {
+            return;
+        }
+        // GC offers were already eligibility-filtered inside the view
+        // construction (cons::coherent_rfs_in_view, SAME predicate), so
+        // every survivor re-passes these probes by construction: skip
+        // the redundant second oracle build. TotalOrder is exempt there
+        // (seal semantics) and takes the full filter below. Two
+        // documented deltas: the base-infeasible info! tripwire below no
+        // longer prints for GC recvs (cons's keep-all arm is silent),
+        // and forward prune-log rows for GC recvs were already empty
+        // before this skip (cons rejects candidates before this filter
+        // ever saw them).
+        {
+            let rlab = self.current.graph.recv_label(pos).unwrap();
+            if Consistency::timed_gc_offer_arm(rlab.wait(), rlab.comm()) {
+                // Drift tripwire (debug/test builds): if the cons arm
+                // and this skip ever diverge, fail loudly.
+                #[cfg(debug_assertions)]
+                {
+                    let g = &self.current.graph;
+                    let mut dcs =
+                        crate::timed_dcs::TimedDcs::build(g, &cfg, None, Some(pos));
+                    if dcs.base_feasible() {
+                        for &s in rfs.iter() {
+                            debug_assert!(
+                                dcs.probe_recv_rf(pos, s),
+                                "GC-filtered offer {s} failed re-probe at {pos}"
+                            );
+                        }
+                    }
+                }
+                return;
+            }
+        }
         // Only allocate the rejection-tracking Vec when prune logging is
         // opted into; otherwise this stays zero-cost.
         let track = self.config.prune_log_file.is_some();
-        let g = &mut self.current.graph;
-        let original_rf = g.recv_label(pos).unwrap().rf();
         let mut rejected: Vec<(Event, crate::timed_cons::TimeInterval)> =
             if track { Vec::new() } else { Vec::with_capacity(0) };
-        // One memo cache shared across all candidates: only `pos`'s own window
-        // depends on which send it reads, so every other entry (pred(pos) and
-        // each candidate send's prefix) stays valid as we flip pos's rf. We
-        // evict just `pos` each iteration. See plan: behavior-preserving.
-        let mut cache: HashMap<Event, crate::timed_cons::TimeInterval> = HashMap::new();
-        let kept: Vec<Event> = rfs
-            .iter()
-            .copied()
-            .filter(|&s| {
-                g.change_rf(pos, Some(s));
-                cache.remove(&pos);
-                let iv = crate::timed_cons::timed_consistent_with(g, pos, &cfg, &mut cache);
-                let ok = !iv.is_empty();
-                if !ok && track {
-                    rejected.push((s, iv));
-                }
-                ok
-            })
-            .collect();
-        g.change_rf(pos, original_rf);
-        *rfs = kept;
-
+        {
+            let g = &self.current.graph;
+            let mut dcs = crate::timed_dcs::TimedDcs::build(g, &cfg, None, Some(pos));
+            if !dcs.base_feasible() {
+                // Engine-invariant breach tripwire (exploration keeps
+                // every committed graph feasible, so this should be
+                // unreachable). Keep every candidate: never tighter,
+                // and certification still gates any resulting report.
+                info!("timed exact: base system infeasible at {pos}; keeping all candidates");
+                return;
+            }
+            let kept: Vec<Event> = rfs
+                .iter()
+                .copied()
+                .filter(|&s| {
+                    let ok = dcs.probe_recv_rf(pos, s);
+                    if !ok && track {
+                        // Prune-log parity: the empty-interval sentinel
+                        // (lo 1, hi 0) marks exact rejections; consumers
+                        // key on `reason`.
+                        rejected.push((s, crate::timed_cons::TimeInterval::empty()));
+                    }
+                    ok
+                })
+                .collect();
+            *rfs = kept;
+        }
         if track && !rejected.is_empty() {
             self.log_timed_prunings("forward", pos, &rejected);
         }
@@ -2223,6 +2620,29 @@ impl Must {
         }
         let pos = self.current.graph.add_label(lab);
         self.checker.calc_views(&mut self.current.graph, pos);
+        if !self.timed_completion_check
+            && self.config.timed.is_some()
+            && !self.replay_info.replay_mode()
+        {
+            if let LabelEnum::SendMsg(slab) = self.current.graph.label(pos) {
+                'scan: for thr in self.current.graph.threads.iter() {
+                    for lab in &thr.labels {
+                        let LabelEnum::Inbox(ilab) = lab else {
+                            continue;
+                        };
+                        if ilab.wait().is_some()
+                            && ilab
+                                .rfs()
+                                .is_some_and(|rfs| !rfs.is_empty() && !rfs.contains(&pos))
+                            && ilab.recv_loc().matches(slab)
+                        {
+                            self.timed_completion_check = true;
+                            break 'scan;
+                        }
+                    }
+                }
+            }
+        }
         pos
     }
 
@@ -2368,7 +2788,32 @@ impl Must {
                     );
                 }
             }
-            LabelEnum::RecvMsg(_rlab) => self.change_rf(rev),
+            LabelEnum::RecvMsg(rlab) => match &rev.rev {
+                RevisitPlacement::BlockInstead => {
+                    // Convert the receive into a GC refusal block,
+                    // keeping its label base (stamp bookkeeping);
+                    // detach the committed rf first so the send's
+                    // reader mark is cleared, then recompute views.
+                    let (loc, wait, comm) =
+                        (rlab.recv_loc().clone(), rlab.wait(), rlab.comm());
+                    self.current.graph.change_rf(pos, None);
+                    let base = self
+                        .current
+                        .graph
+                        .recv_label(pos)
+                        .unwrap()
+                        .as_event_label()
+                        .clone();
+                    *self.current.graph.label_mut(pos) = LabelEnum::Block(
+                        Block::new_refusing(
+                            base,
+                            BlockType::Value(loc, wait, 1, comm, false),
+                        ),
+                    );
+                    self.checker.calc_views(&mut self.current.graph, pos);
+                }
+                _ => self.change_rf(rev),
+            },
             // Inbox revisits also go through change_rf, but replace a full send set.
             LabelEnum::Inbox(_ilab) => self.change_rf(rev),
             LabelEnum::SendMsg(slab) => {
@@ -2395,6 +2840,8 @@ impl Must {
             RevisitPlacement::Default(send) => {
                 prefix.update(self.current.graph.send_label(send).unwrap().porf());
             }
+            // A refusal adds no send: nothing new becomes non-revisitable.
+            RevisitPlacement::BlockInstead => {}
             RevisitPlacement::Inbox(sends) => {
                 // Inbox revisit prefix is the union of porf-prefixes of all chosen sends.
                 for s in sends.into_iter().flatten() {
@@ -2492,6 +2939,9 @@ impl Must {
                 // Standard recv revisit: single rf edge.
                 self.current.graph.change_rf(rev.pos, Some(*vv));
             }
+            // BlockInstead is dispatched before change_rf (it replaces
+            // the label, it does not change an rf).
+            RevisitPlacement::BlockInstead => unreachable!(),
             RevisitPlacement::Inbox(vv) => {
                 // Inbox revisit: whole set of chosen sends. `None` is the
                 // timeout empty, `Some(vec![])` the immediate empty.
@@ -2654,6 +3104,14 @@ impl Must {
         )?;
 
         let g = &self.current.graph;
+        // Exact engine: one oracle for the whole dot dump; per-event
+        // windows come from true shortest-path bounds instead of the
+        // relaxed chain walk (None hi renders as infinity).
+        let mut exact_dcs = self
+            .config
+            .timed
+            .as_ref()
+            .map(|cfg| crate::timed_dcs::TimedDcs::build(g, cfg, None, None));
         for (tid, ind) in v.entries() {
             std::io::Write::write(
                 &mut out_file,
@@ -2670,17 +3128,22 @@ impl Must {
                     continue;
                 }
                 let is_error = error.is_some() && error.unwrap() == pos;
-                // When timed mode is enabled, append the [τ_lo, τ_hi]
-                // window that `timed_consistent` would assign to this event.
-                let time_str = if let Some(ref cfg) = self.config.timed {
-                    let iv = crate::timed_cons::timed_consistent(g, pos, cfg);
-                    if iv.is_empty() {
-                        "<br/><font point-size=\"10\" color=\"#cc3333\">τ ∈ ∅</font>".to_string()
-                    } else {
-                        format!(
-                            "<br/><font point-size=\"10\" color=\"#3366aa\">τ ∈ [{}, {}]</font>",
-                            iv.lo, iv.hi
-                        )
+                // When timed mode is enabled, append the exact
+                // [τ_lo, τ_hi] window of this event (under the
+                // certified inbox case assignment).
+                let time_str = if let Some(dcs) = exact_dcs.as_mut() {
+                    match dcs.exact_bounds(pos) {
+                        None => {
+                            "<br/><font point-size=\"10\" color=\"#cc3333\">τ ∈ ∅</font>".to_string()
+                        }
+                        Some((lo, hi)) => {
+                            let hi_s =
+                                hi.map(|h| h.to_string()).unwrap_or_else(|| "∞".to_string());
+                            format!(
+                                "<br/><font point-size=\"10\" color=\"#3366aa\">τ ∈ [{}, {}]</font>",
+                                lo, hi_s
+                            )
+                        }
                     }
                 } else {
                     String::new()
@@ -2879,8 +3342,61 @@ impl Must {
     fn fmt_revisit_placement(&self, placement: &RevisitPlacement) -> String {
         match placement {
             RevisitPlacement::Default(ev) => ev.to_string(),
+            RevisitPlacement::BlockInstead => "{refuse-all}".to_string(),
             RevisitPlacement::Inbox(None) => "{timeout}".to_string(),
             RevisitPlacement::Inbox(Some(v)) => self.fmt_event_set(v),
+        }
+    }
+}
+
+/// True iff some `k`-subset of `sends` is jointly feasible as one
+/// batch read waking the block at `block_pos`. Exact: the block is the
+/// last event of its thread, where the conjunctive joint probe equals
+/// the disjunctive inbox rule (terminal-read equivalence, see
+/// timed_dcs::probe_unblock_subset). Standard lexicographic
+/// combination walk, first hit wins.
+fn any_jointly_feasible_subset(
+    dcs: &mut crate::timed_dcs::TimedDcs<'_>,
+    block_pos: Event,
+    sends: &[Event],
+    k: usize,
+    inbox: Option<(&crate::loc::RecvLoc, crate::loc::CommunicationModel)>,
+) -> bool {
+    let n = sends.len();
+    if k == 0 {
+        return true;
+    }
+    if k > n {
+        return false;
+    }
+    let mut idx: Vec<usize> = (0..k).collect();
+    let mut subset: Vec<Event> = Vec::with_capacity(k);
+    loop {
+        subset.clear();
+        subset.extend(idx.iter().map(|&i| sends[i]));
+        let feasible = match inbox {
+            Some((loc, comm)) => {
+                dcs.probe_unblock_inbox_subset(block_pos, &subset, loc, comm)
+            }
+            None => dcs.probe_unblock_subset(block_pos, &subset),
+        };
+        if feasible {
+            return true;
+        }
+        // Advance to the next k-combination in lexicographic order.
+        let mut i = k;
+        loop {
+            if i == 0 {
+                return false;
+            }
+            i -= 1;
+            if idx[i] != i + n - k {
+                idx[i] += 1;
+                for j in i + 1..k {
+                    idx[j] = idx[j - 1] + 1;
+                }
+                break;
+            }
         }
     }
 }
@@ -2903,8 +3419,22 @@ fn pop_worklist(worklist: &mut RQueue, is_arbitrary: bool, rng: &mut Pcg64Mcg) -
             let rev = revs.pop().unwrap();
             (*stamp, rev, revs.is_empty())
         } else {
-            // Choose randomly from alternatives at the highest stamp
-            let idx = rng.random_range(0..revs.len());
+            // Choose randomly from alternatives at the highest stamp.
+            // BlockInstead converts the label kind at its position, so
+            // it may only pop once it is the last alternative there.
+            let eligible: Vec<usize> = revs
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| {
+                    !matches!(r.rev(), crate::revisit::RevisitPlacement::BlockInstead)
+                })
+                .map(|(i, _)| i)
+                .collect();
+            let idx = if eligible.is_empty() {
+                rng.random_range(0..revs.len())
+            } else {
+                eligible[rng.random_range(0..eligible.len())]
+            };
             let rev = revs.swap_remove(idx);
             (*stamp, rev, revs.is_empty())
         }

@@ -6,6 +6,8 @@ use crate::loc::CommunicationModel;
 use crate::revisit::Revisit;
 use crate::vector_clock::VectorClock;
 use crate::loc::WakeMsg;
+use crate::timed_cons::{TimedConfig, WaitTime};
+use crate::timed_dcs::TimedDcs;
 use log::debug;
 
 // A generic consistency which will, eventually, support arbitrary
@@ -155,30 +157,9 @@ impl Consistency {
                             || view.is_some_and(|view| !view.0.contains(reader))
                             // A send is available if its reader was part of an async
                             // receive that was subsequently cancelled.
-                            // Exclude internal PollerMsg sends.
-                            || slab.val.as_any_ref().downcast_ref::<PollerMsg>().is_none()
-                                && 
-                               slab.val.as_any_ref().downcast_ref::<WakeMsg>().is_none()
-                                && {
-                                debug!("Inside cancel looking looking at thread with labels {:?}", g.get_thr(&reader.thread).labels);
-                                let cancel_available = g.get_thr(&reader.thread).labels[(reader.index as usize + 1)..]
-                                    .iter()
-                                    .any(|lab| {
-                                        if let LabelEnum::RecvMsg(recv) = lab {
-                                            debug!("Searching for cancel: looking at receive from {:?}", recv.rf());
-                                            recv.rf().is_some_and(|rf| {
-                                                if let LabelEnum::SendMsg(send) = g.label(rf) {
-                                                    debug!("And this send contains the message {:?}", send.val);
-                                                    send.val.as_any_ref().downcast_ref::<PollerMsg>()
-                                                        .is_some_and(|msg| matches!(msg, PollerMsg::Cancel))
-                                                } else {
-                                                    false
-                                                }
-                                            }) && view.is_none_or(|view| view.0.contains(lab.pos()))
-                                        } else {
-                                            false
-                                        }
-                                    });
+                            || {
+                                let cancel_available =
+                                    Self::reader_cancelled_async(g, slab, reader, view);
                                 if cancel_available {
                                     debug!("[cancel_path] send {} (reader={}) made available via cancel path", spos, reader);
                                     slab.push_cancelled_recv_reader(reader);
@@ -241,8 +222,93 @@ impl Consistency {
         !sends.iter().any(|&e| view.contains(e.pos()))
     }
 
+    /// Is `slab`'s `reader` of an async receive
+    /// that was cancelled (making the send re-available)?
+    /// Excludes internal PollerMsg/WakeMsg sends.
+    pub(crate) fn reader_cancelled_async(
+        g: &ExecutionGraph,
+        slab: &SendMsg,
+        reader: Event,
+        view: Option<(&VectorClock, Option<Event>)>,
+    ) -> bool {
+        if slab.val.as_any_ref().downcast_ref::<PollerMsg>().is_some()
+            || slab.val.as_any_ref().downcast_ref::<WakeMsg>().is_some()
+        {
+            return false;
+        }
+        g.get_thr(&reader.thread).labels[(reader.index as usize + 1)..]
+            .iter()
+            .any(|lab| {
+                if let LabelEnum::RecvMsg(recv) = lab {
+                    recv.rf().is_some_and(|rf| {
+                        if let LabelEnum::SendMsg(send) = g.label(rf) {
+                            send.val
+                                .as_any_ref()
+                                .downcast_ref::<PollerMsg>()
+                                .is_some_and(|msg| matches!(msg, PollerMsg::Cancel))
+                        } else {
+                            false
+                        }
+                    }) && view.is_none_or(|view| view.0.contains(lab.pos()))
+                } else {
+                    false
+                }
+            })
+    }
+
+    /// GC eviction: send `b` is gone forever if
+    /// once an in-view receive other than `current` consumed a send
+    /// ordered after `b` on the same channel while `b` stayed unread.
+    /// The reader must be one that could have read `b` (its predicate
+    /// matches). Callers gate NoOrder (no order to invert) and
+    /// TotalOrder (Mailbox is exempt from GC).
+    pub(crate) fn send_overtaken_in_view(
+        g: &ExecutionGraph,
+        b: &SendMsg,
+        current: Event,
+        view: Option<(&VectorClock, Option<Event>)>,
+    ) -> bool {
+        // Overtakers are enumerated from b's OWN SENDER's subsequent
+        // sends, NOT from the current receive's matching set
+        let bpos = b.pos();
+        g.get_thr(&bpos.thread).labels[(bpos.index as usize + 1)..]
+            .iter()
+            .any(|lab| {
+                let LabelEnum::SendMsg(s2) = lab else {
+                    return false;
+                };
+                if !s2.sb().contains(bpos) {
+                    return false; // not ordered after b in b's channel
+                }
+                let Some(r2) = s2.reader() else {
+                    return false;
+                };
+                if r2 == current {
+                    return false;
+                }
+                if view.is_some_and(|v| !v.0.contains(r2)) {
+                    return false;
+                }
+                // The reader must be one that COULD have read b (its
+                // predicate matches b).
+                match g.label(r2) {
+                    LabelEnum::RecvMsg(rl) => rl.matches(b),
+                    LabelEnum::Inbox(il) => il.matches(b),
+                    _ => false,
+                }
+            })
+    }
+
+    /// uses it to skip its (then redundant) second probe pass.
+    pub(crate) fn timed_gc_offer_arm(
+        wait: Option<WaitTime>,
+        comm: CommunicationModel,
+    ) -> bool {
+        wait.is_some() && comm != CommunicationModel::TotalOrder
+    }
+
     /// Keeps the sb-minimals (porf-minimals is flag is set) among the (*stamp-ordered*) sends
-    fn retain_sb_minimals<'a>(
+    pub(crate) fn retain_sb_minimals<'a>(
         sends: impl Iterator<Item = &'a SendMsg>,
         porf_override: bool,
     ) -> Vec<&'a SendMsg> {
@@ -269,6 +335,12 @@ impl Consistency {
         recv: &RecvMsg,
         porf_override: bool,
         check_concurrent: bool,
+        // Timed eligibility (GC semantics): with a
+        // timed config, sends that can NEVER be read by this receive in any
+        // consistent timeline are dropped BEFORE the communication-model
+        // choice, so a time-dead front does not seal its channel. None =
+        // untimed behaviour.
+        timed: Option<&TimedConfig>,
     ) -> Vec<Event> {
         // Sends that the receive can read from
         let sends = g
@@ -280,17 +352,51 @@ impl Consistency {
         // for concurrent receives.
         let rfs = Self::filter_available_sends_in_view(g, recv, sends, view, check_concurrent);
 
+        // Time-eligibility BEFORE the order choice (GC semantics), plus
+        // GC eviction (an overtaken send is gone forever). Untimed
+        // receives (wait = None) carry no timing constraints. NoOrder
+        // gets the eligibility filter only.
+        // TotalOrder (Mailbox) is exempt: its coherence is checked post
+        // hoc by is_consistent. Mailbox channels keep seal semantics.
+        let rfs: Vec<&SendMsg> = match timed {
+            Some(cfg) if Self::timed_gc_offer_arm(recv.wait(), recv.comm()) => {
+                let mut structurally: Vec<&SendMsg> = rfs.collect();
+                if recv.comm() != CommunicationModel::NoOrder {
+                    structurally.retain(|b| {
+                        !Self::send_overtaken_in_view(g, b, recv.pos(), view)
+                    });
+                }
+                if structurally.is_empty() {
+                    structurally
+                } else {
+                    let vc = view.map(|(vc, _)| vc);
+                    let mut dcs = TimedDcs::build(g, cfg, vc, Some(recv.pos()));
+                    if dcs.base_feasible() {
+                        structurally
+                            .into_iter()
+                            .filter(|s| dcs.probe_recv_rf(recv.pos(), s.pos()))
+                            .collect()
+                    } else {
+                        // Engine-invariant breach tripwire: keep all
+                        // (never tighter); certification gates reports.
+                        structurally
+                    }
+                }
+            }
+            _ => rfs.collect(),
+        };
+
         // Optional optimization for NoOrder
         let mut rfs: Vec<Event> = if recv.comm() != CommunicationModel::NoOrder {
             // *Assuming* there are no concurrent receives,
             // all existing matching receives are porf-before the current receives.
             // Therefore the consistent sends are exactly the sb-minimal ones.
-            Self::retain_sb_minimals(rfs, porf_override)
+            Self::retain_sb_minimals(rfs.into_iter(), porf_override)
                 .iter()
                 .map(|lab| lab.pos())
                 .collect()
         } else {
-            rfs.map(|lab| lab.pos()).collect()
+            rfs.into_iter().map(|lab| lab.pos()).collect()
         };
 
         // Return them in an arbitrary but fixed order that does
@@ -313,6 +419,11 @@ impl Consistency {
         view: Option<(&VectorClock, Option<Event>)>,
         inbox: &Inbox,
         check_concurrent: bool,
+        timed: Option<&TimedConfig>,
+        // Optional pre-built oracle to avoid a redundant build+solve.
+        // PRECONDITION: built with view = None and floating = inbox.pos()
+        // (only the full-graph offer path may inject; asserted below).
+        oracle: Option<&mut TimedDcs>,
     ) -> Vec<Event> {
         // Candidate sends that match the inbox location/predicate.
         let sends = g.matching_stores(inbox.recv_loc());
@@ -320,14 +431,53 @@ impl Consistency {
         let rfs =
             Self::filter_available_sends_in_view_for_inbox(g, inbox, sends, view, check_concurrent);
 
+        // Time-eligibility before the order choice (GC)
+        let rfs: Vec<&SendMsg> = match timed {
+            Some(cfg) if Self::timed_gc_offer_arm(inbox.wait(), inbox.comm()) => {
+                let mut structurally: Vec<&SendMsg> = rfs.collect();
+                if inbox.comm() != CommunicationModel::NoOrder {
+                    structurally.retain(|b| {
+                        !Self::send_overtaken_in_view(g, b, inbox.pos(), view)
+                    });
+                }
+                if structurally.is_empty() {
+                    structurally
+                } else if let Some(dcs) = oracle {
+                    // Shared oracle from the offer path (one build per
+                    // inbox visit, reused for the joint subset probes).
+                    debug_assert!(view.is_none(), "injected oracle requires the full-graph view");
+                    if dcs.base_feasible() {
+                        structurally
+                            .into_iter()
+                            .filter(|s| dcs.probe_inbox_rfs(inbox.pos(), &[s.pos()]))
+                            .collect()
+                    } else {
+                        structurally
+                    }
+                } else {
+                    let vc = view.map(|(vc, _)| vc);
+                    let mut dcs = TimedDcs::build(g, cfg, vc, Some(inbox.pos()));
+                    if dcs.base_feasible() {
+                        structurally
+                            .into_iter()
+                            .filter(|s| dcs.probe_inbox_rfs(inbox.pos(), &[s.pos()]))
+                            .collect()
+                    } else {
+                        structurally
+                    }
+                }
+            }
+            _ => rfs.collect(),
+        };
+
         let mut rfs: Vec<Event> = if inbox.comm() != CommunicationModel::NoOrder {
             // Respect the channel's delivery model, mirroring recv behavior.
-            Self::retain_sb_minimals(rfs, false)
+            Self::retain_sb_minimals(rfs.into_iter(), false)
                 .iter()
                 .map(|lab| lab.pos())
                 .collect()
         } else {
-            rfs.map(|lab| lab.pos()).collect()
+            rfs.into_iter().map(|lab| lab.pos()).collect()
         };
 
         // Stable ordering for canonical subset derivation.
@@ -473,6 +623,7 @@ impl Consistency {
         rlab: &RecvMsg,
         rev: &Revisit,
         porf_override: bool,
+        timed: Option<&TimedConfig>,
     ) -> bool {
         let (view, exclude) = match &rev.rev {
             crate::revisit::RevisitPlacement::Default(send) => {
@@ -487,6 +638,9 @@ impl Consistency {
                 let rev_inbox = Revisit::new_inbox(rlab.pos(), sends.clone());
                 (g.revisit_view(&rev_inbox), None)
             }
+            // Forward-only placement: never subject to backward-revisit
+            // consistency checks.
+            crate::revisit::RevisitPlacement::BlockInstead => unreachable!(),
         };
         // rlab is stamp greater or equal that revisitee's stamp
         assert!(rlab.stamp() >= g.label(rev.pos).stamp());
@@ -499,7 +653,10 @@ impl Consistency {
         // First (non-revisit) is the maximal one.
         // Or this reads from a send currently pointed to a different receive through
         // cancelled-reader fallback during replay.
-        let rfs = self.coherent_rfs_in_view(g, Some((&view, exclude)), rlab, porf_override, false);
+        // Maximality must rank the SAME filtered list the offer
+        // uses, or base choice and tiebreak disagree (duplicate/lost runs).
+        let rfs =
+            self.coherent_rfs_in_view(g, Some((&view, exclude)), rlab, porf_override, false, timed);
         if rfs.is_empty() {
             rlab.rf().is_some_and(|rf| {
                 g.send_label(rf)
@@ -515,6 +672,7 @@ impl Consistency {
         g: &ExecutionGraph,
         ilab: &Inbox,
         rev: &Revisit,
+        timed: Option<&TimedConfig>,
     ) -> bool {
         // Non-blocking inbox (min==0): the maximal outcome is the immediate
         // empty. Only the untimed non-blocking inbox reaches this now (timed
@@ -552,9 +710,12 @@ impl Consistency {
             crate::revisit::RevisitPlacement::Default(ev) => Some(*ev),
             // Inbox placement already names the whole candidate set in the revisit view.
             crate::revisit::RevisitPlacement::Inbox(_) => None,
+            // Forward-only placement: never checked here.
+            crate::revisit::RevisitPlacement::BlockInstead => unreachable!(),
         };
 
-        let mut cands = self.coherent_inbox_rfs_in_view(g, Some((&view, exclude)), ilab, false);
+        let mut cands =
+            self.coherent_inbox_rfs_in_view(g, Some((&view, exclude)), ilab, false, timed, None);
 
         Consistency::normalize_event_set(&mut cands);
 
@@ -572,13 +733,20 @@ impl Consistency {
         g: &ExecutionGraph,
         rlab: &RecvMsg,
         porf_override: bool,
+        timed: Option<&TimedConfig>,
     ) -> Vec<Event> {
-        self.coherent_rfs_in_view(g, None, rlab, porf_override, true)
+        self.coherent_rfs_in_view(g, None, rlab, porf_override, true, timed)
     }
 
-    pub(crate) fn inbox_rfs(&self, g: &ExecutionGraph, ilab: &Inbox) -> Vec<Event> {
+    pub(crate) fn inbox_rfs(
+        &self,
+        g: &ExecutionGraph,
+        ilab: &Inbox,
+        timed: Option<&TimedConfig>,
+        oracle: Option<&mut TimedDcs>,
+    ) -> Vec<Event> {
         // Deterministic coherent inbox candidates for base execution / canonical subset.
-        self.coherent_inbox_rfs_in_view(g, None, ilab, true)
+        self.coherent_inbox_rfs_in_view(g, None, ilab, true, timed, oracle)
     }
 
     /// Returns whether the resulting execution would be consistent
@@ -590,6 +758,7 @@ impl Consistency {
         rlab: &RecvMsg,
         slab: &SendMsg,
         porf_override: bool,
+        timed: Option<&TimedConfig>,
     ) -> bool {
         assert!(rlab.matches(slab));
 
@@ -623,11 +792,46 @@ impl Consistency {
         });
 
         // if any of them, apart from slab, could be read by rlab after the revisit, then the execution is inconsistent
-        let overwritten =
+        let blockers: Vec<&SendMsg> =
             Self::filter_available_sends_in_view(g, rlab, sends, Some((&view, Some(spos))), false)
-                .next()
-                .is_none();
-        overwritten
+                .collect();
+        if blockers.is_empty() {
+            return true;
+        }
+        match timed {
+            Some(cfg)
+                if rlab.wait().is_some()
+                    && rlab.comm() != CommunicationModel::NoOrder
+                    && rlab.comm() != CommunicationModel::TotalOrder =>
+            {
+                // Evicted (overtaken) blockers are no blockers.
+                let blockers: Vec<&SendMsg> = blockers
+                    .into_iter()
+                    .filter(|b| {
+                        !Self::send_overtaken_in_view(
+                            g,
+                            b,
+                            rlab.pos(),
+                            Some((&view, Some(spos))),
+                        )
+                    })
+                    .collect();
+                if blockers.is_empty() {
+                    return true;
+                }
+                let mut dcs = TimedDcs::build(g, cfg, Some(&view), Some(rlab.pos()));
+                if dcs.base_feasible() {
+                    blockers
+                        .iter()
+                        .all(|b| !dcs.probe_recv_rf(rlab.pos(), b.pos()))
+                } else {
+                    // Tripwire: treat blockers as real (never admits an
+                    // execution the untimed rule would reject).
+                    false
+                }
+            }
+            _ => false,
+        }
     }
 
     /// Inbox consistency for set semantics: order does not matter.
