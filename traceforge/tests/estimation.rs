@@ -209,3 +209,95 @@ fn estimate_a_nstepsb() {
     println!("Stats = {}, {}", stats.execs, stats.block);
     assert_eq!(stats.execs, 2);
 }
+
+// =====================================================================
+// Estimation-mode inbox support: visit_inbox_rfs now
+// records the forward outcome fan-out (subsets + the applicable empty)
+// as an EXECS_EST factor, samples one outcome, and pushes no forward
+// revisits. Estimation cannot sample inbox BACKWARD revisits, so every
+// shape below synchronizes (joins + a go-token) to have all sends
+// committed before the inbox visit: the estimate is then exact.
+// =====================================================================
+
+// min=1 max=2 over three committed senders: 6 subsets + timeout = 7.
+// Pre-fix this returned 1.0 (no factor) while each "sample" re-ran the
+// whole 7-execution subtree via pushed revisits.
+#[test]
+fn estimate_timed_inbox_min1_max2() {
+    let est = traceforge::estimate_execs_with_config(
+        Config::builder().with_timed(0, 0, 1000).build(),
+        || {
+            let c = thread::spawn(|| {
+                let _: u32 = traceforge::recv_tagged_msg_block(|_, t| t == Some(9));
+                let _ = traceforge::inbox_with_tag_timed(
+                    |_, t| t == Some(1),
+                    1,
+                    Some(2),
+                    traceforge::WaitTime::Finite(10),
+                );
+            });
+            let cid = c.thread().id();
+            let senders: Vec<_> = (0u32..3)
+                .map(|v| {
+                    let cid = cid.clone();
+                    thread::spawn(move || traceforge::send_tagged_msg(cid, 1, v))
+                })
+                .collect();
+            for s in senders {
+                let _ = s.join();
+            }
+            traceforge::send_tagged_msg(cid, 9, 0u32);
+        },
+        5,
+    );
+    assert!((est - 7.0).abs() < 1e-9, "estimate {est} != 7.0");
+}
+
+// Untimed non-blocking (min=0) inbox over one committed sender:
+// one subset + the immediate empty = 2.
+#[test]
+fn estimate_untimed_inbox_min0() {
+    let est = traceforge::estimate_execs_with_config(
+        Config::builder().build(),
+        || {
+            let c = thread::spawn(|| {
+                let _: u32 = traceforge::recv_tagged_msg_block(|_, t| t == Some(9));
+                let _ = traceforge::inbox_with_tag_and_bounds(|_, t| t == Some(1), 0, None);
+            });
+            let cid = c.thread().id();
+            let s = {
+                let cid = cid.clone();
+                thread::spawn(move || traceforge::send_tagged_msg(cid, 1, 1u32))
+            };
+            let _ = s.join();
+            traceforge::send_tagged_msg(cid, 9, 0u32);
+        },
+        5,
+    );
+    assert!((est - 2.0).abs() < 1e-9, "estimate {est} != 2.0");
+}
+
+// Infinite-wait min=2 with a single sender: the estimation walk must
+// terminate blocked (no subsets, no empty fallback) without hanging or
+// pushing revisits. The pinned value is whatever the estimator reports
+// for an all-blocked walk; the load-bearing assertion is termination
+// with a finite estimate.
+#[test]
+fn estimate_infinite_inbox_blocks() {
+    let est = traceforge::estimate_execs_with_config(
+        Config::builder().with_timed(0, 0, 1000).build(),
+        || {
+            let c = thread::spawn(|| {
+                let _ = traceforge::inbox_with_tag_timed(
+                    |_, t| t == Some(1),
+                    2,
+                    Some(2),
+                    traceforge::WaitTime::Infinite,
+                );
+            });
+            traceforge::send_tagged_msg(c.thread().id(), 1, 1u32);
+        },
+        5,
+    );
+    assert!(est.is_finite(), "estimate {est} not finite");
+}

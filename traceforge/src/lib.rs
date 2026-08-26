@@ -1731,6 +1731,17 @@ const TIMED_INBOX_MIN_MSG: &str =
 /// - non-blocking (do not wait at all): use `wait = WaitTime::Finite(0)`;
 /// - receive one message with a timeout: use `inbox_timed(1, Some(1), wait)`.
 ///
+/// # Single-sender batches (accepted semantics)
+///
+/// The inbox member pool is the sb-minimal antichain of the channel: at
+/// most ONE message per (sender, predicate) is a candidate at a time.
+/// A `min >= 2` infinite-wait inbox facing a single sender therefore
+/// blocks forever by design; a second message from the same sender is
+/// not a distinct member. For `min >= 2` the "never completes" blocked
+/// classes are enumerated conservatively (all-messages-dead refusal
+/// plus the no-feasible-subset block); disjoint-lifetime refusal worlds
+/// with a message still alive are not separately enumerated.
+///
 /// # Panics
 ///
 /// Panics if `min == 0`.
@@ -1740,7 +1751,8 @@ pub fn inbox_timed(min: usize, max: Option<usize>, wait: WaitTime) -> Vec<Option
 }
 
 /// Timed inbox with a single-tag predicate. Like [`inbox_timed`], `min` must be
-/// `>= 1`; passing `min == 0` panics.
+/// `>= 1`; passing `min == 0` panics. The single-sender batch semantics of
+/// [`inbox_timed`] apply here too (member pool = sb-minimal antichain).
 pub fn inbox_with_tag_timed<F>(
     f: F,
     min: usize,

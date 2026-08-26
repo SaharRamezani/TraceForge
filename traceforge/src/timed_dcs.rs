@@ -579,6 +579,9 @@ impl<'g> TimedDcs<'g> {
                     edges.push((p, e, 0));
                     edges.push((e, p, 0));
                     if blab.refuses_matching() {
+                        // min and from_inbox are deliberately ignored:
+                        // the refusal conjunction is min-unaware by the
+                        // staged design (see push_refusal_edges doc).
                         if let crate::event_label::BlockType::Value(loc, _, _, _, _) =
                             blab.btype()
                         {
@@ -1213,6 +1216,21 @@ fn waited_inbox_cases(
 /// consumed by OTHER readers are how a competing consumer legitimately
 /// takes a message away and are exempt; a send read by the refusing
 /// position itself (a leftover rf being converted) is not.
+///
+/// This is THE single refusal collector, shared by recv-shaped and
+/// inbox-shaped refusals at both push-probe time (`probe_gc_block`)
+/// and committed-encoding time (the Block arm of `build`). Its
+/// exemption set deliberately differs from `inbox_exclusions` (no
+/// GC-evicted exemption; the reader nuance above; cancellation checked
+/// here): every delta is STRICTLY STRONGER, so it can only shrink the
+/// refusal class, never admit a spurious refusal, and the same
+/// conjunction is applied symmetrically at push and encode. For
+/// min >= 2 inboxes the all-dead conjunction is intentionally
+/// over-strong on both sides (staged design: "count never reaches
+/// min" also holds for disjoint-lifetime timelines this rule
+/// rejects). Widening it (arrival variables, or adopting the evicted
+/// exemption) must change every site at once, or push and encode
+/// disagree.
 #[allow(clippy::too_many_arguments)]
 fn push_refusal_edges(
     edges: &mut Vec<Edge>,

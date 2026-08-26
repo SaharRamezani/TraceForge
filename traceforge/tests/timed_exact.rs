@@ -637,8 +637,10 @@ fn pairwise_incompatible_min2_inbox_terminates_blocked() {
             let _ = s.join();
         },
     );
-    assert_eq!(stats.execs, 0);
-    assert!(stats.block > 0);
+    // Exact pin: this scenario ends in the empty-combinations Block
+    // (no jointly feasible subset), NOT in a GC refusal branch; the
+    // refusal machinery must not double-count it.
+    assert_eq!((stats.execs, stats.block), (0, 1));
 }
 
 // ---------------------------------------------------------------------
@@ -816,10 +818,8 @@ fn cross_predicate_skip_still_evicts() {
 }
 
 // =====================================================================
-// KNOWN OPEN ISSUES (audit 2026-08-09). These tests assert the CORRECT
-// behavior and are #[ignore]d because the tree does not yet provide it.
-// Un-ignore each when its milestone lands; if one starts passing,
-// remove the ignore and celebrate.
+// Inbox exclusion + order-invariance regressions (audit 2026-08-09,
+// fixed 2026-08-10). All tests below are live pins.
 // =====================================================================
 
 // Waited-inbox excluded members must dodge the completion count
@@ -956,4 +956,157 @@ fn inbox_false_counterexample_suppressed() {
         },
     );
     assert_eq!((stats.execs, stats.block), (2, 1));
+}
+
+// =====================================================================
+// GC refusal branch for blocking (infinite-wait) INBOXES: the inbox
+// may also never collect min messages (every matching message dies
+// before or while it waits). Exact for min == 1; for min >= 2 the
+// all-dead encoding is conservative by design (disjoint-lifetime
+// refusal worlds are not separately enumerated; the jointly-infeasible
+// ones end in the empty-combinations block, see the pairwise pin).
+// Execs are never changed by refusals, only blocked counts grow.
+// =====================================================================
+
+// Read feasible (arrival in [3,5]) AND all-dead feasible (arrival <= 2,
+// dead before the wait starts at 3): the read world plus one refusal
+// world. Was (1, 0) before the inbox refusal branch landed.
+#[test]
+fn inbox_refusal_class_appears() {
+    let stats = traceforge::verify(
+        Config::builder().with_timed(0, 5, 0).build(),
+        || {
+            let c = thread::spawn(|| {
+                traceforge::sleep(3);
+                let _ = traceforge::inbox_with_tag_timed(
+                    |_, t| t == Some(1),
+                    1,
+                    Some(1),
+                    WaitTime::Infinite,
+                );
+            });
+            traceforge::send_tagged_msg(c.thread().id(), 1, 7u32);
+            let _ = c.join();
+        },
+    );
+    assert_eq!((stats.execs, stats.block), (1, 1));
+}
+
+// No sleep: the wait begins at 0 and the message cannot die before it
+// (dead-before needs t_block >= send + L + sd + 1 = 1): the refusal is
+// infeasible and must not be pushed. Byte-for-byte the old behavior.
+#[test]
+fn inbox_refusal_not_pushed_when_infeasible() {
+    let stats = traceforge::verify(
+        Config::builder().with_timed(0, 5, 0).build(),
+        || {
+            let c = thread::spawn(|| {
+                let _ = traceforge::inbox_with_tag_timed(
+                    |_, t| t == Some(1),
+                    1,
+                    Some(1),
+                    WaitTime::Infinite,
+                );
+            });
+            traceforge::send_tagged_msg(c.thread().id(), 1, 7u32);
+            let _ = c.join();
+        },
+    );
+    assert_eq!((stats.execs, stats.block), (1, 0));
+}
+
+// min = 2: joint read feasible (both arrivals in [3,5]) and all-dead
+// feasible (both <= 2). The Option-A gap lives in THIS shape: refusal
+// worlds where exactly one message stays alive past the wait are not a
+// separate class (documented conservatism), so the count is (1, 1),
+// not (1, 2).
+#[test]
+fn inbox_refusal_min2_all_dead() {
+    let stats = traceforge::verify(
+        Config::builder().with_timed(0, 5, 0).build(),
+        || {
+            let c = thread::spawn(|| {
+                traceforge::sleep(3);
+                let _ = traceforge::inbox_with_tag_timed(
+                    |_, t| t == Some(1),
+                    2,
+                    Some(2),
+                    WaitTime::Infinite,
+                );
+            });
+            let cid = c.thread().id();
+            let s1 = thread::spawn(move || traceforge::send_tagged_msg(cid, 1, 1u32));
+            let s2 = thread::spawn(move || traceforge::send_tagged_msg(cid, 1, 2u32));
+            let _ = s1.join();
+            let _ = s2.join();
+            let _ = c.join();
+        },
+    );
+    assert_eq!((stats.execs, stats.block), (1, 1));
+}
+
+// Two candidates, min = max = 1: worlds are read {a}, read {b}, and
+// ONE refuse-all (block == 1 is the load-bearing assertion: refusal and
+// exclusion machinery must agree on a single refusal class). The exec
+// component may re-baseline when the inbox backward-closure fix lands.
+#[test]
+fn inbox_refusal_and_exclusions_agree() {
+    let stats = traceforge::verify(
+        Config::builder().with_timed(0, 5, 0).build(),
+        || {
+            let c = thread::spawn(|| {
+                traceforge::sleep(3);
+                let _ = traceforge::inbox_with_tag_timed(
+                    |_, t| t == Some(1),
+                    1,
+                    Some(1),
+                    WaitTime::Infinite,
+                );
+            });
+            let cid = c.thread().id();
+            let s1 = thread::spawn(move || traceforge::send_tagged_msg(cid, 1, 1u32));
+            let s2 = thread::spawn(move || traceforge::send_tagged_msg(cid, 1, 2u32));
+            let _ = s1.join();
+            let _ = s2.join();
+            let _ = c.join();
+        },
+    );
+    assert_eq!(stats.block, 1);
+    assert_eq!(stats.execs, 2);
+}
+
+// Sender b's send at t = 10 is inevitably alive during the wait (which
+// starts at 3), so every refusal pushed against a partial graph is
+// voided once b's send is re-derived into the encoding: the branch
+// counts as NOTHING (blocked-arm feasibility gate), and the refusing
+// block must never wake on b's arrival (wake-skip): returning at all
+// with block == 0 pins both. The exec component may re-baseline when
+// the inbox backward-closure fix lands.
+#[test]
+fn inbox_refusal_gated_by_live_future_send() {
+    let stats = traceforge::verify(
+        Config::builder().with_timed(0, 5, 0).build(),
+        || {
+            let c = thread::spawn(|| {
+                traceforge::sleep(3);
+                let _ = traceforge::inbox_with_tag_timed(
+                    |_, t| t == Some(1),
+                    1,
+                    Some(1),
+                    WaitTime::Infinite,
+                );
+            });
+            let cid = c.thread().id();
+            let s1 = thread::spawn(move || traceforge::send_tagged_msg(cid, 1, 1u32));
+            let s2 = thread::spawn(move || {
+                traceforge::sleep(10);
+                traceforge::send_tagged_msg(cid, 1, 2u32);
+            });
+            let _ = s1.join();
+            let _ = s2.join();
+            let _ = c.join();
+        },
+    );
+    assert_eq!(stats.block, 0);
+    assert_eq!(stats.execs, 2);
 }

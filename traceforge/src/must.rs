@@ -1939,6 +1939,43 @@ impl Must {
             }
         }
 
+        if self.config.mode == ExplorationMode::Estimation {
+            // Branch factor = the feasible outcome set of this inbox:
+            //   min == 0 (untimed non-blocking): subsets + the immediate empty
+            //   finite wait (min >= 1):          subsets + the timeout empty
+            //   infinite / untimed blocking:     subsets only; empty => block
+            // One outcome is sampled and committed; NO forward revisits
+            // are pushed (previously every non-canonical subset was
+            // pushed even in Estimation mode, so a "sample" re-ran the
+            // whole inbox subtree while multiplying no factor for it:
+            // the ~70x underestimate on the leader-election model).
+            // Backward inbox revisits remain unsampled (see the TODO in
+            // calc_revisits) and GC refusal classes carry no factor
+            // (blocked worlds; the recv convention), so the estimator
+            // stays a documented underestimate in those directions.
+            let extra_empty = min == 0 || finite;
+            if combinations.is_empty() && !extra_empty {
+                self.add_to_graph(LabelEnum::Block(Block::new(
+                    pos,
+                    BlockType::Value(ilab.recv_loc().clone(), wait, min, ilab.comm(), true),
+                )));
+                return Vec::new();
+            }
+            let n = combinations.len() + usize::from(extra_empty);
+            self.telemetry.histogram(EXECS_EST.to_owned(), n as f64);
+            let idx = self.rng.random_range(0..n);
+            info!("| Choosing {} out of {}", idx, n);
+            let canonical = if idx < combinations.len() {
+                Some(combinations.swap_remove(idx))
+            } else if min == 0 {
+                Some(Vec::new()) // immediate empty
+            } else {
+                None // timeout empty
+            };
+            self.current.graph.change_inbox_rfs(pos, canonical);
+            return self.inbox_vals_copy(pos);
+        }
+
         // Choose the canonical outcome; the rest become forward
         // inbox revisits.
         let mut revisits: Vec<Option<Vec<Event>>> = Vec::new();
@@ -1994,6 +2031,41 @@ impl Must {
             }
             base
         };
+
+        // GC refusal sibling for blocking (infinite-wait) inboxes,
+        // mirroring the recv one in visit_rfs: the inbox may ALSO never
+        // collect min messages, legal exactly in timelines where every
+        // matching message dies before the wait begins. Exact for
+        // min == 1 ("never reaches 1" IS "all dead"); for min >= 2 the
+        // all-dead encoding is sound but conservative: disjoint-lifetime
+        // refusal worlds are not separately enumerated (those with no
+        // jointly-feasible subset already end in the empty-combinations
+        // Block above). Reaching this point in the infinite arm implies
+        // combinations were nonempty. Reuses the oracle built at the
+        // top of this visit (its presence implies a timed config, a
+        // timed wait, and non-replay); Estimation returned earlier.
+        // Pushed FIRST so the LIFO pop applies it LAST at this stamp
+        // (it converts the label kind; every read alternative must
+        // already have run). No monitor gate: the inbox offer path has
+        // no monitor branch. The branch adds blocked classes and never
+        // loses or duplicates any: refusing Blocks are invisible to
+        // calc_revisits and never wake, and worlds where the inbox
+        // reads later sends are the read siblings' backward revisits
+        // (full timed-inbox completeness remains gated on the inbox
+        // backward-closure fix, tracked separately).
+        let refusal_feasible = matches!(wait, Some(crate::timed_cons::WaitTime::Infinite))
+            && Consistency::timed_gc_offer_arm(ilab.wait(), ilab.comm())
+            && oracle.as_mut().is_some_and(|d| {
+                d.base_feasible()
+                    && d.probe_gc_block(pos, ilab.as_event_label(), ilab.recv_loc())
+            });
+        if refusal_feasible {
+            push_worklist(
+                &mut self.current.rqueue,
+                self.current.graph.label(pos).stamp(),
+                RevisitEnum::new_forward_block(pos),
+            );
+        }
 
         for placement in revisits.drain(..) {
             push_worklist(
@@ -2243,7 +2315,14 @@ impl Must {
                     };
                     match &r.rev {
                         RevisitPlacement::Default(send) if *send == pos => Some(r.pos),
-                        _ => None, // TODO: support inbox in estimation mode.
+                        // TODO: support inbox in estimation mode. Worlds
+                        // reachable only via inbox BACKWARD revisits are never
+                        // sampled and carry no factor: the estimator remains a
+                        // documented underestimate on inbox programs whose
+                        // sends arrive after the inbox visit (the forward
+                        // fan-out IS sampled since the visit_inbox_rfs
+                        // estimation arm landed).
+                        _ => None,
                     }
                 })
                 .collect();
@@ -2815,7 +2894,34 @@ impl Must {
                 _ => self.change_rf(rev),
             },
             // Inbox revisits also go through change_rf, but replace a full send set.
-            LabelEnum::Inbox(_ilab) => self.change_rf(rev),
+            LabelEnum::Inbox(ilab) => match &rev.rev {
+                RevisitPlacement::BlockInstead => {
+                    // Convert the inbox into a GC refusal block, keeping
+                    // its label base (stamp bookkeeping). Detach the
+                    // committed subset FIRST: change_inbox_rfs asserts
+                    // is_inbox and clears every member's reader edge;
+                    // then swap the label and recompute views. The
+                    // shared cut_to_stamp below closes the conversion.
+                    let (loc, wait, min, comm) =
+                        (ilab.recv_loc().clone(), ilab.wait(), ilab.min(), ilab.comm());
+                    self.current.graph.change_inbox_rfs(pos, None);
+                    let base = self
+                        .current
+                        .graph
+                        .inbox_label(pos)
+                        .unwrap()
+                        .as_event_label()
+                        .clone();
+                    *self.current.graph.label_mut(pos) = LabelEnum::Block(
+                        Block::new_refusing(
+                            base,
+                            BlockType::Value(loc, wait, min, comm, true),
+                        ),
+                    );
+                    self.checker.calc_views(&mut self.current.graph, pos);
+                }
+                _ => self.change_rf(rev),
+            },
             LabelEnum::SendMsg(slab) => {
                 slab.set_dropped();
                 self.current.graph.incr_dropped_sends();

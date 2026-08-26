@@ -472,6 +472,10 @@ impl Consistency {
 
         let mut rfs: Vec<Event> = if inbox.comm() != CommunicationModel::NoOrder {
             // Respect the channel's delivery model, mirroring recv behavior.
+            // Deliberate, accepted semantics: the member pool is the
+            // sb-minimal ANTICHAIN, so a batch never holds two sb-ordered
+            // messages from one sender (a min >= 2 inbox facing a single
+            // sender starves by design; see the inbox_timed docs).
             Self::retain_sb_minimals(rfs.into_iter(), false)
                 .iter()
                 .map(|lab| lab.pos())
