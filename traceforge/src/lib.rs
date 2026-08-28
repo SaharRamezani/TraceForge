@@ -744,7 +744,7 @@ where
     }
 
     let f = Arc::new(f);
-    if conf.partitioned_parallelization {
+    let stats = if conf.partitioned_parallelization {
         parallel_verify::verify_partitioned_rayon(conf, move || f())
     } else if conf.parallel {
         ExecutionPool::new(&conf).explore(&f)
@@ -753,7 +753,9 @@ where
         explore(&must, &f);
         let stats = must.borrow().stats();
         stats
-    }
+    };
+    timed_dcs::prof::dump();
+    stats
 }
 
 /// Model Checker API
@@ -2237,12 +2239,16 @@ pub fn assert(cond: bool) {
                 };
                 // block the current execution but continue
                 must.handle_block(Block::new(pos, BlockType::Assert));
-                // the assertion violation is reported only if the execution graph is consistent
-                // needed for semantics like Mailbox which generate executions under causal delivery and which need to be filtered to satisfy the stronger mailbox semantics
-                // ... and, under a timed config, only if it is certified
-                // to admit a consistent timeline (soundness of FIREs;
-                // suppresses legacy-walker relaxation artifacts).
-                if must.is_consistent() && must.timed_error_report_allowed(Some(pos)) {
+                if must.defers_assert_reports() {
+                    // Timed run: judge at completion, when the graph is
+                    // whole (a later-scheduled thread's send can still
+                    // poison the timeline under FIFO coupling, so a
+                    // mid-execution feasibility verdict is schedule
+                    // dependent).
+                    must.defer_assert_report(pos, Some(name));
+                } else if must.is_consistent() && must.timed_error_report_allowed(Some(pos)) {
+                    // the assertion violation is reported only if the execution graph is consistent
+                    // needed for semantics like Mailbox which generate executions under causal delivery and which need to be filtered to satisfy the stronger mailbox semantics
                     let message = persist_task_failure(name, Some(pos));
                     info!("Persisted failure {message}");
                 }
@@ -2250,12 +2256,13 @@ pub fn assert(cond: bool) {
                 // call system assert and panic
                 // Add a block node to the graph
                 must.handle_block(Block::new(pos, BlockType::Assert));
-                // as above, we report the assertion violation only if the
-                // execution graph is consistent AND (under a timed config)
-                // certified to admit a consistent timeline; a suppressed
-                // violation leaves the Block in place and exploration
-                // continues exactly like keep_going_after_error.
-                if must.is_consistent() && must.timed_error_report_allowed(Some(pos)) {
+                if must.defers_assert_reports() {
+                    // Timed run: deferred to completion (see the
+                    // keep-going arm above); a certified violation
+                    // then prints the graph plus witness and panics
+                    // exactly like the immediate path below.
+                    must.defer_assert_report(pos, None);
+                } else if must.is_consistent() && must.timed_error_report_allowed(Some(pos)) {
                     info!("Error Detected!");
                     println!("{}", must.print_graph(None));
                     if let Some(witness) = must.timed_witness_report(Some(pos)) {

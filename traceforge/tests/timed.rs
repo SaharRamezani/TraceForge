@@ -449,6 +449,12 @@ fn four_thread_pipeline_timed_pruning() {
     // exploration counts; they should drop in lockstep if the pruning is
     // strengthened, and divergence here means the timed filter changed
     // shape and the counts should be re-baselined.
-    assert_eq!(loose, 38);
-    assert_eq!(tight, 22);
+    // Re-baselined 2026-08-28 (was loose 38, tight 22; now 48, 23): dead-front
+    // unsealing legitimately adds classes where a receive whose wait
+    // starts late skips a front that arrived and died (sd = 0 makes
+    // instant corpses) before the wait began, then reads the next
+    // message; the old offer sealed those worlds behind the possibly
+    // readable front. The loose > tight pruning relation still holds.
+    assert_eq!(loose, 48);
+    assert_eq!(tight, 23);
 }

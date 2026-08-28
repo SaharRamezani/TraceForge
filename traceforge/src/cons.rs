@@ -371,15 +371,48 @@ impl Consistency {
                 } else {
                     let vc = view.map(|(vc, _)| vc);
                     let mut dcs = TimedDcs::build(g, cfg, vc, Some(recv.pos()));
-                    if dcs.base_feasible() {
-                        structurally
-                            .into_iter()
-                            .filter(|s| dcs.probe_recv_rf(recv.pos(), s.pos()))
-                            .collect()
+                    // An infeasible base is a REAL verdict under FIFO
+                    // arrival coupling (contradictory sends can commit
+                    // before any read exists): every candidate is then
+                    // exactly infeasible and the probes prune them all.
+                    let eligible: Vec<&SendMsg> = structurally
+                        .into_iter()
+                        .filter(|s| dcs.probe_recv_rf(recv.pos(), s.pos()))
+                        .collect();
+                    if recv.comm() == CommunicationModel::NoOrder {
+                        eligible
                     } else {
-                        // Engine-invariant breach tripwire: keep all
-                        // (never tighter); certification gates reports.
-                        structurally
+                        // Dead-front unsealing (2026-08-28): a POSSIBLY
+                        // readable front must not seal deeper eligible
+                        // candidates out of the offer; a deeper
+                        // candidate is offered when SOME timeline
+                        // dodges all its earlier fronts jointly with
+                        // the read (front dead before the wait began,
+                        // or arriving after the read). Without this,
+                        // eligibility-then-minimality folds away the
+                        // front-is-dead worlds the GC semantics
+                        // decision requires (skip = evict).
+                        let minimals =
+                            Self::retain_sb_minimals(eligible.iter().copied(), porf_override);
+                        let mut offers = minimals;
+                        for &s in &eligible {
+                            if offers.iter().any(|m| m.pos() == s.pos()) {
+                                continue;
+                            }
+                            let sview = if porf_override { s.porf() } else { s.sb() };
+                            let fronts: Vec<Event> = eligible
+                                .iter()
+                                .filter(|b| b.pos() != s.pos() && sview.contains(b.pos()))
+                                .map(|b| b.pos())
+                                .collect();
+                            if dcs.probe_recv_rf_skipping(recv.pos(), s.pos(), &fronts) {
+                                offers.push(s);
+                            }
+                        }
+                        let mut out: Vec<Event> =
+                            offers.into_iter().map(|l| l.pos()).collect();
+                        out.sort();
+                        return out;
                     }
                 }
             }
@@ -445,26 +478,19 @@ impl Consistency {
                 } else if let Some(dcs) = oracle {
                     // Shared oracle from the offer path (one build per
                     // inbox visit, reused for the joint subset probes).
+                    // Infeasible base = real verdict (see recv arm).
                     debug_assert!(view.is_none(), "injected oracle requires the full-graph view");
-                    if dcs.base_feasible() {
-                        structurally
-                            .into_iter()
-                            .filter(|s| dcs.probe_inbox_rfs(inbox.pos(), &[s.pos()]))
-                            .collect()
-                    } else {
-                        structurally
-                    }
+                    structurally
+                        .into_iter()
+                        .filter(|s| dcs.probe_inbox_rfs(inbox.pos(), &[s.pos()]))
+                        .collect()
                 } else {
                     let vc = view.map(|(vc, _)| vc);
                     let mut dcs = TimedDcs::build(g, cfg, vc, Some(inbox.pos()));
-                    if dcs.base_feasible() {
-                        structurally
-                            .into_iter()
-                            .filter(|s| dcs.probe_inbox_rfs(inbox.pos(), &[s.pos()]))
-                            .collect()
-                    } else {
-                        structurally
-                    }
+                    structurally
+                        .into_iter()
+                        .filter(|s| dcs.probe_inbox_rfs(inbox.pos(), &[s.pos()]))
+                        .collect()
                 }
             }
             _ => rfs.collect(),
@@ -825,12 +851,17 @@ impl Consistency {
                 }
                 let mut dcs = TimedDcs::build(g, cfg, Some(&view), Some(rlab.pos()));
                 if dcs.base_feasible() {
-                    blockers
-                        .iter()
-                        .all(|b| !dcs.probe_recv_rf(rlab.pos(), b.pos()))
+                    // Dead-front unsealing parity (2026-08-28): the
+                    // revisit is legal when SOME timeline dodges all
+                    // blockers jointly WITH the revisit read itself
+                    // (subsumes the old all-individually-unreadable
+                    // rule and stays exact per-timeline).
+                    let fronts: Vec<Event> = blockers.iter().map(|b| b.pos()).collect();
+                    dcs.probe_recv_rf_skipping(rlab.pos(), spos, &fronts)
                 } else {
-                    // Tripwire: treat blockers as real (never admits an
-                    // execution the untimed rule would reject).
+                    // Infeasible cut base: the revisited world admits
+                    // no timeline; treat blockers as real (never
+                    // admits an execution the untimed rule rejects).
                     false
                 }
             }

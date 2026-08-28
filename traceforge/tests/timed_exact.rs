@@ -271,11 +271,13 @@ fn skipped_message_is_evicted() {
 }
 
 // ---------------------------------------------------------------------
-// Lateness-side eviction (audit F1 regression): a message skipped for
-// arriving outside the wait cap is EVICTED like any overtaken message.
-// A later blocking receive must NOT revive it (delivery order would
-// invert). Branch r1=s1: b evicted, r2 blocks. Branch r1=timeout: no
-// inversion happened, r2 reads b. Hand-derived (1, 1).
+// FIFO vacuity pin (2026-08-28 decision): b is sent first on the same
+// channel but its transit [5,5] would have to overtake s1's [0,0].
+// FIFO delivery couples arrivals (a_b <= a_s1), so NO timeline
+// satisfies this program at all: it has no behaviors, and neither
+// branch counts as anything. (The pre-FIFO lateness-side eviction
+// this test used to pin, hand-derived (1, 1), required overtaking;
+// overtaking is now reserved for the NoOrder/Bag model.)
 // ---------------------------------------------------------------------
 
 #[test]
@@ -284,26 +286,29 @@ fn late_skipped_message_evicted() {
         Config::builder().with_timed(0, 0, 0).build(),
         || {
             let receiver = thread::spawn(|| {
-                // b readable [5,5] is outside the cap [0,1]: skipped;
-                // s1 readable [0,0] is read (or the timeout branch).
                 let _: Option<u32> = traceforge::recv_msg_timed(WaitTime::Finite(1));
-                // After reading s1 past b, b must be gone forever.
                 let _: u32 = traceforge::recv_msg_block_timed();
             });
             let r = receiver.thread().id();
             traceforge::send_msg_timed(r, 100u32, 5, 5); // b, sent first
-            traceforge::send_msg_timed(r, 1u32, 0, 0); // s1
+            traceforge::send_msg_timed(r, 1u32, 0, 0); // s1: would overtake
         },
     );
-    assert_eq!((stats.execs, stats.block), (1, 1));
+    assert_eq!((stats.execs, stats.block), (0, 0));
 }
 
 // ---------------------------------------------------------------------
 // Context-coupled eligibility is complete (audit adjudication): R's
 // offer depends on whether E's read constrained A's clock, across
-// threads and through revisits. The spec set has exactly 8 complete
-// executions: (b,TO,x2), (c,e,x2), (c,TO,x2), (sig,e,x2); the checker
-// must find all 8 and nothing else.
+// threads and through revisits. Original (2026-08-09) spec: exactly 8
+// complete executions: (b,TO,x2), (c,e,x2), (c,TO,x2), (sig,e,x2).
+// Re-derived 2026-08-28 under dead-front unsealing: (sig,TO,x2) is
+// ALSO operationally real (with E=timeout, t_A is unconstrained, and
+// in the t_A <= 5 timelines b arrives at R and dies, sd = 0, before
+// R's wait begins at 6; the 2026-08-08 GC decision says a time-dead
+// front does not seal its channel, so R reads sig). The old count
+// relied on the possibly-readable front b monopolizing the offer;
+// with the joint dodge probe those two worlds are found: 10 total.
 // ---------------------------------------------------------------------
 
 #[test]
@@ -376,7 +381,7 @@ fn context_coupled_eligibility_complete() {
             let _ = c_thr.join();
         },
     );
-    assert_eq!((stats.execs, stats.block), (8, 0));
+    assert_eq!((stats.execs, stats.block), (10, 0));
 }
 
 #[test]
@@ -394,8 +399,11 @@ fn first_skipper_only_carries_dodge() {
             traceforge::send_msg_timed(r, 3u32, 3, 3); // s2
         },
     );
-    // (s1,s2), (s1,timeout), (timeout,b), (timeout,timeout).
-    assert_eq!((stats.execs, stats.block), (4, 0));
+    // FIFO vacuity (2026-08-28): b [2,3] sent before s1 [0,0] on one
+    // channel would have to be overtaken; a_b <= a_s1 <= a_s2 admits
+    // no timeline, so the program has no behaviors. (Pre-FIFO counts:
+    // (s1,s2), (s1,timeout), (timeout,b), (timeout,timeout) = (4, 0).)
+    assert_eq!((stats.execs, stats.block), (0, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -418,8 +426,10 @@ fn in_flight_front_skipped_within_cap() {
             traceforge::send_msg_timed(r, 2u32, 0, 0); // arrives at 0
         },
     );
-    // Read m2 (skipping the unarriveable m1) or time out: 2 runs.
-    assert_eq!((stats.execs, stats.block), (2, 0));
+    // FIFO vacuity (2026-08-28): m1 [50,50] sent before m2 [0,0] on
+    // one channel admits no coupled arrival order: no behaviors.
+    // (Pre-FIFO: read m2 skipping the in-flight m1, or time out = 2.)
+    assert_eq!((stats.execs, stats.block), (0, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -814,7 +824,11 @@ fn cross_predicate_skip_still_evicts() {
             traceforge::send_tagged_msg_timed(r, 6, 60u32, 0, 0); // s2
         },
     );
-    assert_eq!((stats.execs, stats.block), (3, 0));
+    // FIFO vacuity (2026-08-28): tags select messages but the channel
+    // is one FIFO stream; b [4,4] before s2 [0,0] admits no coupled
+    // arrival order, so the program has no behaviors. (Pre-FIFO:
+    // (s2, timeout), (timeout, b), (timeout, timeout) = (3, 0).)
+    assert_eq!((stats.execs, stats.block), (0, 0));
 }
 
 // =====================================================================
@@ -828,8 +842,8 @@ fn cross_predicate_skip_still_evicts() {
 // at 3, so only {m0,m1} is real. Before the 2026-08-09 exclusion fix
 // this explored impossible batches (4,0) and certified their asserts.
 // The {m0,m2} batch enters via a backward revisit whose cut view hides
-// m1; the completion-time feasibility gate counts that branch as the
-// single blocked execution here.
+// m1; the completion-time feasibility gate detects it and (2026-08-28
+// rule) counts the timeline-impossible branch as nothing at all.
 #[test]
 fn inbox_excluded_members_constrain_completion() {
     let stats = traceforge::verify(
@@ -858,7 +872,7 @@ fn inbox_excluded_members_constrain_completion() {
             let _ = c.join();
         },
     );
-    assert_eq!((stats.execs, stats.block), (2, 1));
+    assert_eq!((stats.execs, stats.block), (2, 0));
 }
 
 // A timing-coupled Finite receive executing after a concurrent BLOCKING
@@ -922,7 +936,7 @@ fn spawn_order_blocked_class_invariant() {
 // on the impossible {m0,m2} batch must be SUPPRESSED, not certified
 // (the porf-prefix witness omitted m1's thread; the gate now judges
 // the full committed graph). No violation is reported; the impossible
-// branch ends as the blocked execution.
+// branch counts as nothing at all (2026-08-28 rule).
 #[test]
 fn inbox_false_counterexample_suppressed() {
     let stats = traceforge::verify(
@@ -955,7 +969,7 @@ fn inbox_false_counterexample_suppressed() {
             let _ = c.join();
         },
     );
-    assert_eq!((stats.execs, stats.block), (2, 1));
+    assert_eq!((stats.execs, stats.block), (2, 0));
 }
 
 // =====================================================================

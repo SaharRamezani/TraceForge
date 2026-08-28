@@ -60,10 +60,35 @@ macro_rules! cast {
 type RQueue = BTreeMap<usize, Vec<RevisitEnum>>;
 type StateStack = Vec<MustState>;
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct MustState {
     graph: ExecutionGraph,
     rqueue: RQueue,
+    /// Pending trigger for the completion-time feasibility gate: armed
+    /// whenever a send is added in timed mode (any send can poison the
+    /// graph's timeline under FIFO arrival coupling), cleared whenever
+    /// a later FULL-GRAPH oracle build reports a feasible base
+    /// (feasibility is monotone in the constraint set, so that build
+    /// vouches for every earlier send). Lives in MustState, NOT Must:
+    /// it describes THIS branch's graph and must be saved/restored
+    /// with it (a clear leaking across a state switch would skip the
+    /// gate on an unrelated, possibly infeasible graph). Fresh states
+    /// start ARMED: one conservative re-check per branch completion.
+    /// EVERY constructor arms it: `new`, the manual `Default` (used by
+    /// `push_state`'s `mem::take` when a backward revisit takes over),
+    /// and deserialization of pre-field replay states (serde default).
+    #[serde(default = "arm_completion_check")]
+    timed_completion_check: bool,
+}
+
+fn arm_completion_check() -> bool {
+    true
+}
+
+impl Default for MustState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MustState {
@@ -71,6 +96,7 @@ impl MustState {
         Self {
             graph: ExecutionGraph::new(),
             rqueue: RQueue::new(),
+            timed_completion_check: true,
         }
     }
 }
@@ -122,19 +148,17 @@ pub(crate) struct Must {
     current: MustState,
     replay_info: REPLAY::ReplayInformation,
     checker: Consistency,
-    /// Pending trigger for the completion-time feasibility gate: set
-    /// when a send is added that matches an already-committed waited
-    /// inbox read excluding it (the one shape whose feasibility the
-    /// exploration cannot re-check earlier: a backward revisit's cut
-    /// hid the sender). Cleared whenever a later FULL-GRAPH oracle
-    /// build reports a feasible base: feasibility is monotone in the
-    /// constraint set, so that build vouches for the poisoned pair and
-    /// every commit it admits keeps the system feasible. The
-    /// completion solve therefore only runs when no oracle was built
-    /// after the last poisoning send (e.g. the read was replayed, not
-    /// re-visited). Never cleared on infeasible builds or cuts.
-    timed_completion_check: bool,
     pub config: Config,
+    /// Assert violations recorded during the CURRENT execution of a
+    /// timed run, judged at completion instead of at fire time: at the
+    /// assert, threads that have not run yet (a backward revisit's
+    /// cut-away sender, or simply a later-scheduled thread) can still
+    /// add sends whose FIFO-coupled arrivals poison the timeline, so a
+    /// full-graph feasibility verdict taken mid-execution is schedule
+    /// dependent. Entries are (position, Some(task name) for
+    /// keep_going_after_error mode / None for abort mode); drained at
+    /// record_ending_telemetry.
+    pending_asserts: Vec<(Event, Option<String>)>,
     monitors: BTreeMap<ThreadId, MonitorInfo>,
     rng: Pcg64Mcg,
     stop: bool,
@@ -194,7 +218,7 @@ impl Must {
             rng: Pcg64Mcg::seed_from_u64(seed),
             stop: false,
             warn_limit: 1,
-            timed_completion_check: false,
+            pending_asserts: Vec::new(),
             pqueue: None,
             telemetry,
             published_values: BTreeMap::new(),
@@ -406,14 +430,21 @@ impl Must {
             return;
         }
 
-        // Pop the last entry — it becomes current
+        // Pop the last entry, it becomes current
         let (last_graph, last_rqueue) = stack.pop().unwrap();
         self.current.graph = last_graph;
         self.current.rqueue = last_rqueue;
+        // Foreign graph: arm the completion-time feasibility gate
+        // conservatively (one re-check per branch completion).
+        self.current.timed_completion_check = true;
 
         // Remaining entries become saved states (moved, not cloned)
         for (graph, rqueue) in stack {
-            self.states.push(MustState { graph, rqueue });
+            self.states.push(MustState {
+                graph,
+                rqueue,
+                timed_completion_check: true,
+            });
         }
     }
 
@@ -1293,14 +1324,14 @@ impl Must {
                     structurally
                 };
                 let structurally: Vec<&SendMsg> = match dcs.as_mut() {
-                    // Tripwire parity: on an infeasible base, keep all
-                    // (the offer side keeps everything too, so wake-up
-                    // and offer stay in agreement). Inbox-shaped blocks
-                    // follow the completion-count rule, so their probe
-                    // carries the exclusion dodges (audit 2026-08-09):
-                    // a window-only wake would be looser than the offer
-                    // filter and livelock.
-                    Some(d) if gc_order && d.base_feasible() => structurally
+                    // Probes return false on an infeasible base (a real
+                    // verdict under FIFO coupling), so wake-up and offer
+                    // stay in agreement by both pruning everything.
+                    // Inbox-shaped blocks follow the completion-count
+                    // rule, so their probe carries the exclusion dodges
+                    // (audit 2026-08-09): a window-only wake would be
+                    // looser than the offer filter and livelock.
+                    Some(d) if gc_order => structurally
                         .into_iter()
                         .filter(|send| {
                             if *from_inbox {
@@ -1324,17 +1355,47 @@ impl Must {
                 let porf_override = !from_inbox && self.is_monitor(&blab.pos());
                 let candidates: Vec<&SendMsg> =
                     if *comm != crate::loc::CommunicationModel::NoOrder {
-                        Consistency::retain_sb_minimals(
+                        let minimals = Consistency::retain_sb_minimals(
                             structurally.iter().copied(),
                             porf_override,
-                        )
+                        );
+                        // Dead-front unsealing parity with the offer
+                        // path (2026-08-28), recv-shaped GC wakes only
+                        // (the inbox member pool keeps its documented
+                        // antichain semantics): a deeper eligible send
+                        // wakes the block when some timeline dodges
+                        // all its earlier fronts jointly with the read.
+                        if gc_order && !*from_inbox {
+                            let mut out = minimals;
+                            if let Some(d) = dcs.as_mut() {
+                                for &s in &structurally {
+                                    if out.iter().any(|m| m.pos() == s.pos()) {
+                                        continue;
+                                    }
+                                    let sview = if porf_override { s.porf() } else { s.sb() };
+                                    let fronts: Vec<Event> = structurally
+                                        .iter()
+                                        .filter(|b| {
+                                            b.pos() != s.pos() && sview.contains(b.pos())
+                                        })
+                                        .map(|b| b.pos())
+                                        .collect();
+                                    if d.probe_unblock_skipping(blab.pos(), s.pos(), &fronts) {
+                                        out.push(s);
+                                    }
+                                }
+                            }
+                            out
+                        } else {
+                            minimals
+                        }
                     } else {
                         structurally
                     };
                 // NoOrder/TotalOrder: eligibility runs AFTER the order
                 // choice (the pre-GC order), matching their offer paths.
                 let candidates: Vec<&SendMsg> = match dcs.as_mut() {
-                    Some(d) if !gc_order && d.base_feasible() => candidates
+                    Some(d) if !gc_order => candidates
                         .into_iter()
                         .filter(|send| {
                             if *from_inbox {
@@ -1361,15 +1422,13 @@ impl Must {
                 // count livelocks).
                 if *min >= 2 {
                     if let Some(d) = dcs.as_mut() {
-                        if d.base_feasible() {
-                            return any_jointly_feasible_subset(
-                                d,
-                                blab.pos(),
-                                &candidates.iter().map(|s| s.pos()).collect::<Vec<_>>(),
-                                *min,
-                                if *from_inbox { Some((loc, *comm)) } else { None },
-                            );
-                        }
+                        return any_jointly_feasible_subset(
+                            d,
+                            blab.pos(),
+                            &candidates.iter().map(|s| s.pos()).collect::<Vec<_>>(),
+                            *min,
+                            if *from_inbox { Some((loc, *comm)) } else { None },
+                        );
                     }
                 }
                 candidates.len() >= *min
@@ -1400,6 +1459,68 @@ impl Must {
     /// violation fires again in the branch that realizes it, which
     /// this gate then passes. The printed witness stays causal (porf
     /// prefix), and exists whenever the full graph is feasible.
+    /// Record an assert violation for completion-time judging (timed
+    /// runs only; see the `pending_asserts` field doc). The caller has
+    /// already installed the Block(Assert) label.
+    pub(crate) fn defer_assert_report(&mut self, pos: Event, keep_going_name: Option<String>) {
+        self.pending_asserts.push((pos, keep_going_name));
+    }
+
+    /// True when assert violations of this run must be deferred to
+    /// completion instead of judged at fire time.
+    pub(crate) fn defers_assert_reports(&self) -> bool {
+        self.config.timed.is_some() && !self.replay_info.replay_mode()
+    }
+
+    /// Judge the assert violations recorded during the finished
+    /// execution against the now-complete graph. A feasible consistent
+    /// graph certifies them: keep-going entries are persisted, an
+    /// abort-mode entry prints the graph + causal witness, stores the
+    /// replay information, and panics (the original fire-time
+    /// behavior, moved after the graph is whole). An infeasible or
+    /// inconsistent graph suppresses them all.
+    fn judge_pending_asserts(&mut self) {
+        if self.pending_asserts.is_empty() {
+            return;
+        }
+        let pending = std::mem::take(&mut self.pending_asserts);
+        let certified = self.is_consistent()
+            && self.config.timed.as_ref().is_none_or(|cfg| {
+                crate::timed_dcs::TimedDcs::graph_feasible(&self.current.graph, cfg, None)
+            });
+        if !certified {
+            for _ in &pending {
+                self.telemetry.counter(SUPPRESSED_SPURIOUS.to_owned());
+            }
+            info!(
+                "timed certification: suppressing {} counterexample(s) with no consistent timeline",
+                pending.len()
+            );
+            return;
+        }
+        let mut abort_pos: Option<Event> = None;
+        for (pos, name) in pending {
+            match name {
+                Some(name) => {
+                    let message = crate::runtime::failure::persist_task_failure(name, Some(pos));
+                    info!("Persisted failure {message}");
+                }
+                None => abort_pos = Some(pos),
+            }
+        }
+        if let Some(pos) = abort_pos {
+            info!("Error Detected!");
+            println!("{}", self.print_graph(None));
+            if let Some(witness) = self.timed_witness_report(Some(pos)) {
+                println!("{witness}");
+            }
+            self.store_replay_information(Some(pos));
+            use std::io::Write;
+            std::io::stderr().flush().unwrap();
+            panic!("assertion failed (certified timed counterexample; graph and witness above)");
+        }
+    }
+
     pub(crate) fn timed_error_report_allowed(&self, pos: Option<Event>) -> bool {
         // Replay exists to reproduce a recorded failure verbatim; the
         // gate must not re-judge it (a legacy-recorded artifact should
@@ -1504,6 +1625,11 @@ impl Must {
     }
 
     fn record_ending_telemetry(&mut self, maybe_block: &Option<BlockType>) -> bool {
+        // Deferred assert certification: the graph is complete now, so
+        // the feasibility verdict is schedule independent (see the
+        // pending_asserts field doc). May panic on a certified
+        // violation, exactly like the old fire-time report.
+        self.judge_pending_asserts();
         // Debug: print events that were not replayed during this execution.
         let unreplayed = &self.current.graph.unreplayed_events;
         if !unreplayed.is_empty() {
@@ -1528,7 +1654,7 @@ impl Must {
                     .last()
                     .is_some_and(|l| matches!(l, LabelEnum::Block(b) if b.refuses_matching()))
             });
-            let timed_impossible = (has_refusal || self.timed_completion_check)
+            let timed_impossible = (has_refusal || self.current.timed_completion_check)
                 && self.config.timed.as_ref().is_some_and(|tcfg| {
                     !self.replay_info.replay_mode()
                         && !crate::timed_dcs::TimedDcs::graph_feasible(
@@ -1567,7 +1693,7 @@ impl Must {
             // never-tighter convention). Count such a completion as
             // blocked instead: every counted execution then carries a
             // witness timeline.
-            let timed_impossible = self.timed_completion_check
+            let timed_impossible = self.current.timed_completion_check
                 && self.config.timed.as_ref().is_some_and(|tcfg| {
                     !self.replay_info.replay_mode()
                         && !crate::timed_dcs::TimedDcs::graph_feasible(
@@ -1577,14 +1703,12 @@ impl Must {
                         )
                 });
             if timed_impossible {
-                self.telemetry.counter(BLOCKED.to_owned());
-                let event_count: usize =
-                    self.current.graph.threads.iter().map(|t| t.labels.len()).sum();
-                if event_count > self.max_graph_events {
-                    self.max_graph_events = event_count;
-                }
+                // No timeline satisfies the graph (routine under FIFO
+                // arrival coupling: e.g. same-channel transit overrides
+                // that would require overtaking): not a behavior, so it
+                // counts as nothing at all, same as the blocked arm.
                 if self.config.verbose >= 2 {
-                    println!("One more timeline-impossible execution (counted blocked)");
+                    println!("One timeline-impossible completion (not counted)");
                     println!("{}", self.print_graph(None));
                 }
             } else {
@@ -1877,7 +2001,7 @@ impl Must {
             if d.base_feasible() {
                 // Full-graph feasible base: vouches for any pending
                 // poisoned exclusion pair (see field doc).
-                self.timed_completion_check = false;
+                self.current.timed_completion_check = false;
             }
             Some(d)
         } else {
@@ -1929,13 +2053,15 @@ impl Must {
         // Reuses the oracle built above (one build per inbox visit).
         {
             if let Some(dcs) = oracle.as_mut() {
-                if dcs.base_feasible() {
-                    combinations.retain(|subset| dcs.probe_inbox_rfs(pos, subset));
-                }
-                // Infeasible base = engine-invariant breach tripwire
-                // (exploration keeps every committed graph feasible):
-                // keep all candidates (never tighter) and let
-                // certification gate any report.
+                // An infeasible base is a REAL verdict under FIFO
+                // arrival coupling: every subset is then exactly
+                // infeasible and the probes prune them all.
+                use crate::timed_dcs::prof;
+                prof::add(&prof::RETAIN_CALLS, 1);
+                prof::add(&prof::RETAIN_SUBSETS, combinations.len() as u64);
+                let _t = prof::Timer::start(&prof::RETAIN_NS);
+                combinations.retain(|subset| dcs.probe_inbox_rfs(pos, subset));
+                prof::add(&prof::RETAIN_KEPT, combinations.len() as u64);
             }
         }
 
@@ -2247,13 +2373,14 @@ impl Must {
                     let RevisitEnum::BackwardRevisit(rev) = rev_enum else {
                         continue;
                     };
-                    // Untimed inbox: no timing constraints to judge.
-                    if let RevisitPlacement::Inbox(_) = &rev.rev {
-                        if g.inbox_label(rev.pos).unwrap().wait().is_none() {
-                            keep_exact[i] = Some(true);
-                            continue;
-                        }
-                    }
+                    // NOTE: untimed inboxes used to short-circuit to
+                    // Some(true) here ("no timing constraints to
+                    // judge"). Under FIFO arrival coupling the CUT
+                    // WORLD itself can be base-infeasible through
+                    // poisoned sends the view drags in, so untimed
+                    // inboxes are judged like everything else (their
+                    // own label probe is transparent; the build's
+                    // base feasibility is the real verdict).
                     let view = g.revisit_view(rev);
                     let mut dcs = crate::timed_dcs::TimedDcs::build(
                         g,
@@ -2262,9 +2389,16 @@ impl Must {
                         Some(rev.pos),
                     );
                     if !dcs.base_feasible() {
-                        // Infeasible cut base = engine-invariant breach
-                        // tripwire: leave None (keep the revisit; never
-                        // tighter), certification gates any report.
+                        // Real verdict under FIFO arrival coupling: the
+                        // revisited cut world admits no timeline, so
+                        // the revisit is exactly infeasible.
+                        keep_exact[i] = Some(false);
+                        if track {
+                            rejected_revs.push((
+                                rev.pos,
+                                crate::timed_cons::TimeInterval::empty(),
+                            ));
+                        }
                         continue;
                     }
                     let ok = match &rev.rev {
@@ -2487,6 +2621,7 @@ impl Must {
             None => return,
             Some(c) => c,
         };
+        let _t = crate::timed_dcs::prof::Timer::start(&crate::timed_dcs::prof::FILTER_NS);
         // Replay follows a recorded schedule; filters must never
         // out-prune it.
         if self.replay_info.replay_mode() {
@@ -2533,13 +2668,17 @@ impl Must {
             let g = &self.current.graph;
             let mut dcs = crate::timed_dcs::TimedDcs::build(g, &cfg, None, Some(pos));
             if !dcs.base_feasible() {
-                // Engine-invariant breach tripwire (exploration keeps
-                // every committed graph feasible, so this should be
-                // unreachable). Keep every candidate: never tighter,
-                // and certification still gates any resulting report.
-                info!("timed exact: base system infeasible at {pos}; keeping all candidates");
-                return;
-            }
+                // Real verdict under FIFO arrival coupling: the
+                // committed graph admits no timeline, so no candidate
+                // does either. Prune them all; the completion gate
+                // keeps the branch out of the counts.
+                if track {
+                    rejected.extend(rfs.iter().map(|&s| {
+                        (s, crate::timed_cons::TimeInterval::empty())
+                    }));
+                }
+                rfs.clear();
+            } else {
             let kept: Vec<Event> = rfs
                 .iter()
                 .copied()
@@ -2555,6 +2694,7 @@ impl Must {
                 })
                 .collect();
             *rfs = kept;
+            }
         }
         if track && !rejected.is_empty() {
             self.log_timed_prunings("forward", pos, &rejected);
@@ -2699,28 +2839,18 @@ impl Must {
         }
         let pos = self.current.graph.add_label(lab);
         self.checker.calc_views(&mut self.current.graph, pos);
-        if !self.timed_completion_check
+        if !self.current.timed_completion_check
             && self.config.timed.is_some()
             && !self.replay_info.replay_mode()
+            && matches!(self.current.graph.label(pos), LabelEnum::SendMsg(_))
         {
-            if let LabelEnum::SendMsg(slab) = self.current.graph.label(pos) {
-                'scan: for thr in self.current.graph.threads.iter() {
-                    for lab in &thr.labels {
-                        let LabelEnum::Inbox(ilab) = lab else {
-                            continue;
-                        };
-                        if ilab.wait().is_some()
-                            && ilab
-                                .rfs()
-                                .is_some_and(|rfs| !rfs.is_empty() && !rfs.contains(&pos))
-                            && ilab.recv_loc().matches(slab)
-                        {
-                            self.timed_completion_check = true;
-                            break 'scan;
-                        }
-                    }
-                }
-            }
+            // Any send-add can poison the graph's timeline under FIFO
+            // arrival coupling (its window can contradict the coupled
+            // arrivals of already-committed same-channel sends), on top
+            // of the original excluded-inbox-member hazard. Arm the
+            // completion-time feasibility re-check; any later feasible
+            // full-graph oracle build clears it (see the field doc).
+            self.current.timed_completion_check = true;
         }
         pos
     }
