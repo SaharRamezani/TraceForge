@@ -492,7 +492,6 @@ fn committed_inbox_read_time_is_at_the_arrival() {
                 let v = traceforge::inbox_with_tag_timed(
                     |_, t| t == Some(1),
                     1,
-                    Some(1),
                     WaitTime::Finite(10),
                 );
                 if v.len() == 1 {
@@ -540,7 +539,6 @@ fn min2_completing_arrival_pins_read_time() {
                 let v = traceforge::inbox_with_tag_timed(
                     |_, t| t == Some(1),
                     2,
-                    Some(2),
                     WaitTime::Finite(20),
                 );
                 if v.len() == 2 {
@@ -584,7 +582,6 @@ fn min2_genuine_completing_read_kept() {
                 let v = traceforge::inbox_with_tag_timed(
                     |_, t| t == Some(1),
                     2,
-                    Some(2),
                     WaitTime::Finite(20),
                 );
                 if v.len() == 2 {
@@ -634,7 +631,6 @@ fn pairwise_incompatible_min2_inbox_terminates_blocked() {
                 let _ = traceforge::inbox_with_tag_timed(
                     |_, t| t == Some(1),
                     2,
-                    Some(2),
                     WaitTime::Infinite,
                 );
             });
@@ -671,7 +667,6 @@ fn genuine_inbox_fire_still_panics() {
                 let v = traceforge::inbox_with_tag_timed(
                     |_, t| t == Some(1),
                     2,
-                    Some(2),
                     WaitTime::Finite(10),
                 );
                 if v.len() == 2 {
@@ -701,11 +696,11 @@ fn inbox_backward_revisits_coexist_with_exact() {
         || {
             let main_tid = thread::current().id();
             let collector = thread::spawn(move || {
-                // Waited inbox (min 1, max 2): executes early; the
-                // late sender's message can only join via inbox
-                // backward revisits.
-                let v = traceforge::inbox_timed(1, Some(2), WaitTime::Finite(4));
-                assert!(v.len() <= 2);
+                // Waited inbox (k = 1): executes early; the late
+                // sender's message can only join via inbox backward
+                // revisits.
+                let v = traceforge::inbox_timed(1, WaitTime::Finite(4));
+                assert!(v.len() <= 1);
                 // A plain timed receive downstream of the inbox,
                 // sharing the senders' ancestry: exercises the exact
                 // oracle over a base system that CONTAINS committed
@@ -853,7 +848,6 @@ fn inbox_excluded_members_constrain_completion() {
                 let _ = traceforge::inbox_with_tag_timed(
                     |_, t| t == Some(1),
                     2,
-                    Some(2),
                     WaitTime::Finite(20),
                 );
             });
@@ -946,7 +940,6 @@ fn inbox_false_counterexample_suppressed() {
                 let v: Vec<u32> = traceforge::inbox_with_tag_timed(
                     |_, t| t == Some(1),
                     2,
-                    Some(2),
                     WaitTime::Finite(20),
                 )
                 .into_iter()
@@ -995,7 +988,6 @@ fn inbox_refusal_class_appears() {
                 let _ = traceforge::inbox_with_tag_timed(
                     |_, t| t == Some(1),
                     1,
-                    Some(1),
                     WaitTime::Infinite,
                 );
             });
@@ -1018,7 +1010,6 @@ fn inbox_refusal_not_pushed_when_infeasible() {
                 let _ = traceforge::inbox_with_tag_timed(
                     |_, t| t == Some(1),
                     1,
-                    Some(1),
                     WaitTime::Infinite,
                 );
             });
@@ -1044,7 +1035,6 @@ fn inbox_refusal_min2_all_dead() {
                 let _ = traceforge::inbox_with_tag_timed(
                     |_, t| t == Some(1),
                     2,
-                    Some(2),
                     WaitTime::Infinite,
                 );
             });
@@ -1073,7 +1063,6 @@ fn inbox_refusal_and_exclusions_agree() {
                 let _ = traceforge::inbox_with_tag_timed(
                     |_, t| t == Some(1),
                     1,
-                    Some(1),
                     WaitTime::Infinite,
                 );
             });
@@ -1106,7 +1095,6 @@ fn inbox_refusal_gated_by_live_future_send() {
                 let _ = traceforge::inbox_with_tag_timed(
                     |_, t| t == Some(1),
                     1,
-                    Some(1),
                     WaitTime::Infinite,
                 );
             });

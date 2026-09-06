@@ -26,7 +26,7 @@ use traceforge::{thread, Config, Val, WaitTime};
 #[test]
 #[should_panic(expected = "timed inbox requires min >= 1")]
 fn timed_inbox_min0_is_forbidden() {
-    let _ = traceforge::inbox_timed(0, None, WaitTime::Infinite);
+    let _ = traceforge::inbox_timed(0, WaitTime::Infinite);
 }
 
 // ---------------------------------------------------------------------
@@ -76,7 +76,7 @@ fn timed_inbox_min2_wait2_below_min_returns_empty() {
         Config::builder().with_timed(0, 0, 0).build(),
         || {
             let collector = thread::spawn(|| {
-                let v = traceforge::inbox_timed(2, Some(2), WaitTime::Finite(2));
+                let v = traceforge::inbox_timed(2, WaitTime::Finite(2));
                 // The inbox never returns an under-min non-empty set: it is
                 // either empty or has exactly `min` (= max = 2) messages.
                 assert!(v.is_empty() || v.len() == 2);
@@ -110,7 +110,7 @@ fn timed_inbox_min2_infinite_one_sender_blocks() {
         Config::builder().with_timed(0, 0, 0).build(),
         || {
             let collector = thread::spawn(|| {
-                let _v = traceforge::inbox_timed(2, Some(2), WaitTime::Infinite);
+                let _v = traceforge::inbox_timed(2, WaitTime::Infinite);
             });
             let cid = collector.thread().id();
             let _a = thread::spawn(move || {
@@ -147,8 +147,8 @@ fn two_sequential_run(use_inbox: bool) -> (usize, Vec<(Option<u32>, Option<u32>)
         let collector = thread::spawn(move || {
             let (r1, r2) = if use_inbox {
                 (
-                    one_u32(&traceforge::inbox_timed(1, Some(1), WaitTime::Finite(10))),
-                    one_u32(&traceforge::inbox_timed(1, Some(1), WaitTime::Finite(10))),
+                    one_u32(&traceforge::inbox_timed(1, WaitTime::Finite(10))),
+                    one_u32(&traceforge::inbox_timed(1, WaitTime::Finite(10))),
                 )
             } else {
                 (
@@ -223,17 +223,18 @@ fn two_sequential_timed_inboxes_have_no_duplicate_executions() {
 }
 
 // ---------------------------------------------------------------------
-// A single min<max finite inbox explores every size-bounded subset once.
+// A timed inbox returns EXACTLY k or the empty set: never fewer, never
+// more. This pins the contract that replaced the old [min, max] range.
 // ---------------------------------------------------------------------
 
 #[test]
-fn single_timed_inbox_min1_max2_explores_all_subsets_once() {
+fn single_timed_inbox_returns_exactly_k_or_empty() {
     let sink: Arc<Mutex<Vec<Vec<u32>>>> = Arc::new(Mutex::new(Vec::new()));
     let s = Arc::clone(&sink);
     let stats = traceforge::verify(Config::builder().with_timed(0, 0, 0).build(), move || {
         let s = Arc::clone(&s);
         let collector = thread::spawn(move || {
-            let mut got: Vec<u32> = traceforge::inbox_timed(1, Some(2), WaitTime::Finite(10))
+            let mut got: Vec<u32> = traceforge::inbox_timed(2, WaitTime::Finite(10))
                 .iter()
                 .flatten()
                 .map(|v| *v.as_any_ref().downcast_ref::<u32>().unwrap())
@@ -249,22 +250,17 @@ fn single_timed_inbox_min1_max2_explores_all_subsets_once() {
     });
     let records = sink.lock().unwrap().clone();
 
-    // Combinatorial oracle: timeout {} + all size-1 + all size-2 subsets.
-    let expected: BTreeSet<Vec<u32>> = [
-        vec![],
-        vec![2],
-        vec![3],
-        vec![4],
-        vec![2, 3],
-        vec![2, 4],
-        vec![3, 4],
-    ]
-    .into_iter()
-    .collect();
+    // Combinatorial oracle: the timeout {} plus every size-2 subset, and
+    // NOTHING else. All three sends land at time 0 (L = U = sd = 0), so
+    // every pair is jointly readable at the collector's ready instant;
+    // singletons and the full triple must not appear, because k = 2 is
+    // now exact rather than a lower bound.
+    let expected: BTreeSet<Vec<u32>> =
+        [vec![], vec![2, 3], vec![2, 4], vec![3, 4]].into_iter().collect();
     assert_eq!(
         distinct(&records),
         expected,
-        "a min=1,max=2 inbox should explore the timeout plus every size-[1,2] subset"
+        "a k=2 timed inbox should explore the timeout plus every size-2 subset, and no other size"
     );
     assert_eq!(
         stats.execs,

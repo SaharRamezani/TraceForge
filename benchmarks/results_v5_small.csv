@@ -1,0 +1,24 @@
+protocol,N,rounds,cell,timed_execs,timed_block,timed_extra,timed_verdict,timed_wall,base_execs,base_block,base_extra,base_verdict,base_wall,pruning_pct,expected,timed_cmd
+three_pc_timed,3,1,W/U=5,891,0,288,hold,0.1,2026,0,288,hold,0.1,56.0,hold,three_pc_timed --participants 3 --rounds 1 --u 20 --w-ratio 5 --l-ratio 0.0 --sd-ratio 0.25 --mode timed
+three_pc_timed,3,1,W/U=7,891,0,288,hold,0.1,2026,0,288,hold,0.1,56.0,hold,three_pc_timed --participants 3 --rounds 1 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --mode timed
+three_pc_timed,3,1,W/U=10,891,0,288,hold,0.1,2026,0,288,hold,0.1,56.0,hold,three_pc_timed --participants 3 --rounds 1 --u 20 --w-ratio 10 --l-ratio 0.0 --sd-ratio 0.25 --mode timed
+three_pc_timed,3,1,W/U=3,891,0,288,hold,0.1,2026,0,288,hold,0.1,56.0,hold,three_pc_timed --participants 3 --rounds 1 --u 20 --w-ratio 3 --l-ratio 0.0 --sd-ratio 0.25 --mode timed
+three_pc_timed,3,1,W/U=2,1593,0,288,hold,0.1,2026,0,288,hold,0.1,21.4,hold,three_pc_timed --participants 3 --rounds 1 --u 20 --w-ratio 2 --l-ratio 0.0 --sd-ratio 0.25 --mode timed
+comm_closed_leader_election,3,1,regime B,10232,0,5064,hold,0.4,10232,0,5064,hold,0.4,0.0,hold,comm_closed_leader_election --nodes 3 --ballots 1 --u 20 --w 60 --l 6 --sd 0 --parallel shared --mode timed
+comm_closed_leader_election,3,1,regime F,10232,0,5064,hold,0.4,10232,0,5064,hold,0.4,0.0,hold,comm_closed_leader_election --nodes 3 --ballots 1 --u 20 --w 40 --l 0 --sd 10 --parallel shared --mode timed
+comm_closed_leader_election,3,1,regime C,10232,0,5064,hold,0.4,10232,0,5064,hold,0.4,0.0,hold,comm_closed_leader_election --nodes 3 --ballots 1 --u 20 --w 100 --l 2 --sd 5 --parallel shared --mode timed
+comm_closed_leader_election,3,1,regime A,5786,0,2106,hold,0.6,10232,0,5064,hold,0.4,43.5,hold,comm_closed_leader_election --nodes 3 --ballots 1 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode timed
+comm_closed_leader_election_inbox,3,1,regime A,158,0,21,hold,0.6,1290,0,660,hold,0.6,87.8,hold,comm_closed_leader_election_inbox --nodes 3 --ballots 1 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode timed
+comm_closed_leader_election_inbox,3,1,regime B,680,0,375,hold,0.6,1290,0,660,hold,0.6,47.3,hold,comm_closed_leader_election_inbox --nodes 3 --ballots 1 --u 20 --w 60 --l 6 --sd 0 --parallel shared --mode timed
+comm_closed_leader_election_inbox,3,1,regime C,680,0,375,hold,0.6,1290,0,660,hold,0.6,47.3,hold,comm_closed_leader_election_inbox --nodes 3 --ballots 1 --u 20 --w 100 --l 2 --sd 5 --parallel shared --mode timed
+comm_closed_leader_election_inbox,3,1,regime F,1290,0,660,hold,0.6,1290,0,660,hold,0.6,0.0,hold,comm_closed_leader_election_inbox --nodes 3 --ballots 1 --u 20 --w 40 --l 0 --sd 10 --parallel shared --mode timed
+three_pc_timed,4,1,W/U=10,17553,0,9216,hold,2.6,49816,0,9216,hold,3.3,64.8,hold,three_pc_timed --participants 4 --rounds 1 --u 20 --w-ratio 10 --l-ratio 0.0 --sd-ratio 0.25 --mode timed
+three_pc_timed,4,1,W/U=3,17553,0,9216,hold,2.7,49816,0,9216,hold,3.4,64.8,hold,three_pc_timed --participants 4 --rounds 1 --u 20 --w-ratio 3 --l-ratio 0.0 --sd-ratio 0.25 --mode timed
+three_pc_timed,4,1,W/U=5,17553,0,9216,hold,2.9,49816,0,9216,hold,3.6,64.8,hold,three_pc_timed --participants 4 --rounds 1 --u 20 --w-ratio 5 --l-ratio 0.0 --sd-ratio 0.25 --mode timed
+three_pc_timed,4,1,W/U=7,17553,0,9216,hold,2.9,49816,0,9216,hold,3.6,64.8,hold,three_pc_timed --participants 4 --rounds 1 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --mode timed
+three_pc_timed,4,1,W/U=2,32937,0,9216,hold,4.5,49816,0,9216,hold,3.3,33.9,hold,three_pc_timed --participants 4 --rounds 1 --u 20 --w-ratio 2 --l-ratio 0.0 --sd-ratio 0.25 --mode timed
+comm_closed_leader_election_inbox,3,2,B=2 regime A,11746,0,2994,hold,1.8,1664100,0,1267200,hold,26.5,99.3,hold,comm_closed_leader_election_inbox --nodes 3 --ballots 2 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode timed
+comm_closed_leader_election_inbox,3,2,B=2 regime C,265210,0,219150,hold,6.2,1664100,0,1267200,hold,26.6,84.1,hold,comm_closed_leader_election_inbox --nodes 3 --ballots 2 --u 20 --w 100 --l 2 --sd 5 --parallel shared --mode timed
+three_pc_timed,3,2,R=2,130857,0,73152,hold,29.3,3612857,0,333360,hold,209.9,96.4,hold,three_pc_timed --participants 3 --rounds 2 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --mode timed
+comm_closed_leader_election,3,2,B=2 regime A,11272450,0,6861468,hold,58.1,104693824,0,77985600,hold,408.4,89.2,hold,comm_closed_leader_election --nodes 3 --ballots 2 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode timed
+comm_closed_leader_election,3,2,B=2 regime C,52184584,0,40143144,hold,196.6,104693824,0,77985600,hold,397.5,50.2,hold,comm_closed_leader_election --nodes 3 --ballots 2 --u 20 --w 100 --l 2 --sd 5 --parallel shared --mode timed

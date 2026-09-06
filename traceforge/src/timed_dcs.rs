@@ -961,6 +961,13 @@ impl<'g> TimedDcs<'g> {
                                 // (had it waited, it would have returned
                                 // at the min-th arrival): one exact case,
                                 // plus exclusion dodges below capacity.
+                                //
+                                // TIMED inboxes never take this arm: they
+                                // carry `max == Some(min)`, so every read
+                                // is exactly `min`. It stays live for the
+                                // UNTIMED inbox, which still has a real
+                                // `[min, max]` range (and for `min == 0`,
+                                // whose subsets all land here).
                                 if excl.is_empty() || at_capacity {
                                     immediate_inbox_edges(
                                         &mut edges,
@@ -1549,12 +1556,24 @@ impl<'g> TimedDcs<'g> {
     /// same dodge disjunction as committed waited reads. Without it
     /// the wake test is looser than the offer filter and the scheduler
     /// livelocks on wake -> no offer -> block (the min >= 2 lesson).
+    ///
+    /// `at_capacity` must mirror what the OFFER filter
+    /// ([`Self::probe_inbox_rfs`]) would use for the same batch, or the
+    /// wake test is tighter than the offer and the scheduler livelocks
+    /// (wake -> no offer -> block). The block label does not carry
+    /// `max`, so the caller reconstructs it: a TIMED inbox always has
+    /// `max == Some(min)`, hence `sends.len() == min` is exactly its
+    /// capacity; an UNTIMED blocking inbox may have `max > min` and its
+    /// `max` is unrecoverable here, so the caller passes `false`, which
+    /// is the conservative (tighter) side and preserves the existing
+    /// behaviour for that case.
     pub(crate) fn probe_unblock_inbox_subset(
         &mut self,
         block_pos: Event,
         sends: &[Event],
         loc: &crate::loc::RecvLoc,
         comm: crate::loc::CommunicationModel,
+        at_capacity: bool,
     ) -> bool {
         let Some(&e) = self.vars.ev.get(&block_pos) else {
             debug_assert!(false, "block {block_pos} not in scope");
@@ -1588,9 +1607,10 @@ impl<'g> TimedDcs<'g> {
             inbox_exclusions(&self.vars, self.g, self.cfg, block_pos, loc, comm, sends);
         let sd = i128::from(self.cfg.sd_for(block_pos.thread));
         let folded = fold_exclusions(base, &excl, |i, x| {
-            // Blocks have no capacity bound in scope; the immediate
-            // case still constrains (a t0 read returns all stored).
-            exclusion_options(i.checked_sub(1), &windows, false, e, sd, x)
+            // Capacity applies to the immediate (t0) case only; every
+            // completion case ignores it. See the doc comment for why
+            // the caller, not this function, decides it.
+            exclusion_options(i.checked_sub(1), &windows, at_capacity, e, sd, x)
         });
         self.probe_exact_with_set(&[], &folded)
     }

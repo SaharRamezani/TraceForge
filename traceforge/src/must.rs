@@ -379,6 +379,16 @@ impl Must {
         self.current.rqueue.clear();
         self.states.clear();
         self.current.graph = eg;
+        // Foreign graph (popped from the shared pool queue): arm the
+        // completion-time feasibility gate conservatively, exactly as
+        // `load_state_stack` does for the partitioned path and as
+        // `push_state` does (via `MustState::new`) for the sequential
+        // path. Without this the gate keeps whatever value the previous
+        // graph left behind, which may be `false` after a feasible
+        // full-graph oracle check, so a foreign branch that completes
+        // without adding a send would be counted without its final
+        // timeline re-check.
+        self.current.timed_completion_check = true;
         #[cfg(feature = "symbolic")]
         self.symbolic_solver.reset();
     }
@@ -1340,6 +1350,7 @@ impl Must {
                                     &[send.pos()],
                                     loc,
                                     *comm,
+                                    inbox_block_at_capacity(wait, *min, 1),
                                 )
                             } else {
                                 d.probe_block_unblock(blab.pos(), send.pos())
@@ -1404,6 +1415,7 @@ impl Must {
                                     &[send.pos()],
                                     loc,
                                     *comm,
+                                    inbox_block_at_capacity(wait, *min, 1),
                                 )
                             } else {
                                 d.probe_block_unblock(blab.pos(), send.pos())
@@ -1428,6 +1440,8 @@ impl Must {
                             &candidates.iter().map(|s| s.pos()).collect::<Vec<_>>(),
                             *min,
                             if *from_inbox { Some((loc, *comm)) } else { None },
+                            // Batches here are exactly `min` long.
+                            inbox_block_at_capacity(wait, *min, *min),
                         );
                     }
                 }
@@ -3591,12 +3605,25 @@ impl Must {
 /// the disjunctive inbox rule (terminal-read equivalence, see
 /// timed_dcs::probe_unblock_subset). Standard lexicographic
 /// combination walk, first hit wins.
+/// Capacity of an inbox-shaped block's wake-up batch, mirroring what the
+/// OFFER filter would compute for the same batch.
+///
+/// The block label drops `max`, so it is reconstructed from `wait`: a TIMED
+/// inbox always carries `max == Some(min)` (see `inbox_internal_timed`), so a
+/// batch of exactly `min` is at capacity. An UNTIMED blocking inbox may have
+/// `max > min` and its `max` is unrecoverable here, so it stays `false`, the
+/// conservative side, which is the behaviour that shipped before.
+fn inbox_block_at_capacity(wait: &Option<crate::timed_cons::WaitTime>, min: usize, len: usize) -> bool {
+    wait.is_some() && len == min
+}
+
 fn any_jointly_feasible_subset(
     dcs: &mut crate::timed_dcs::TimedDcs<'_>,
     block_pos: Event,
     sends: &[Event],
     k: usize,
     inbox: Option<(&crate::loc::RecvLoc, crate::loc::CommunicationModel)>,
+    inbox_at_capacity: bool,
 ) -> bool {
     let n = sends.len();
     if k == 0 {
@@ -3612,7 +3639,7 @@ fn any_jointly_feasible_subset(
         subset.extend(idx.iter().map(|&i| sends[i]));
         let feasible = match inbox {
             Some((loc, comm)) => {
-                dcs.probe_unblock_inbox_subset(block_pos, &subset, loc, comm)
+                dcs.probe_unblock_inbox_subset(block_pos, &subset, loc, comm, inbox_at_capacity)
             }
             None => dcs.probe_unblock_subset(block_pos, &subset),
         };

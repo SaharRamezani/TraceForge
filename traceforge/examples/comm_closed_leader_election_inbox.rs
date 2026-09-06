@@ -60,6 +60,10 @@ impl Phase {
     }
 }
 
+/// Tag = `(ballot, phase)`, mirroring the paper's `eq(ballot, label)`
+/// receive predicate (Fig. 3 lines 14, 29, 43): a collector selects on
+/// the round and phase only, NEVER on the announced leader. Agreement is
+/// checked afterwards by `all_same_leader`, as in Fig. 3 lines 22/49.
 fn tag_of(ballot: u64, phase: Phase) -> u32 {
     (ballot as u32) * 2 + phase.index()
 }
@@ -110,22 +114,27 @@ fn broadcast(node: &Node, ballot: u64, phase: Phase, leader: usize) {
     }
 }
 
+/// `all_same(mbox, leader)` of Fig. 3 lines 22 and 49.
 fn all_same_leader(msgs: &[ProtoMsg], leader: usize) -> bool {
     msgs.iter().all(|m| m.leader == leader)
 }
 
-fn collect_phase(ballot: u64, phase: Phase, enough: usize, max: usize, w: u64) -> Vec<ProtoMsg> {
+/// Collect exactly `k` messages of `(ballot, phase)` within `w`, else `{}`.
+///
+/// This mirrors the paper's ack loop (Fig. 3 lines 13-20 / 42-47), which
+/// adds one message at a time and breaks the instant the mailbox exceeds
+/// `n/2`: the mailbox therefore holds EXACTLY a majority, never more. The
+/// timed inbox's exactly-`k` contract expresses that directly; the earlier
+/// `max = n` encoding allowed batches larger than the protocol can form.
+///
+/// Any count below `k` is protocol-equivalent to the timeout empty (a
+/// follower with no proposal skips its ack; a process below a majority of
+/// acks records no LogEntry), so those interleavings are dropped without
+/// changing the reachable protocol states.
+fn collect_phase(ballot: u64, phase: Phase, k: usize, w: u64) -> Vec<ProtoMsg> {
     let want = tag_of(ballot, phase);
     let matches = move |_sender: ThreadId, tag: Option<u32>| tag == Some(want);
-    // Wait up to `w` until at least `enough` matching messages are in
-    // storage (collecting up to `max`), else time out to `{}`. The inbox
-    // returns immediately when `enough` are already present, or at the
-    // arrival of the message that completes `enough`. Any count below
-    // `enough` is protocol-equivalent to the timeout empty (a follower
-    // with no proposal skips its ack; a process below a majority of
-    // acks records no LogEntry), so `min = enough` drops those
-    // interleavings without changing the reachable protocol states.
-    let raw = traceforge::inbox_with_tag_timed(matches, enough, Some(max), WaitTime::Finite(w));
+    let raw = traceforge::inbox_with_tag_timed(matches, k, WaitTime::Finite(w));
     raw.into_iter()
         .flatten()
         .filter_map(|val| val.as_any_ref().downcast_ref::<ProtoMsg>().copied())
@@ -135,8 +144,10 @@ fn collect_phase(ballot: u64, phase: Phase, enough: usize, max: usize, w: u64) -
 fn phase_ack_ballot(node: &mut Node, ballot: u64, w: u64) {
     broadcast(node, ballot, Phase::AckBallot, node.leader);
     let enough = node.n / 2 + 1; // strict majority, > n/2
-    let acks = collect_phase(ballot, Phase::AckBallot, enough, node.n, w);
-    if acks.len() >= enough && all_same_leader(&acks, node.leader) {
+    // Exactly `enough` acks of this (ballot, phase), whatever leader they
+    // name, then the paper's unanimity test (Fig. 3 lines 21-22 / 48-49).
+    let acks = collect_phase(ballot, Phase::AckBallot, enough, w);
+    if acks.len() == enough && all_same_leader(&acks, node.leader) {
         node.log.push(LogEntry {
             ballot,
             leader: node.leader,
@@ -157,7 +168,7 @@ fn run_leader_round(node: &mut Node, w: u64) {
 fn run_follower_round(node: &mut Node, w: u64) {
     node.ballot += 1;
     let ballot = node.ballot;
-    let proposals = collect_phase(ballot, Phase::NewBallot, 1, 1, w);
+    let proposals = collect_phase(ballot, Phase::NewBallot, 1, w);
     if let Some(proposal) = proposals.first() {
         node.ballot = proposal.ballot;
         node.leader = proposal.sender;

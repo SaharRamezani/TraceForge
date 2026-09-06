@@ -438,15 +438,10 @@ impl ProgramSpec {
                                 traceforge::inbox_with_tag_timed(
                                     |_, t| t == Some(0),
                                     ib.min as usize,
-                                    ib.max.map(|m| m as usize),
                                     wait,
                                 )
                             } else {
-                                traceforge::inbox_timed(
-                                    ib.min as usize,
-                                    ib.max.map(|m| m as usize),
-                                    wait,
-                                )
+                                traceforge::inbox_timed(ib.min as usize, wait)
                             }
                         }
                     };

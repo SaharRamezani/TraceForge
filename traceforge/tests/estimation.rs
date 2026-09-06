@@ -219,11 +219,13 @@ fn estimate_a_nstepsb() {
 // committed before the inbox visit: the estimate is then exact.
 // =====================================================================
 
-// min=1 max=2 over three committed senders: 6 subsets + timeout = 7.
+// k=1 over three committed senders: 3 singleton subsets + timeout = 4.
+// (Was 7 when the inbox still took a [min, max] range: the 3 size-2
+// subsets are no longer outcomes now that k is exact.)
 // Pre-fix this returned 1.0 (no factor) while each "sample" re-ran the
-// whole 7-execution subtree via pushed revisits.
+// whole subtree via pushed revisits.
 #[test]
-fn estimate_timed_inbox_min1_max2() {
+fn estimate_timed_inbox_k1() {
     let est = traceforge::estimate_execs_with_config(
         Config::builder().with_timed(0, 0, 1000).build(),
         || {
@@ -232,7 +234,6 @@ fn estimate_timed_inbox_min1_max2() {
                 let _ = traceforge::inbox_with_tag_timed(
                     |_, t| t == Some(1),
                     1,
-                    Some(2),
                     traceforge::WaitTime::Finite(10),
                 );
             });
@@ -250,7 +251,7 @@ fn estimate_timed_inbox_min1_max2() {
         },
         5,
     );
-    assert!((est - 7.0).abs() < 1e-9, "estimate {est} != 7.0");
+    assert!((est - 4.0).abs() < 1e-9, "estimate {est} != 4.0");
 }
 
 // Untimed non-blocking (min=0) inbox over one committed sender:
@@ -291,7 +292,6 @@ fn estimate_infinite_inbox_blocks() {
                 let _ = traceforge::inbox_with_tag_timed(
                     |_, t| t == Some(1),
                     2,
-                    Some(2),
                     traceforge::WaitTime::Infinite,
                 );
             });

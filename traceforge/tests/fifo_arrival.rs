@@ -392,7 +392,6 @@ fn run_min2_inbox(sd: u64, same_sender: bool) -> Stats {
             let _ = traceforge::inbox_with_tag_timed(
                 |_, t| t == Some(1),
                 2,
-                Some(2),
                 WaitTime::Finite(10),
             );
         });

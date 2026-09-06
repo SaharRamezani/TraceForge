@@ -140,6 +140,17 @@ impl ExecutionPoolWorker {
 // with some clue-wielding folks on #rust and they convinced me that this was the
 // cleanest approach.
 //
+/// Store `new` into a worker's state unless the drainer has already set
+/// `Shutdown`. `Shutdown` is issued exactly once (by `shutdown_now`) and
+/// never re-issued, so a worker that overwrote it with `Waiting` or `Busy`
+/// would never leave `worker_loop` and the join loop would never finish.
+fn mark_unless_shutdown(state: &LockableWorkerState, new: ExecutionPoolWorkerState) {
+    let mut guard = state.lock().expect("Lock worker_state mutex");
+    if *guard != ExecutionPoolWorkerState::Shutdown {
+        *guard = new;
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn worker_loop<F>(
     thread_idx: usize,
@@ -178,8 +189,9 @@ fn worker_loop<F>(
             .expect("Lock shared_queue mutex")
             .is_empty()
         {
-            *worker_state.lock().expect("Lock worker_state mutex") =
-                ExecutionPoolWorkerState::Waiting;
+            // Never overwrite Shutdown: the drainer may have issued it
+            // between the emptiness check above and this store.
+            mark_unless_shutdown(&worker_state, ExecutionPoolWorkerState::Waiting);
 
             let _timed_out = loop_block_cond
                 .wait_timeout(
@@ -203,12 +215,27 @@ fn worker_loop<F>(
         }
 
         // After the (potential) wait_timeout() above finishes, there still may
-        // or may not be work queued. Attempt to pop the head of the queue.
+        // or may not be work queued. Pop the head of the queue and, if there
+        // is work, mark the worker Busy while STILL holding the queue lock.
         //
-        let next_eg = shared_queue
-            .lock()
-            .expect("locking shared queue mutex")
-            .pop_front();
+        // The drainer decides that the run is over by observing "queue
+        // empty and no worker Busy" under this same lock, so the pop and
+        // the Busy transition must be one atomic step from its point of
+        // view. With a gap between them the drainer could conclude
+        // "everybody idle" while this worker held the last graph, issue
+        // Shutdown, and have it clobbered by the Busy store: the run would
+        // finish all its work and then never join its workers.
+        //
+        let next_eg = {
+            let mut queue = shared_queue.lock().expect("locking shared queue mutex");
+            let item = queue.pop_front();
+            if item.is_some() {
+                // If Shutdown is already set we still process the item
+                // (nothing is lost) and leave the loop at the next check.
+                mark_unless_shutdown(&worker_state, ExecutionPoolWorkerState::Busy);
+            }
+            item
+        };
 
         // If there's no work, loop around and try again.
         //
@@ -216,10 +243,6 @@ fn worker_loop<F>(
             trace!("[{}] No work to do.", thread_idx);
             continue;
         }
-
-        // This /is/ work to do. Mark the worker as busy.
-        //
-        *worker_state.lock().expect("Couldn't lock state mutex") = ExecutionPoolWorkerState::Busy;
 
         // The queued object may or not contain an actual graph. If so,
         // add it to this worker's TraceForge queue. If this queue node does NOT
@@ -428,23 +451,26 @@ impl ExecutionPool {
                 continue;
             }
 
-            let depth = self
-                .work_deque
-                .lock()
-                .expect("Couldn't lock deque mutex")
-                .len();
+            // Evaluate "queue empty AND no worker Busy" as ONE observation
+            // under the queue lock. Workers only become Busy while holding
+            // that lock (see worker_loop), and new work is only ever pushed
+            // by a Busy worker, so a snapshot taken here cannot be
+            // invalidated between its two halves.
+            let (depth, still_busy) = {
+                let queue = self.work_deque.lock().expect("Couldn't lock deque mutex");
+                let still_busy = self.worker_vec.iter().any(|w| {
+                    *w.worker_state.lock().expect("worker vec mutex lock")
+                        == ExecutionPoolWorkerState::Busy
+                });
+                (queue.len(), still_busy)
+            };
 
             if depth > 0 {
                 trace!("Draining ... deque depth still {depth}");
                 continue;
             }
 
-            let still_busy_vec = self.worker_vec.iter().find(|&w| {
-                *w.worker_state.lock().expect("worker vec mutex lock")
-                    == ExecutionPoolWorkerState::Busy
-            });
-
-            if still_busy_vec.is_some() {
+            if still_busy {
                 debug!("Threads are still finishing ... ");
                 continue;
             }
@@ -472,6 +498,9 @@ impl ExecutionPool {
             *w.worker_state.lock().expect("worker vec mutex lock") =
                 ExecutionPoolWorkerState::Shutdown
         });
+        // Wake every worker parked in wait_timeout() so it sees Shutdown now
+        // rather than after its 250 ms timeout.
+        self.loop_block_cond.notify_all();
 
         // Not all the threads may be complete yet so join() the ones that are
         // ready and loop until all of the threads in the Vec have been set to
@@ -496,6 +525,9 @@ impl ExecutionPool {
             // break out of the loop
             if let Some(busy_worker) = self.worker_vec.iter().find(|&w| w.thread_handle.is_some()) {
                 trace!("[{}] Still isn't done. Looping().", &busy_worker.thread_idx);
+                // Poll rather than spin: a worker may still be finishing
+                // its last graph.
+                sleep(Duration::from_millis(10));
             } else {
                 trace!("All workers have completed and join()ed.");
                 break;

@@ -1704,97 +1704,94 @@ fn inbox_internal(tag: Option<PredicateType>, min: usize, max: Option<usize>) ->
 const TIMED_INBOX_MIN_MSG: &str =
     "timed inbox requires min >= 1; min == 0 is forbidden. \
      For non-blocking (do not wait at all) use WaitTime::Finite(0); \
-     to receive one message with a timeout use (1, Some(1), wait).";
+     to receive one message with a timeout use (1, wait).";
 
-/// Timed inbox: collects `[min, max]` matching messages within a `wait` window.
+/// Timed inbox: collects *exactly* `k` matching messages within a `wait` window.
 ///
-/// `min` must be `>= 1` (passing `min == 0` panics, see [Panics](#panics)). It
-/// returns either the empty set or a set of at least `min` and at most `max`
-/// matching messages; it never returns a non-empty set smaller than `min`. The
-/// exact timed oracle admits a subset iff a consistent timeline realizes the
-/// operational rule: the read returns at its invocation time when `min` were
-/// already stored, else exactly at the arrival completing `min` (within
-/// `wait`), with every member stored and still alive at the read.
+/// `k` must be `>= 1` (passing `k == 0` panics, see [Panics](#panics)). It
+/// returns either the empty set or a set of exactly `k` matching messages; it
+/// never returns a set of any other size. The exact timed oracle admits a
+/// subset iff a consistent timeline realizes the operational rule: the read
+/// returns at its invocation time when `k` were already stored, else exactly at
+/// the arrival completing `k` (within `wait`), with every member stored and
+/// still alive at the read.
 ///
-/// With a finite `wait` the inbox never blocks: if it cannot collect `min`
+/// With a finite `wait` the inbox never blocks: if it cannot collect `k`
 /// messages in time it times out and returns `{}` (the timeout empty, at time
 /// `pred + wait`).
 ///
-/// `WaitTime::Infinite` is the blocking inbox: `min` is a hard requirement
+/// `WaitTime::Infinite` is the blocking inbox: `k` is a hard requirement
 /// and the inbox blocks (can deadlock) rather than timing out.
 ///
-/// # Why `min == 0` is forbidden
+/// # Why there is no `max`
+///
+/// A timed inbox collects the number of messages the protocol asked for and
+/// stops; a separate upper bound has no meaning once the wait is what decides
+/// how long you collect for. Internally this is `max == Some(k)`, so a read is
+/// always *at capacity*: it may leave further stored messages behind with no
+/// timing justification, which is exactly what a collector that stops at `k`
+/// does. (The *untimed* inbox keeps `min`/`max`; see [`inbox_with_bounds`].)
+///
+/// # Why `k == 0` is forbidden
 ///
 /// `min == 0` exists only to make the *untimed* inbox ([`inbox`],
 /// [`inbox_with_bounds`], ...) non-blocking. With a timeout that meaning is
-/// redundant, and `inbox_timed(0, _, Finite(w))` reads misleadingly (it looks
+/// redundant, and `inbox_timed(0, Finite(w))` reads misleadingly (it looks
 /// like "wait up to `w`" but returns immediately and ignores `w`). All
 /// non-blocking / receive-with-timeout behaviour is unified through the timeout:
 /// - non-blocking (do not wait at all): use `wait = WaitTime::Finite(0)`;
-/// - receive one message with a timeout: use `inbox_timed(1, Some(1), wait)`.
+/// - receive one message with a timeout: use `inbox_timed(1, wait)`.
 ///
 /// # Single-sender batches (accepted semantics)
 ///
 /// The inbox member pool is the sb-minimal antichain of the channel: at
 /// most ONE message per (sender, predicate) is a candidate at a time.
-/// A `min >= 2` infinite-wait inbox facing a single sender therefore
+/// A `k >= 2` infinite-wait inbox facing a single sender therefore
 /// blocks forever by design; a second message from the same sender is
-/// not a distinct member. For `min >= 2` the "never completes" blocked
+/// not a distinct member. For `k >= 2` the "never completes" blocked
 /// classes are enumerated conservatively (all-messages-dead refusal
 /// plus the no-feasible-subset block); disjoint-lifetime refusal worlds
 /// with a message still alive are not separately enumerated.
 ///
 /// # Panics
 ///
-/// Panics if `min == 0`.
-pub fn inbox_timed(min: usize, max: Option<usize>, wait: WaitTime) -> Vec<Option<Val>> {
-    assert!(min >= 1, "{}", TIMED_INBOX_MIN_MSG);
-    inbox_internal_timed(None, min, max, wait)
+/// Panics if `k == 0`.
+pub fn inbox_timed(k: usize, wait: WaitTime) -> Vec<Option<Val>> {
+    assert!(k >= 1, "{}", TIMED_INBOX_MIN_MSG);
+    inbox_internal_timed(None, k, wait)
 }
 
-/// Timed inbox with a single-tag predicate. Like [`inbox_timed`], `min` must be
-/// `>= 1`; passing `min == 0` panics. The single-sender batch semantics of
+/// Timed inbox with a single-tag predicate. Like [`inbox_timed`], `k` must be
+/// `>= 1`; passing `k == 0` panics. The single-sender batch semantics of
 /// [`inbox_timed`] apply here too (member pool = sb-minimal antichain).
-pub fn inbox_with_tag_timed<F>(
-    f: F,
-    min: usize,
-    max: Option<usize>,
-    wait: WaitTime,
-) -> Vec<Option<Val>>
+pub fn inbox_with_tag_timed<F>(f: F, k: usize, wait: WaitTime) -> Vec<Option<Val>>
 where
     F: Fn(ThreadId, Option<u32>) -> bool + 'static + Send + Sync,
 {
-    assert!(min >= 1, "{}", TIMED_INBOX_MIN_MSG);
+    assert!(k >= 1, "{}", TIMED_INBOX_MIN_MSG);
     inbox_internal_timed(
         Some(PredicateType(Arc::new(move |tid, tag| {
             let tag = tag.and_then(|tags| tags.first().copied());
             f(tid, tag)
         }))),
-        min,
-        max,
+        k,
         wait,
     )
 }
 
-/// Timed inbox with a vector-tag predicate. Like [`inbox_timed`], `min` must be
-/// `>= 1`; passing `min == 0` panics.
-pub fn inbox_with_vec_tag_timed<F>(
-    f: F,
-    min: usize,
-    max: Option<usize>,
-    wait: WaitTime,
-) -> Vec<Option<Val>>
+/// Timed inbox with a vector-tag predicate. Like [`inbox_timed`], `k` must be
+/// `>= 1`; passing `k == 0` panics.
+pub fn inbox_with_vec_tag_timed<F>(f: F, k: usize, wait: WaitTime) -> Vec<Option<Val>>
 where
     F: Fn(ThreadId, Option<Vec<u32>>) -> bool + 'static + Send + Sync,
 {
-    assert!(min >= 1, "{}", TIMED_INBOX_MIN_MSG);
-    inbox_internal_timed(Some(PredicateType(Arc::new(f))), min, max, wait)
+    assert!(k >= 1, "{}", TIMED_INBOX_MIN_MSG);
+    inbox_internal_timed(Some(PredicateType(Arc::new(f))), k, wait)
 }
 
 fn inbox_internal_timed(
     tag: Option<PredicateType>,
-    min: usize,
-    max: Option<usize>,
+    k: usize,
     wait: WaitTime,
 ) -> Vec<Option<Val>> {
     let (loc, comm) = self_loc_comm();
@@ -1807,13 +1804,21 @@ fn inbox_internal_timed(
         let tag = tag.clone();
         let (vals, blocked, _pos) = ExecutionState::with(|s| {
             let pos = s.next_pos();
+            // A timed inbox collects EXACTLY `k`: the label carries
+            // `max = Some(k)`, never `None`. This is load-bearing, not
+            // cosmetic: `at_capacity` in the timing oracle is
+            // `max == Some(subset.len())`, so `Some(k)` makes every read
+            // at capacity (it may leave stored messages behind, as a
+            // collector that stops at `k` does), whereas `None` would
+            // never reach capacity and would instead demand a
+            // late-or-dead dodge for every message left behind.
             let (vals, _inds, blocked) = s.must.borrow_mut().handle_inbox(Inbox::new_timed(
                 pos,
                 RecvLoc::new(locs, tag),
                 comm,
                 None,
-                min,
-                max,
+                k,
+                Some(k),
                 wait,
             ));
             (vals, blocked, pos)

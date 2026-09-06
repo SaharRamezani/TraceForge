@@ -1,0 +1,714 @@
+TF_DCS_PROF inbox_rfs: calls=14488 ms=414544 cases=314176
+TF_DCS_PROF probe_exact: calls=70 fast_ok=70 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=14488 ms=413864 fast_ok=5596 base_kill=0 alt_kill=3356 search=5536 cheap_probes=263732
+TF_DCS_PROF case_search: runs=10659 ms=406101 nodes=6427582 conflicts=552572 xtract_ms=57527
+TF_DCS_PROF retain_swarm: calls=1056 ms=317948 subsets=6746 kept=1297
+TF_DCS_PROF filter_rfs: ms=17
+TF_DCS_PROF inbox_rfs: calls=20652 ms=725478 cases=499659
+TF_DCS_PROF probe_exact: calls=72 fast_ok=72 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=20652 ms=724297 fast_ok=8065 base_kill=0 alt_kill=5088 search=7499 cheap_probes=399710
+TF_DCS_PROF case_search: runs=13675 ms=709879 nodes=12550049 conflicts=754529 xtract_ms=86182
+TF_DCS_PROF retain_swarm: calls=1362 ms=629414 subsets=10789 kept=2175
+TF_DCS_PROF filter_rfs: ms=18
+TF_DCS_PROF inbox_rfs: calls=21649 ms=1082264 cases=527914
+TF_DCS_PROF probe_exact: calls=72 fast_ok=72 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=21649 ms=1080963 fast_ok=8357 base_kill=0 alt_kill=5348 search=7944 cheap_probes=424863
+TF_DCS_PROF case_search: runs=14355 ms=1065515 nodes=18441333 conflicts=843501 xtract_ms=101177
+TF_DCS_PROF retain_swarm: calls=1412 ms=787340 subsets=11358 kept=2226
+TF_DCS_PROF filter_rfs: ms=18
+TF_DCS_PROF inbox_rfs: calls=22230 ms=1567514 cases=544602
+TF_DCS_PROF probe_exact: calls=72 fast_ok=72 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=22230 ms=1566137 fast_ok=8545 base_kill=0 alt_kill=5508 search=8177 cheap_probes=438792
+TF_DCS_PROF case_search: runs=14734 ms=1549980 nodes=23440854 conflicts=897761 xtract_ms=110107
+TF_DCS_PROF retain_swarm: calls=1440 ms=927253 subsets=11688 kept=2274
+TF_DCS_PROF filter_rfs: ms=18
+TF_DCS_PROF inbox_rfs: calls=24748 ms=1843753 cases=609191
+TF_DCS_PROF probe_exact: calls=74 fast_ok=74 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=24748 ms=1842149 fast_ok=9572 base_kill=0 alt_kill=6154 search=9022 cheap_probes=489826
+TF_DCS_PROF case_search: runs=16241 ms=1823279 nodes=27338093 conflicts=1017747 xtract_ms=132251
+TF_DCS_PROF retain_swarm: calls=1583 ms=1038707 subsets=13048 kept=2616
+TF_DCS_PROF filter_rfs: ms=19
+TF_DCS_PROF inbox_rfs: calls=25130 ms=2237588 cases=620748
+TF_DCS_PROF probe_exact: calls=74 fast_ok=74 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=25130 ms=2235941 fast_ok=9707 base_kill=0 alt_kill=6261 search=9162 cheap_probes=499231
+TF_DCS_PROF case_search: runs=16447 ms=2216626 nodes=32458542 conflicts=1050452 xtract_ms=138656
+TF_DCS_PROF retain_swarm: calls=1602 ms=1161679 subsets=13308 kept=2658
+TF_DCS_PROF filter_rfs: ms=19
+TF_DCS_PROF inbox_rfs: calls=25759 ms=2709863 cases=639360
+TF_DCS_PROF probe_exact: calls=78 fast_ok=78 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=25759 ms=2708168 fast_ok=9933 base_kill=0 alt_kill=6438 search=9388 cheap_probes=513892
+TF_DCS_PROF case_search: runs=16821 ms=2688073 nodes=37656144 conflicts=1089544 xtract_ms=144342
+TF_DCS_PROF retain_swarm: calls=1632 ms=1248350 subsets=13679 kept=2738
+TF_DCS_PROF filter_rfs: ms=24
+TF_DCS_PROF inbox_rfs: calls=25953 ms=3365623 cases=645479
+TF_DCS_PROF probe_exact: calls=78 fast_ok=78 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=25953 ms=3363920 fast_ok=9991 base_kill=0 alt_kill=6493 search=9469 cheap_probes=519109
+TF_DCS_PROF case_search: runs=16954 ms=3343520 nodes=43113838 conflicts=1118174 xtract_ms=148819
+TF_DCS_PROF retain_swarm: calls=1640 ms=1441331 subsets=13794 kept=2759
+TF_DCS_PROF filter_rfs: ms=24
+TF_DCS_PROF inbox_rfs: calls=26344 ms=3762684 cases=656455
+TF_DCS_PROF probe_exact: calls=79 fast_ok=79 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=26344 ms=3760945 fast_ok=10104 base_kill=0 alt_kill=6599 search=9641 cheap_probes=529140
+TF_DCS_PROF case_search: runs=17232 ms=3740084 nodes=48917948 conflicts=1149518 xtract_ms=154140
+TF_DCS_PROF retain_swarm: calls=1660 ms=1948405 subsets=14016 kept=2778
+TF_DCS_PROF filter_rfs: ms=30
+TF_DCS_PROF inbox_rfs: calls=26716 ms=4405644 cases=667522
+TF_DCS_PROF probe_exact: calls=79 fast_ok=79 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=26716 ms=4403888 fast_ok=10206 base_kill=0 alt_kill=6699 search=9811 cheap_probes=539356
+TF_DCS_PROF case_search: runs=17480 ms=4382694 nodes=54124504 conflicts=1179755 xtract_ms=157818
+TF_DCS_PROF retain_swarm: calls=1678 ms=2511368 subsets=14244 kept=2793
+TF_DCS_PROF filter_rfs: ms=30
+TF_DCS_PROF inbox_rfs: calls=27885 ms=4802776 cases=700573
+TF_DCS_PROF probe_exact: calls=80 fast_ok=80 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=27885 ms=4800951 fast_ok=10592 base_kill=0 alt_kill=7036 search=10257 cheap_probes=565966
+TF_DCS_PROF case_search: runs=18276 ms=4778952 nodes=59910378 conflicts=1242628 xtract_ms=163972
+TF_DCS_PROF retain_swarm: calls=1730 ms=2587386 subsets=14865 kept=2904
+TF_DCS_PROF filter_rfs: ms=31
+TF_DCS_PROF inbox_rfs: calls=29009 ms=5214516 cases=733034
+TF_DCS_PROF probe_exact: calls=80 fast_ok=80 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=29009 ms=5212543 fast_ok=10936 base_kill=0 alt_kill=7342 search=10731 cheap_probes=594804
+TF_DCS_PROF case_search: runs=19026 ms=5189374 nodes=65633836 conflicts=1311969 xtract_ms=175016
+TF_DCS_PROF retain_swarm: calls=1785 ms=3310967 subsets=15524 kept=2985
+TF_DCS_PROF filter_rfs: ms=31
+TF_DCS_PROF inbox_rfs: calls=29494 ms=5800339 cases=747060
+TF_DCS_PROF probe_exact: calls=81 fast_ok=81 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=29494 ms=5798316 fast_ok=11111 base_kill=0 alt_kill=7475 search=10908 cheap_probes=606199
+TF_DCS_PROF case_search: runs=19310 ms=5774483 nodes=72392555 conflicts=1353501 xtract_ms=179990
+TF_DCS_PROF retain_swarm: calls=1810 ms=3640728 subsets=15819 kept=3031
+TF_DCS_PROF filter_rfs: ms=31
+TF_DCS_PROF inbox_rfs: calls=31069 ms=6254805 cases=793003
+TF_DCS_PROF probe_exact: calls=81 fast_ok=81 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=31069 ms=6252664 fast_ok=11704 base_kill=0 alt_kill=7876 search=11489 cheap_probes=641841
+TF_DCS_PROF case_search: runs=20240 ms=6227352 nodes=79084535 conflicts=1421620 xtract_ms=189236
+TF_DCS_PROF retain_swarm: calls=1886 ms=4125985 subsets=16762 kept=3258
+TF_DCS_PROF filter_rfs: ms=31
+TF_DCS_PROF inbox_rfs: calls=33880 ms=6941854 cases=874955
+TF_DCS_PROF probe_exact: calls=82 fast_ok=82 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=33880 ms=6939560 fast_ok=12818 base_kill=0 alt_kill=8598 search=12464 cheap_probes=704790
+TF_DCS_PROF case_search: runs=21674 ms=6912590 nodes=87213031 conflicts=1560742 xtract_ms=203233
+TF_DCS_PROF retain_swarm: calls=2035 ms=4200790 subsets=18556 kept=3654
+TF_DCS_PROF filter_rfs: ms=32
+TF_DCS_PROF inbox_rfs: calls=36037 ms=7475668 cases=934650
+TF_DCS_PROF probe_exact: calls=84 fast_ok=84 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=36037 ms=7473292 fast_ok=13542 base_kill=0 alt_kill=9198 search=13297 cheap_probes=754921
+TF_DCS_PROF case_search: runs=23056 ms=7445032 nodes=98760474 conflicts=1641492 xtract_ms=209880
+TF_DCS_PROF retain_swarm: calls=2144 ms=4846857 subsets=19781 kept=3839
+TF_DCS_PROF filter_rfs: ms=32
+TF_DCS_PROF inbox_rfs: calls=37128 ms=7841542 cases=967628
+TF_DCS_PROF probe_exact: calls=84 fast_ok=84 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=37128 ms=7839110 fast_ok=13955 base_kill=0 alt_kill=9506 search=13667 cheap_probes=780175
+TF_DCS_PROF case_search: runs=23614 ms=7809953 nodes=109017128 conflicts=1697805 xtract_ms=215903
+TF_DCS_PROF retain_swarm: calls=2197 ms=5537418 subsets=20488 kept=3972
+TF_DCS_PROF filter_rfs: ms=32
+TF_DCS_PROF inbox_rfs: calls=37227 ms=8216488 cases=970921
+TF_DCS_PROF probe_exact: calls=84 fast_ok=84 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=37227 ms=8214052 fast_ok=13994 base_kill=0 alt_kill=9532 search=13701 cheap_probes=782721
+TF_DCS_PROF case_search: runs=23659 ms=8184810 nodes=117197795 conflicts=1704847 xtract_ms=216617
+TF_DCS_PROF retain_swarm: calls=2202 ms=6054776 subsets=20568 kept=3985
+TF_DCS_PROF filter_rfs: ms=32
+TF_DCS_PROF inbox_rfs: calls=37321 ms=8644786 cases=973859
+TF_DCS_PROF probe_exact: calls=84 fast_ok=84 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=37321 ms=8642346 fast_ok=14021 base_kill=0 alt_kill=9561 search=13739 cheap_probes=785178
+TF_DCS_PROF case_search: runs=23711 ms=8613013 nodes=125841854 conflicts=1711928 xtract_ms=217307
+TF_DCS_PROF retain_swarm: calls=2205 ms=6088198 subsets=20605 kept=3991
+TF_DCS_PROF filter_rfs: ms=32
+TF_DCS_PROF inbox_rfs: calls=37666 ms=9054633 cases=984101
+TF_DCS_PROF probe_exact: calls=85 fast_ok=85 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=37666 ms=9052178 fast_ok=14164 base_kill=0 alt_kill=9651 search=13851 cheap_probes=792719
+TF_DCS_PROF case_search: runs=23858 ms=9022596 nodes=134177740 conflicts=1729063 xtract_ms=218596
+TF_DCS_PROF retain_swarm: calls=2224 ms=6311681 subsets=20848 kept=4046
+TF_DCS_PROF filter_rfs: ms=33
+TF_DCS_PROF inbox_rfs: calls=38122 ms=9723206 cases=998174
+TF_DCS_PROF probe_exact: calls=85 fast_ok=85 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=38122 ms=9720734 fast_ok=14339 base_kill=0 alt_kill=9776 search=14007 cheap_probes=803319
+TF_DCS_PROF case_search: runs=24077 ms=9690738 nodes=142592595 conflicts=1749863 xtract_ms=220769
+TF_DCS_PROF retain_swarm: calls=2246 ms=7022440 subsets=21159 kept=4103
+TF_DCS_PROF filter_rfs: ms=33
+TF_DCS_PROF inbox_rfs: calls=39533 ms=10235628 cases=1038847
+TF_DCS_PROF probe_exact: calls=86 fast_ok=86 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=39533 ms=10233082 fast_ok=14851 base_kill=0 alt_kill=10171 search=14511 cheap_probes=834411
+TF_DCS_PROF case_search: runs=24938 ms=10202143 nodes=154448226 conflicts=1815188 xtract_ms=226471
+TF_DCS_PROF retain_swarm: calls=2312 ms=8910691 subsets=21990 kept=4247
+TF_DCS_PROF filter_rfs: ms=33
+TF_DCS_PROF inbox_rfs: calls=40725 ms=10513563 cases=1075531
+TF_DCS_PROF probe_exact: calls=86 fast_ok=86 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=40725 ms=10510905 fast_ok=15352 base_kill=0 alt_kill=10513 search=14860 cheap_probes=860107
+TF_DCS_PROF case_search: runs=25473 ms=10478260 nodes=159234230 conflicts=1846694 xtract_ms=231505
+TF_DCS_PROF retain_swarm: calls=2369 ms=9147214 subsets=22773 kept=4437
+TF_DCS_PROF filter_rfs: ms=33
+TF_DCS_PROF inbox_rfs: calls=40895 ms=10945508 cases=1080719
+TF_DCS_PROF probe_exact: calls=86 fast_ok=86 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=40895 ms=10942822 fast_ok=15422 base_kill=0 alt_kill=10561 search=14912 cheap_probes=863787
+TF_DCS_PROF case_search: runs=25555 ms=10909969 nodes=164901968 conflicts=1857408 xtract_ms=232863
+TF_DCS_PROF retain_swarm: calls=2377 ms=9933853 subsets=22879 kept=4460
+TF_DCS_PROF filter_rfs: ms=33
+TF_DCS_PROF inbox_rfs: calls=41006 ms=11526555 cases=1084386
+TF_DCS_PROF probe_exact: calls=86 fast_ok=86 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=41006 ms=11523858 fast_ok=15467 base_kill=0 alt_kill=10593 search=14946 cheap_probes=866443
+TF_DCS_PROF case_search: runs=25594 ms=11490782 nodes=169505179 conflicts=1864839 xtract_ms=233953
+TF_DCS_PROF retain_swarm: calls=2382 ms=10339358 subsets=22959 kept=4480
+TF_DCS_PROF filter_rfs: ms=33
+TF_DCS_PROF inbox_rfs: calls=41650 ms=12189201 cases=1102975
+TF_DCS_PROF probe_exact: calls=87 fast_ok=87 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=41650 ms=12186465 fast_ok=15674 base_kill=0 alt_kill=10780 search=15196 cheap_probes=881887
+TF_DCS_PROF case_search: runs=26021 ms=12152980 nodes=176923118 conflicts=1900783 xtract_ms=236914
+TF_DCS_PROF retain_swarm: calls=2411 ms=10807342 subsets=23318 kept=4542
+TF_DCS_PROF filter_rfs: ms=33
+TF_DCS_PROF inbox_rfs: calls=41785 ms=12614481 cases=1107141
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=41785 ms=12611736 fast_ok=15733 base_kill=0 alt_kill=10818 search=15234 cheap_probes=884756
+TF_DCS_PROF case_search: runs=26078 ms=12578135 nodes=184568132 conflicts=1908480 xtract_ms=237668
+TF_DCS_PROF retain_swarm: calls=2418 ms=11296789 subsets=23419 kept=4564
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=41881 ms=13213549 cases=1110329
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=41881 ms=13210801 fast_ok=15766 base_kill=0 alt_kill=10846 search=15269 cheap_probes=887331
+TF_DCS_PROF case_search: runs=26117 ms=13177115 nodes=193596976 conflicts=1913683 xtract_ms=238087
+TF_DCS_PROF retain_swarm: calls=2422 ms=11907989 subsets=23483 kept=4577
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=42045 ms=13487697 cases=1115108
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=42045 ms=13484940 fast_ok=15817 base_kill=0 alt_kill=10890 search=15338 cheap_probes=891454
+TF_DCS_PROF case_search: runs=26227 ms=13451122 nodes=200149990 conflicts=1921872 xtract_ms=239324
+TF_DCS_PROF retain_swarm: calls=2430 ms=12160009 subsets=23578 kept=4589
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=42117 ms=14043018 cases=1117449
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=42117 ms=14040254 fast_ok=15841 base_kill=0 alt_kill=10912 search=15364 cheap_probes=893374
+TF_DCS_PROF case_search: runs=26256 ms=14006345 nodes=206934149 conflicts=1926557 xtract_ms=239863
+TF_DCS_PROF retain_swarm: calls=2433 ms=12516114 subsets=23626 kept=4598
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=42370 ms=14373171 cases=1125235
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=42370 ms=14370377 fast_ok=15957 base_kill=0 alt_kill=10981 search=15432 cheap_probes=898499
+TF_DCS_PROF case_search: runs=26363 ms=14336125 nodes=210895821 conflicts=1936696 xtract_ms=241914
+TF_DCS_PROF retain_swarm: calls=2446 ms=13081838 subsets=23808 kept=4643
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=42507 ms=14680864 cases=1129752
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=42507 ms=14678041 fast_ok=16021 base_kill=0 alt_kill=11018 search=15468 cheap_probes=901446
+TF_DCS_PROF case_search: runs=26406 ms=14643610 nodes=215364157 conflicts=1940760 xtract_ms=242518
+TF_DCS_PROF retain_swarm: calls=2453 ms=13488270 subsets=23920 kept=4672
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=42587 ms=15428190 cases=1132162
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=42587 ms=15425361 fast_ok=16047 base_kill=0 alt_kill=11043 search=15497 cheap_probes=903368
+TF_DCS_PROF case_search: runs=26446 ms=15390777 nodes=219396557 conflicts=1945993 xtract_ms=243392
+TF_DCS_PROF retain_swarm: calls=2456 ms=13769249 subsets=23957 kept=4685
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=42632 ms=15622199 cases=1133650
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=42632 ms=15619365 fast_ok=16065 base_kill=0 alt_kill=11056 search=15511 cheap_probes=904454
+TF_DCS_PROF case_search: runs=26465 ms=15584706 nodes=224081970 conflicts=1949282 xtract_ms=243881
+TF_DCS_PROF retain_swarm: calls=2458 ms=13779942 subsets=23989 kept=4689
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=42859 ms=16087212 cases=1139766
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=42859 ms=16084357 fast_ok=16173 base_kill=0 alt_kill=11108 search=15578 cheap_probes=909165
+TF_DCS_PROF case_search: runs=26558 ms=16049490 nodes=229855469 conflicts=1964292 xtract_ms=246119
+TF_DCS_PROF retain_swarm: calls=2473 ms=14818686 subsets=24152 kept=4733
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=43895 ms=16979370 cases=1170562
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=43895 ms=16976444 fast_ok=16602 base_kill=0 alt_kill=11398 search=15895 cheap_probes=931182
+TF_DCS_PROF case_search: runs=27060 ms=16940153 nodes=234763254 conflicts=2012286 xtract_ms=252681
+TF_DCS_PROF retain_swarm: calls=2524 ms=15693674 subsets=24798 kept=4882
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=45329 ms=17395785 cases=1215820
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=45329 ms=17392642 fast_ok=17222 base_kill=0 alt_kill=11806 search=16301 cheap_probes=962271
+TF_DCS_PROF case_search: runs=27641 ms=17354232 nodes=239285584 conflicts=2069442 xtract_ms=261631
+TF_DCS_PROF retain_swarm: calls=2593 ms=15989600 subsets=25810 kept=5134
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=45705 ms=17728609 cases=1227141
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=45705 ms=17725400 fast_ok=17381 base_kill=0 alt_kill=11908 search=16416 cheap_probes=970376
+TF_DCS_PROF case_search: runs=27810 ms=17686445 nodes=244113249 conflicts=2094061 xtract_ms=265473
+TF_DCS_PROF retain_swarm: calls=2613 ms=16178326 subsets=26057 kept=5196
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=46589 ms=18141144 cases=1254213
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=46589 ms=18137855 fast_ok=17717 base_kill=0 alt_kill=12155 search=16717 cheap_probes=991014
+TF_DCS_PROF case_search: runs=28247 ms=18098131 nodes=248620910 conflicts=2140111 xtract_ms=271744
+TF_DCS_PROF retain_swarm: calls=2655 ms=16966351 subsets=26641 kept=5315
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=46914 ms=18526890 cases=1264701
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=46914 ms=18523544 fast_ok=17850 base_kill=0 alt_kill=12247 search=16817 cheap_probes=998525
+TF_DCS_PROF case_search: runs=28382 ms=18483300 nodes=253324009 conflicts=2157415 xtract_ms=274694
+TF_DCS_PROF retain_swarm: calls=2670 ms=17427891 subsets=26870 kept=5369
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=47470 ms=19352680 cases=1281789
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=47470 ms=19349269 fast_ok=18058 base_kill=0 alt_kill=12403 search=17009 cheap_probes=1011776
+TF_DCS_PROF case_search: runs=28652 ms=19308300 nodes=257840326 conflicts=2185451 xtract_ms=279386
+TF_DCS_PROF retain_swarm: calls=2697 ms=17677532 subsets=27243 kept=5448
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=48412 ms=19629457 cases=1310467
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=48412 ms=19625980 fast_ok=18391 base_kill=0 alt_kill=12645 search=17376 cheap_probes=1035075
+TF_DCS_PROF case_search: runs=29180 ms=19584225 nodes=262891670 conflicts=2237251 xtract_ms=285215
+TF_DCS_PROF retain_swarm: calls=2742 ms=17704789 subsets=27855 kept=5563
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=49505 ms=20053056 cases=1341554
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=49505 ms=20049534 fast_ok=18840 base_kill=0 alt_kill=12916 search=17749 cheap_probes=1058149
+TF_DCS_PROF case_search: runs=29790 ms=20007252 nodes=268556648 conflicts=2286637 xtract_ms=290524
+TF_DCS_PROF retain_swarm: calls=2797 ms=18394531 subsets=28509 kept=5751
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=50111 ms=20677909 cases=1358980
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=50111 ms=20674354 fast_ok=19055 base_kill=0 alt_kill=13082 search=17974 cheap_probes=1071969
+TF_DCS_PROF case_search: runs=30186 ms=20631749 nodes=276442707 conflicts=2328574 xtract_ms=293911
+TF_DCS_PROF retain_swarm: calls=2825 ms=18936835 subsets=28856 kept=5818
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=50587 ms=21291645 cases=1373311
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=50587 ms=21288069 fast_ok=19253 base_kill=0 alt_kill=13203 search=18131 cheap_probes=1082300
+TF_DCS_PROF case_search: runs=30425 ms=21245236 nodes=283955063 conflicts=2350252 xtract_ms=295641
+TF_DCS_PROF retain_swarm: calls=2848 ms=19189152 subsets=29165 kept=5904
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=51759 ms=21593218 cases=1408324
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=51759 ms=21589595 fast_ok=19746 base_kill=0 alt_kill=13490 search=18523 cheap_probes=1107460
+TF_DCS_PROF case_search: runs=31025 ms=21546295 nodes=291869850 conflicts=2385356 xtract_ms=298346
+TF_DCS_PROF retain_swarm: calls=2905 ms=19403218 subsets=29917 kept=6123
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=52211 ms=22113081 cases=1421338
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=52211 ms=22109443 fast_ok=19960 base_kill=0 alt_kill=13601 search=18650 cheap_probes=1116372
+TF_DCS_PROF case_search: runs=31221 ms=22065912 nodes=300771369 conflicts=2406721 xtract_ms=299959
+TF_DCS_PROF retain_swarm: calls=2932 ms=21115786 subsets=30239 kept=6200
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=52898 ms=22741725 cases=1443141
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=52898 ms=22738064 fast_ok=20255 base_kill=0 alt_kill=13793 search=18850 cheap_probes=1131406
+TF_DCS_PROF case_search: runs=31498 ms=22694052 nodes=308227514 conflicts=2439933 xtract_ms=302423
+TF_DCS_PROF retain_swarm: calls=2965 ms=21960314 subsets=30723 kept=6320
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=53215 ms=23116687 cases=1453313
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=53215 ms=23113004 fast_ok=20389 base_kill=0 alt_kill=13883 search=18943 cheap_probes=1138510
+TF_DCS_PROF case_search: runs=31617 ms=23068759 nodes=315142128 conflicts=2458125 xtract_ms=303717
+TF_DCS_PROF retain_swarm: calls=2980 ms=22170594 subsets=30952 kept=6378
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=53607 ms=23640069 cases=1466279
+TF_DCS_PROF probe_exact: calls=88 fast_ok=88 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=53607 ms=23636369 fast_ok=20554 base_kill=0 alt_kill=13993 search=19060 cheap_probes=1147591
+TF_DCS_PROF case_search: runs=31752 ms=23591837 nodes=321936368 conflicts=2476100 xtract_ms=304959
+TF_DCS_PROF retain_swarm: calls=2998 ms=22309432 subsets=31240 kept=6452
+TF_DCS_PROF filter_rfs: ms=34
+TF_DCS_PROF inbox_rfs: calls=55077 ms=24205548 cases=1511610
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=55077 ms=24201794 fast_ok=21152 base_kill=0 alt_kill=14405 search=19519 cheap_probes=1180534
+TF_DCS_PROF case_search: runs=32416 ms=24156294 nodes=328787024 conflicts=2527543 xtract_ms=308880
+TF_DCS_PROF retain_swarm: calls=3070 ms=22939006 subsets=32225 kept=6673
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=55302 ms=24542984 cases=1518555
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=55302 ms=24539222 fast_ok=21247 base_kill=0 alt_kill=14470 search=19585 cheap_probes=1185484
+TF_DCS_PROF case_search: runs=32515 ms=24493560 nodes=335760138 conflicts=2538232 xtract_ms=309700
+TF_DCS_PROF retain_swarm: calls=3081 ms=23079344 subsets=32379 kept=6711
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=55389 ms=25135187 cases=1521375
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=55389 ms=25131421 fast_ok=21282 base_kill=0 alt_kill=14494 search=19613 cheap_probes=1187520
+TF_DCS_PROF case_search: runs=32547 ms=25085693 nodes=343111946 conflicts=2544294 xtract_ms=310083
+TF_DCS_PROF retain_swarm: calls=3085 ms=23839628 subsets=32443 kept=6727
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=55433 ms=25407870 cases=1522811
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=55433 ms=25404103 fast_ok=21300 base_kill=0 alt_kill=14507 search=19626 cheap_probes=1188549
+TF_DCS_PROF case_search: runs=32562 ms=25358337 nodes=349658363 conflicts=2546878 xtract_ms=310272
+TF_DCS_PROF retain_swarm: calls=3087 ms=24063814 subsets=32475 kept=6735
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=55534 ms=26030854 cases=1526057
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=55534 ms=26027080 fast_ok=21350 base_kill=0 alt_kill=14533 search=19651 cheap_probes=1190640
+TF_DCS_PROF case_search: runs=32593 ms=25981245 nodes=356793785 conflicts=2552266 xtract_ms=310647
+TF_DCS_PROF retain_swarm: calls=3093 ms=25058314 subsets=32571 kept=6759
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=55575 ms=26549648 cases=1527388
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=55575 ms=26545872 fast_ok=21359 base_kill=0 alt_kill=14547 search=19669 cheap_probes=1191840
+TF_DCS_PROF case_search: runs=32612 ms=26499998 nodes=363196573 conflicts=2556129 xtract_ms=310951
+TF_DCS_PROF retain_swarm: calls=3094 ms=25215158 subsets=32587 kept=6763
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=55785 ms=26974487 cases=1533606
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=55785 ms=26970704 fast_ok=21450 base_kill=0 alt_kill=14602 search=19733 cheap_probes=1196374
+TF_DCS_PROF case_search: runs=32710 ms=26924701 nodes=369650472 conflicts=2572218 xtract_ms=312171
+TF_DCS_PROF retain_swarm: calls=3106 ms=25920547 subsets=32744 kept=6797
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=56049 ms=27460621 cases=1541647
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=56049 ms=27456828 fast_ok=21522 base_kill=0 alt_kill=14678 search=19849 cheap_probes=1203572
+TF_DCS_PROF case_search: runs=32881 ms=27410635 nodes=376354944 conflicts=2596320 xtract_ms=313792
+TF_DCS_PROF retain_swarm: calls=3117 ms=26290954 subsets=32898 kept=6812
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=56153 ms=27858408 cases=1544753
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=56153 ms=27854612 fast_ok=21564 base_kill=0 alt_kill=14709 search=19880 cheap_probes=1205799
+TF_DCS_PROF case_search: runs=32928 ms=27808354 nodes=382882285 conflicts=2602051 xtract_ms=314239
+TF_DCS_PROF retain_swarm: calls=3122 ms=26580857 subsets=32967 kept=6829
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=56581 ms=28354514 cases=1558529
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=56581 ms=28350703 fast_ok=21746 base_kill=0 alt_kill=14829 search=20005 cheap_probes=1215362
+TF_DCS_PROF case_search: runs=33088 ms=28304161 nodes=389039728 conflicts=2618203 xtract_ms=315291
+TF_DCS_PROF retain_swarm: calls=3142 ms=26780134 subsets=33272 kept=6909
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=56949 ms=28867421 cases=1570090
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=56949 ms=28863598 fast_ok=21907 base_kill=0 alt_kill=14931 search=20111 cheap_probes=1223188
+TF_DCS_PROF case_search: runs=33238 ms=28816812 nodes=395299199 conflicts=2634007 xtract_ms=316341
+TF_DCS_PROF retain_swarm: calls=3160 ms=27535797 subsets=33534 kept=6976
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=57557 ms=29433730 cases=1589092
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=57557 ms=29429886 fast_ok=22168 base_kill=0 alt_kill=15103 search=20286 cheap_probes=1236228
+TF_DCS_PROF case_search: runs=33497 ms=29382616 nodes=401498613 conflicts=2656240 xtract_ms=318192
+TF_DCS_PROF retain_swarm: calls=3189 ms=28069202 subsets=33943 kept=7079
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=57657 ms=29648117 cases=1592090
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=57657 ms=29644266 fast_ok=22211 base_kill=0 alt_kill=15132 search=20314 cheap_probes=1238282
+TF_DCS_PROF case_search: runs=33541 ms=29596930 nodes=407314542 conflicts=2661714 xtract_ms=318598
+TF_DCS_PROF retain_swarm: calls=3194 ms=28457144 subsets=34012 kept=7096
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=57874 ms=30428110 cases=1598573
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=57874 ms=30424253 fast_ok=22296 base_kill=0 alt_kill=15195 search=20383 cheap_probes=1243031
+TF_DCS_PROF case_search: runs=33653 ms=30376786 nodes=413109035 conflicts=2674617 xtract_ms=319488
+TF_DCS_PROF retain_swarm: calls=3204 ms=29153232 subsets=34139 kept=7124
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=57916 ms=30567031 cases=1600005
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=57916 ms=30563172 fast_ok=22316 base_kill=0 alt_kill=15206 search=20394 cheap_probes=1243950
+TF_DCS_PROF case_search: runs=33666 ms=30515680 nodes=418596898 conflicts=2677032 xtract_ms=319663
+TF_DCS_PROF retain_swarm: calls=3206 ms=29163767 subsets=34171 kept=7132
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=58006 ms=31347026 cases=1602784
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=58006 ms=31343164 fast_ok=22354 base_kill=0 alt_kill=15231 search=20421 cheap_probes=1245947
+TF_DCS_PROF case_search: runs=33700 ms=31295602 nodes=424598487 conflicts=2682404 xtract_ms=320029
+TF_DCS_PROF retain_swarm: calls=3210 ms=29848746 subsets=34224 kept=7152
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=58110 ms=31731695 cases=1606187
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=58110 ms=31727828 fast_ok=22396 base_kill=0 alt_kill=15259 search=20455 cheap_probes=1248439
+TF_DCS_PROF case_search: runs=33747 ms=31680201 nodes=431381284 conflicts=2688737 xtract_ms=320430
+TF_DCS_PROF retain_swarm: calls=3215 ms=30328822 subsets=34304 kept=7168
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=58286 ms=32337901 cases=1611536
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=58286 ms=32334026 fast_ok=22478 base_kill=0 alt_kill=15307 search=20501 cheap_probes=1251959
+TF_DCS_PROF case_search: runs=33818 ms=32286311 nodes=438829394 conflicts=2698475 xtract_ms=321103
+TF_DCS_PROF retain_swarm: calls=3224 ms=31213127 subsets=34426 kept=7205
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=58354 ms=32670851 cases=1613719
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=58354 ms=32666972 fast_ok=22501 base_kill=0 alt_kill=15326 search=20527 cheap_probes=1253717
+TF_DCS_PROF case_search: runs=33853 ms=32619208 nodes=445739557 conflicts=2704075 xtract_ms=321486
+TF_DCS_PROF retain_swarm: calls=3227 ms=31333603 subsets=34474 kept=7213
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=58438 ms=33204613 cases=1616583
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=58438 ms=33200731 fast_ok=22539 base_kill=0 alt_kill=15348 search=20551 cheap_probes=1255657
+TF_DCS_PROF case_search: runs=33881 ms=33152915 nodes=452349433 conflicts=2708881 xtract_ms=321786
+TF_DCS_PROF retain_swarm: calls=3231 ms=31891717 subsets=34538 kept=7229
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=58541 ms=33697100 cases=1619687
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=58541 ms=33693214 fast_ok=22580 base_kill=0 alt_kill=15376 search=20585 cheap_probes=1258017
+TF_DCS_PROF case_search: runs=33931 ms=33645348 nodes=460109916 conflicts=2716963 xtract_ms=322319
+TF_DCS_PROF retain_swarm: calls=3236 ms=32403860 subsets=34607 kept=7249
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=58666 ms=34275791 cases=1623584
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=58666 ms=34271901 fast_ok=22638 base_kill=0 alt_kill=15410 search=20618 cheap_probes=1260583
+TF_DCS_PROF case_search: runs=33971 ms=34223962 nodes=467579975 conflicts=2723149 xtract_ms=322711
+TF_DCS_PROF retain_swarm: calls=3242 ms=33175936 subsets=34692 kept=7277
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=58809 ms=34651541 cases=1628066
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=58809 ms=34647645 fast_ok=22697 base_kill=0 alt_kill=15449 search=20663 cheap_probes=1263797
+TF_DCS_PROF case_search: runs=34044 ms=34599639 nodes=475200751 conflicts=2731803 xtract_ms=323263
+TF_DCS_PROF retain_swarm: calls=3249 ms=33550471 subsets=34793 kept=7298
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=59062 ms=35235016 cases=1636112
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=59062 ms=35231112 fast_ok=22811 base_kill=0 alt_kill=15518 search=20733 cheap_probes=1269197
+TF_DCS_PROF case_search: runs=34138 ms=35182970 nodes=482137459 conflicts=2742726 xtract_ms=324098
+TF_DCS_PROF retain_swarm: calls=3262 ms=34314184 subsets=34990 kept=7348
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=59401 ms=35513271 cases=1646026
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=59401 ms=35509355 fast_ok=22932 base_kill=0 alt_kill=15614 search=20855 cheap_probes=1276843
+TF_DCS_PROF case_search: runs=34335 ms=35461017 nodes=488237281 conflicts=2760656 xtract_ms=325388
+TF_DCS_PROF retain_swarm: calls=3278 ms=34417267 subsets=35187 kept=7388
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=59694 ms=36139143 cases=1655057
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=59694 ms=36135217 fast_ok=23039 base_kill=0 alt_kill=15691 search=20964 cheap_probes=1283799
+TF_DCS_PROF case_search: runs=34491 ms=36086731 nodes=495550992 conflicts=2780871 xtract_ms=327123
+TF_DCS_PROF retain_swarm: calls=3292 ms=34934166 subsets=35378 kept=7421
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=59893 ms=36503965 cases=1661398
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=59893 ms=36500032 fast_ok=23129 base_kill=0 alt_kill=15746 search=21018 cheap_probes=1288017
+TF_DCS_PROF case_search: runs=34566 ms=36451423 nodes=501865758 conflicts=2788215 xtract_ms=327716
+TF_DCS_PROF retain_swarm: calls=3302 ms=35336997 subsets=35527 kept=7459
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=60103 ms=37174249 cases=1668015
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=60103 ms=37170304 fast_ok=23212 base_kill=0 alt_kill=15806 search=21085 cheap_probes=1292800
+TF_DCS_PROF case_search: runs=34664 ms=37121535 nodes=508923434 conflicts=2801474 xtract_ms=328604
+TF_DCS_PROF retain_swarm: calls=3311 ms=35755615 subsets=35649 kept=7489
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=60211 ms=37504140 cases=1671229
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=60211 ms=37500187 fast_ok=23254 base_kill=0 alt_kill=15839 search=21118 cheap_probes=1295149
+TF_DCS_PROF case_search: runs=34713 ms=37451331 nodes=515944897 conflicts=2807721 xtract_ms=329083
+TF_DCS_PROF retain_swarm: calls=3316 ms=35911158 subsets=35718 kept=7506
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=60353 ms=37978516 cases=1675709
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=60353 ms=37974559 fast_ok=23317 base_kill=0 alt_kill=15879 search=21157 cheap_probes=1298183
+TF_DCS_PROF case_search: runs=34770 ms=37925616 nodes=522438559 conflicts=2814044 xtract_ms=329491
+TF_DCS_PROF retain_swarm: calls=3323 ms=36364830 subsets=35819 kept=7531
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=61116 ms=38461582 cases=1698805
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=61116 ms=38457598 fast_ok=23596 base_kill=0 alt_kill=16086 search=21434 cheap_probes=1316414
+TF_DCS_PROF case_search: runs=35148 ms=38408144 nodes=529690387 conflicts=2857246 xtract_ms=332183
+TF_DCS_PROF retain_swarm: calls=3361 ms=37026332 subsets=36340 kept=7627
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=61601 ms=39014276 cases=1713414
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=61601 ms=39010275 fast_ok=23774 base_kill=0 alt_kill=16224 search=21603 cheap_probes=1327739
+TF_DCS_PROF case_search: runs=35406 ms=38960540 nodes=536579960 conflicts=2882373 xtract_ms=333761
+TF_DCS_PROF retain_swarm: calls=3384 ms=37682178 subsets=36653 kept=7684
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=61943 ms=39359754 cases=1724238
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=61943 ms=39355741 fast_ok=23917 base_kill=0 alt_kill=16323 search=21703 cheap_probes=1335367
+TF_DCS_PROF case_search: runs=35544 ms=39305698 nodes=543000099 conflicts=2900033 xtract_ms=335044
+TF_DCS_PROF retain_swarm: calls=3400 ms=37931544 subsets=36887 kept=7742
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=62221 ms=39817490 cases=1732987
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=62221 ms=39813464 fast_ok=24032 base_kill=0 alt_kill=16403 search=21786 cheap_probes=1341590
+TF_DCS_PROF case_search: runs=35662 ms=39763178 nodes=549085880 conflicts=2916995 xtract_ms=336160
+TF_DCS_PROF retain_swarm: calls=3413 ms=38131689 subsets=37073 kept=7788
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=62526 ms=40319737 cases=1742178
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=62526 ms=40315700 fast_ok=24162 base_kill=0 alt_kill=16491 search=21873 cheap_probes=1347941
+TF_DCS_PROF case_search: runs=35801 ms=40265223 nodes=555644472 conflicts=2934748 xtract_ms=337322
+TF_DCS_PROF retain_swarm: calls=3428 ms=38794056 subsets=37276 kept=7838
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=62966 ms=40841229 cases=1755996
+TF_DCS_PROF probe_exact: calls=89 fast_ok=89 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=62966 ms=40837177 fast_ok=24350 base_kill=0 alt_kill=16617 search=21999 cheap_probes=1357619
+TF_DCS_PROF case_search: runs=35976 ms=40786428 nodes=562479961 conflicts=2954184 xtract_ms=338529
+TF_DCS_PROF retain_swarm: calls=3449 ms=39460390 subsets=37579 kept=7920
+TF_DCS_PROF filter_rfs: ms=35
+TF_DCS_PROF inbox_rfs: calls=63718 ms=41472272 cases=1779128
+TF_DCS_PROF probe_exact: calls=92 fast_ok=92 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=63718 ms=41468186 fast_ok=24647 base_kill=0 alt_kill=16821 search=22250 cheap_probes=1374876
+TF_DCS_PROF case_search: runs=36350 ms=41416932 nodes=570056417 conflicts=3006475 xtract_ms=342717
+TF_DCS_PROF retain_swarm: calls=3487 ms=40380024 subsets=38104 kept=8030
+TF_DCS_PROF filter_rfs: ms=36
+TF_DCS_PROF inbox_rfs: calls=64632 ms=41734215 cases=1802592
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=64632 ms=41730105 fast_ok=24967 base_kill=0 alt_kill=17049 search=22616 cheap_probes=1394464
+TF_DCS_PROF case_search: runs=36948 ms=41678323 nodes=576158238 conflicts=3037046 xtract_ms=344894
+TF_DCS_PROF retain_swarm: calls=3542 ms=40646482 subsets=38620 kept=8104
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=64716 ms=42443637 cases=1805356
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=64716 ms=42439523 fast_ok=25000 base_kill=0 alt_kill=17072 search=22644 cheap_probes=1396557
+TF_DCS_PROF case_search: runs=36980 ms=42387679 nodes=582232332 conflicts=3042448 xtract_ms=345235
+TF_DCS_PROF retain_swarm: calls=3546 ms=41121126 subsets=38684 kept=8120
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=64810 ms=42773403 cases=1808293
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=64810 ms=42769285 fast_ok=25036 base_kill=0 alt_kill=17099 search=22675 cheap_probes=1398729
+TF_DCS_PROF case_search: runs=37026 ms=42717383 nodes=587909253 conflicts=3048489 xtract_ms=345645
+TF_DCS_PROF retain_swarm: calls=3550 ms=41255108 subsets=38737 kept=8133
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=64958 ms=43186709 cases=1812935
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=64958 ms=43182586 fast_ok=25098 base_kill=0 alt_kill=17140 search=22720 cheap_probes=1401957
+TF_DCS_PROF case_search: runs=37086 ms=43130597 nodes=593410746 conflicts=3055886 xtract_ms=346140
+TF_DCS_PROF retain_swarm: calls=3557 ms=41795943 subsets=38838 kept=8163
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=65048 ms=43669825 cases=1815911
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=65048 ms=43665699 fast_ok=25134 base_kill=0 alt_kill=17166 search=22748 cheap_probes=1404129
+TF_DCS_PROF case_search: runs=37121 ms=43613640 nodes=598845919 conflicts=3061484 xtract_ms=346569
+TF_DCS_PROF retain_swarm: calls=3561 ms=41937926 subsets=38902 kept=8175
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=65222 ms=44275296 cases=1820994
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=65222 ms=44271163 fast_ok=25182 base_kill=0 alt_kill=17216 search=22824 cheap_probes=1408729
+TF_DCS_PROF case_search: runs=37231 ms=44218959 nodes=604171709 conflicts=3074047 xtract_ms=347347
+TF_DCS_PROF retain_swarm: calls=3569 ms=42335792 subsets=39004 kept=8184
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=66014 ms=44707523 cases=1841772
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=66014 ms=44703363 fast_ok=25422 base_kill=0 alt_kill=17430 search=23162 cheap_probes=1427403
+TF_DCS_PROF case_search: runs=37828 ms=44650794 nodes=609706320 conflicts=3126352 xtract_ms=351794
+TF_DCS_PROF retain_swarm: calls=3613 ms=43121419 subsets=39435 kept=8236
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=66606 ms=45020306 cases=1860092
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=66606 ms=45016121 fast_ok=25657 base_kill=0 alt_kill=17579 search=23370 cheap_probes=1441156
+TF_DCS_PROF case_search: runs=38120 ms=44963229 nodes=615630168 conflicts=3147917 xtract_ms=353542
+TF_DCS_PROF retain_swarm: calls=3642 ms=43814360 subsets=39844 kept=8331
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=67181 ms=45536247 cases=1877670
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=67181 ms=45532040 fast_ok=25893 base_kill=0 alt_kill=17720 search=23568 cheap_probes=1454052
+TF_DCS_PROF case_search: runs=38407 ms=45478904 nodes=621968799 conflicts=3169938 xtract_ms=355255
+TF_DCS_PROF retain_swarm: calls=3669 ms=43985532 subsets=40206 kept=8440
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=67566 ms=46173896 cases=1889123
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=67566 ms=46169675 fast_ok=26052 base_kill=0 alt_kill=17821 search=23693 cheap_probes=1462421
+TF_DCS_PROF case_search: runs=38618 ms=46116384 nodes=629322238 conflicts=3194857 xtract_ms=356991
+TF_DCS_PROF retain_swarm: calls=3688 ms=44524388 subsets=40451 kept=8503
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=67637 ms=46626804 cases=1891462
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=67637 ms=46622580 fast_ok=26080 base_kill=0 alt_kill=17840 search=23717 cheap_probes=1464103
+TF_DCS_PROF case_search: runs=38645 ms=46569247 nodes=635919078 conflicts=3201560 xtract_ms=357525
+TF_DCS_PROF retain_swarm: calls=3691 ms=44753570 subsets=40499 kept=8515
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=67758 ms=47027262 cases=1895252
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=67758 ms=47023033 fast_ok=26129 base_kill=0 alt_kill=17875 search=23754 cheap_probes=1466737
+TF_DCS_PROF case_search: runs=38698 ms=46969622 nodes=641951503 conflicts=3208175 xtract_ms=358010
+TF_DCS_PROF retain_swarm: calls=3696 ms=44989933 subsets=40568 kept=8532
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=68791 ms=47541335 cases=1926737
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=68791 ms=47537063 fast_ok=26569 base_kill=0 alt_kill=18131 search=24091 cheap_probes=1489277
+TF_DCS_PROF case_search: runs=39211 ms=47483264 nodes=650280562 conflicts=3250443 xtract_ms=361138
+TF_DCS_PROF retain_swarm: calls=3747 ms=45917003 subsets=41259 kept=8724
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=68924 ms=48028738 cases=1930799
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=68924 ms=48024462 fast_ok=26627 base_kill=0 alt_kill=18167 search=24130 cheap_probes=1492082
+TF_DCS_PROF case_search: runs=39268 ms=47970580 nodes=657017232 conflicts=3260357 xtract_ms=362045
+TF_DCS_PROF retain_swarm: calls=3754 ms=46413554 subsets=41360 kept=8749
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=69441 ms=48565049 cases=1944261
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=69441 ms=48560755 fast_ok=26761 base_kill=0 alt_kill=18313 search=24367 cheap_probes=1504575
+TF_DCS_PROF case_search: runs=39682 ms=48506664 nodes=663728052 conflicts=3303916 xtract_ms=365234
+TF_DCS_PROF retain_swarm: calls=3778 ms=46936973 subsets=41585 kept=8771
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=69666 ms=48874867 cases=1950745
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=69666 ms=48870565 fast_ok=26835 base_kill=0 alt_kill=18375 search=24456 cheap_probes=1510195
+TF_DCS_PROF case_search: runs=39826 ms=48816394 nodes=669640117 conflicts=3330983 xtract_ms=367927
+TF_DCS_PROF retain_swarm: calls=3790 ms=47287728 subsets=41740 kept=8790
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=69726 ms=49416151 cases=1952465
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=69726 ms=49411846 fast_ok=26862 base_kill=0 alt_kill=18391 search=24473 cheap_probes=1511399
+TF_DCS_PROF case_search: runs=39847 ms=49357640 nodes=675666363 conflicts=3334826 xtract_ms=368179
+TF_DCS_PROF retain_swarm: calls=3793 ms=47986366 subsets=41777 kept=8806
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=70456 ms=49977088 cases=1975759
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=70456 ms=49972759 fast_ok=27175 base_kill=0 alt_kill=18595 search=24686 cheap_probes=1527552
+TF_DCS_PROF case_search: runs=40136 ms=49918078 nodes=681768072 conflicts=3370062 xtract_ms=370383
+TF_DCS_PROF retain_swarm: calls=3828 ms=48381365 subsets=42306 kept=8939
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=70733 ms=50471542 cases=1984753
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=70733 ms=50467200 fast_ok=27294 base_kill=0 alt_kill=18670 search=24769 cheap_probes=1533861
+TF_DCS_PROF case_search: runs=40234 ms=50412329 nodes=687957195 conflicts=3388528 xtract_ms=371661
+TF_DCS_PROF retain_swarm: calls=3841 ms=48860714 subsets=42503 kept=8996
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=71104 ms=51040039 cases=1996718
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=71104 ms=51035680 fast_ok=27449 base_kill=0 alt_kill=18772 search=24883 cheap_probes=1542251
+TF_DCS_PROF case_search: runs=40389 ms=50980571 nodes=694381308 conflicts=3409857 xtract_ms=373169
+TF_DCS_PROF retain_swarm: calls=3858 ms=49205885 subsets=42760 kept=9060
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=71139 ms=51303459 cases=1997836
+TF_DCS_PROF probe_exact: calls=95 fast_ok=95 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=71139 ms=51299098 fast_ok=27465 base_kill=0 alt_kill=18780 search=24894 cheap_probes=1543012
+TF_DCS_PROF case_search: runs=40402 ms=51243972 nodes=700108671 conflicts=3413254 xtract_ms=373409
+TF_DCS_PROF retain_swarm: calls=3860 ms=49284111 subsets=42792 kept=9068
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=71829 ms=51730898 cases=2013442
+TF_DCS_PROF probe_exact: calls=97 fast_ok=97 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=71829 ms=51726517 fast_ok=27686 base_kill=0 alt_kill=18952 search=25191 cheap_probes=1557206
+TF_DCS_PROF case_search: runs=40950 ms=51671188 nodes=705932217 conflicts=3450334 xtract_ms=375954
+TF_DCS_PROF retain_swarm: calls=3905 ms=49917664 subsets=43115 kept=9107
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=72423 ms=52330920 cases=2031209
+TF_DCS_PROF probe_exact: calls=97 fast_ok=97 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=72423 ms=52326518 fast_ok=27920 base_kill=0 alt_kill=19120 search=25383 cheap_probes=1570323
+TF_DCS_PROF case_search: runs=41252 ms=52270924 nodes=711858275 conflicts=3485734 xtract_ms=379100
+TF_DCS_PROF retain_swarm: calls=3934 ms=50572580 subsets=43498 kept=9190
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=72449 ms=52809702 cases=2032110
+TF_DCS_PROF probe_exact: calls=97 fast_ok=97 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=72449 ms=52805298 fast_ok=27927 base_kill=0 alt_kill=19127 search=25395 cheap_probes=1571134
+TF_DCS_PROF case_search: runs=41265 ms=52749682 nodes=716795202 conflicts=3490208 xtract_ms=379448
+TF_DCS_PROF retain_swarm: calls=3935 ms=50846314 subsets=43514 kept=9194
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=72484 ms=53073805 cases=2033228
+TF_DCS_PROF probe_exact: calls=97 fast_ok=97 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=72484 ms=53069400 fast_ok=27943 base_kill=0 alt_kill=19136 search=25405 cheap_probes=1571903
+TF_DCS_PROF case_search: runs=41277 ms=53013763 nodes=721425958 conflicts=3492806 xtract_ms=379629
+TF_DCS_PROF retain_swarm: calls=3937 ms=51235486 subsets=43546 kept=9202
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=72908 ms=53733009 cases=2046120
+TF_DCS_PROF probe_exact: calls=97 fast_ok=97 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=72908 ms=53728587 fast_ok=28124 base_kill=0 alt_kill=19257 search=25527 cheap_probes=1580908
+TF_DCS_PROF case_search: runs=41475 ms=53672659 nodes=726997467 conflicts=3512875 xtract_ms=381075
+TF_DCS_PROF retain_swarm: calls=3958 ms=52115623 subsets=43827 kept=9268
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=73142 ms=54246044 cases=2053781
+TF_DCS_PROF probe_exact: calls=97 fast_ok=97 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=73142 ms=54241613 fast_ok=28215 base_kill=0 alt_kill=19323 search=25604 cheap_probes=1586572
+TF_DCS_PROF case_search: runs=41573 ms=54185510 nodes=732277121 conflicts=3529831 xtract_ms=382229
+TF_DCS_PROF retain_swarm: calls=3968 ms=52165457 subsets=43976 kept=9305
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=73380 ms=54782815 cases=2061202
+TF_DCS_PROF probe_exact: calls=97 fast_ok=97 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=73380 ms=54778376 fast_ok=28312 base_kill=0 alt_kill=19391 search=25677 cheap_probes=1591880
+TF_DCS_PROF case_search: runs=41679 ms=54722089 nodes=737870361 conflicts=3543465 xtract_ms=383185
+TF_DCS_PROF retain_swarm: calls=3979 ms=52565547 subsets=44130 kept=9343
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=74240 ms=55228582 cases=2086513
+TF_DCS_PROF probe_exact: calls=98 fast_ok=98 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=74240 ms=55224114 fast_ok=28675 base_kill=0 alt_kill=19605 search=25960 cheap_probes=1608856
+TF_DCS_PROF case_search: runs=42134 ms=55167463 nodes=744936623 conflicts=3570323 xtract_ms=384991
+TF_DCS_PROF retain_swarm: calls=4022 ms=53312991 subsets=44675 kept=9477
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=74409 ms=55710823 cases=2091896
+TF_DCS_PROF probe_exact: calls=98 fast_ok=98 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=74409 ms=55706348 fast_ok=28746 base_kill=0 alt_kill=19647 search=26016 cheap_probes=1612518
+TF_DCS_PROF case_search: runs=42209 ms=55649614 nodes=752048266 conflicts=3577437 xtract_ms=385574
+TF_DCS_PROF retain_swarm: calls=4030 ms=53569051 subsets=44792 kept=9506
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=74581 ms=56241121 cases=2097582
+TF_DCS_PROF probe_exact: calls=98 fast_ok=98 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=74581 ms=56236640 fast_ok=28820 base_kill=0 alt_kill=19692 search=26069 cheap_probes=1616359
+TF_DCS_PROF case_search: runs=42270 ms=56179742 nodes=758744635 conflicts=3584223 xtract_ms=386028
+TF_DCS_PROF retain_swarm: calls=4038 ms=54156768 subsets=44920 kept=9539
+TF_DCS_PROF filter_rfs: ms=37
+TF_DCS_PROF inbox_rfs: calls=74813 ms=56680168 cases=2104988
+TF_DCS_PROF probe_exact: calls=98 fast_ok=98 kill=0 search=0
+TF_DCS_PROF probe_exact_with_set: calls=74813 ms=56675675 fast_ok=28920 base_kill=0 alt_kill=19753 search=26140 cheap_probes=1621312
+TF_DCS_PROF case_search: runs=42363 ms=56618668 nodes=765671335 conflicts=3591714 xtract_ms=386612
+TF_DCS_PROF retain_swarm: calls=4049 ms=54427172 subsets=45085 kept=9581
+TF_DCS_PROF filter_rfs: ms=37
