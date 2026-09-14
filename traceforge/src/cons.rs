@@ -101,7 +101,7 @@ impl Consistency {
         g: &'a ExecutionGraph,
         rlab: &'a RecvMsg,
         sends: impl Iterator<Item = &'a SendMsg>,
-        view: Option<(&'a VectorClock, Option<Event>)>,
+        view: Option<(&'a VectorClock, &'a [Event])>,
         check_concurrent: bool,
     ) -> impl Iterator<Item = &'a SendMsg> {
         // println!("====== Started filter sends call");
@@ -110,7 +110,7 @@ impl Consistency {
             let spos = slab.pos();
 
             // exclude one event
-            if view.is_some_and(|(_, excl)| excl.is_some_and(|ev| ev == spos)) {
+            if view.is_some_and(|(_, excl)| excl.contains(&spos)) {
                 return false;
             }
 
@@ -176,7 +176,7 @@ impl Consistency {
         g: &'a ExecutionGraph,
         ilab: &'a Inbox,
         sends: impl Iterator<Item = &'a SendMsg>,
-        view: Option<(&'a VectorClock, Option<Event>)>,
+        view: Option<(&'a VectorClock, &'a [Event])>,
         check_concurrent: bool,
     ) -> impl Iterator<Item = &'a SendMsg> {
         let rpos = ilab.pos();
@@ -184,7 +184,7 @@ impl Consistency {
             let spos = slab.pos();
 
             // Revisit view can explicitly exclude one send.
-            if view.is_some_and(|(_, excl)| excl.is_some_and(|ev| ev == spos)) {
+            if view.is_some_and(|(_, excl)| excl.contains(&spos)) {
                 return false;
             }
 
@@ -229,7 +229,7 @@ impl Consistency {
         g: &ExecutionGraph,
         slab: &SendMsg,
         reader: Event,
-        view: Option<(&VectorClock, Option<Event>)>,
+        view: Option<(&VectorClock, &[Event])>,
     ) -> bool {
         if slab.val.as_any_ref().downcast_ref::<PollerMsg>().is_some()
             || slab.val.as_any_ref().downcast_ref::<WakeMsg>().is_some()
@@ -266,7 +266,7 @@ impl Consistency {
         g: &ExecutionGraph,
         b: &SendMsg,
         current: Event,
-        view: Option<(&VectorClock, Option<Event>)>,
+        view: Option<(&VectorClock, &[Event])>,
     ) -> bool {
         // Overtakers are enumerated from b's OWN SENDER's subsequent
         // sends, NOT from the current receive's matching set
@@ -331,7 +331,7 @@ impl Consistency {
         &self,
         g: &ExecutionGraph,
         // an optional view, excluding one event (a newly added send)
-        view: Option<(&VectorClock, Option<Event>)>,
+        view: Option<(&VectorClock, &[Event])>,
         recv: &RecvMsg,
         porf_override: bool,
         check_concurrent: bool,
@@ -446,16 +446,63 @@ impl Consistency {
         rfs
     }
 
+    /// Time-eligibility of one candidate member of an inbox read. For a
+    /// one-message inbox the exact singleton read probe is the batch
+    /// probe itself. For k >= 2 a member is eligible when some timeline
+    /// lets the read complete while it is stored (window-only): whether
+    /// a batch containing it is readable is decided by the joint subset
+    /// probes. The singleton read probe would demand that every OTHER
+    /// message be dodged, which wrongly removes members of feasible
+    /// batches (a message that arrives while an older one is still
+    /// stored can never be read alone, but is read with it).
+    /// Whether an inbox's read set is judged structurally: untimed
+    /// configuration, untimed inbox, or a model without a GC arm. Under
+    /// the timed GC arm the oracle judges batches instead, with the skip
+    /// disjunctions of `timed_dcs::inbox_skip_sets` (an older sibling
+    /// left out of a batch must be dead before the wait began).
+    pub(crate) fn inbox_structural_order(timed: Option<&TimedConfig>, inbox: &Inbox) -> bool {
+        !(timed.is_some() && Self::timed_gc_offer_arm(inbox.wait(), inbox.comm()))
+    }
+
+    /// Delivery-order closure of an inbox read set within its pool
+    /// (Definition A.4(b) of the source algorithm: no unread matching
+    /// send may precede a read one in the channel's delivery order). A
+    /// batch holding `m` holds every pool member ordered before `m`;
+    /// the order is the send's `sb` (program order per sender under
+    /// FIFO, porf under causal delivery, empty under NoOrder, where
+    /// every set is therefore closed).
+    pub(crate) fn inbox_set_order_closed(
+        g: &ExecutionGraph,
+        pool: &[Event],
+        subset: &[Event],
+    ) -> bool {
+        subset.iter().all(|&m| match g.send_label(m) {
+            Some(ml) => pool
+                .iter()
+                .all(|b| subset.contains(b) || !ml.sb().contains(*b)),
+            None => false,
+        })
+    }
+
+    fn inbox_member_eligible(dcs: &mut TimedDcs, inbox: &Inbox, s: Event) -> bool {
+        if inbox.min() >= 2 {
+            dcs.probe_inbox_member(inbox.pos(), s)
+        } else {
+            dcs.probe_inbox_rfs(inbox.pos(), &[s])
+        }
+    }
+
     fn coherent_inbox_rfs_in_view(
         &self,
         g: &ExecutionGraph,
-        view: Option<(&VectorClock, Option<Event>)>,
+        view: Option<(&VectorClock, &[Event])>,
         inbox: &Inbox,
         check_concurrent: bool,
         timed: Option<&TimedConfig>,
         // Optional pre-built oracle to avoid a redundant build+solve.
-        // PRECONDITION: built with view = None and floating = inbox.pos()
-        // (only the full-graph offer path may inject; asserted below).
+        // PRECONDITION: built on the same view the caller passes as
+        // `view` (None on the offer path, the judged inbox's own view in
+        // inbox_reads_tiebreaker) with floating = inbox.pos().
         oracle: Option<&mut TimedDcs>,
     ) -> Vec<Event> {
         // Candidate sends that match the inbox location/predicate.
@@ -479,36 +526,37 @@ impl Consistency {
                     // Shared oracle from the offer path (one build per
                     // inbox visit, reused for the joint subset probes).
                     // Infeasible base = real verdict (see recv arm).
-                    debug_assert!(view.is_none(), "injected oracle requires the full-graph view");
+                    // The caller built the oracle for exactly this view
+                    // (None on the offer path, the judged inbox's own
+                    // view in inbox_reads_tiebreaker).
                     structurally
                         .into_iter()
-                        .filter(|s| dcs.probe_inbox_rfs(inbox.pos(), &[s.pos()]))
+                        .filter(|s| Self::inbox_member_eligible(dcs, inbox, s.pos()))
                         .collect()
                 } else {
                     let vc = view.map(|(vc, _)| vc);
                     let mut dcs = TimedDcs::build(g, cfg, vc, Some(inbox.pos()));
                     structurally
                         .into_iter()
-                        .filter(|s| dcs.probe_inbox_rfs(inbox.pos(), &[s.pos()]))
+                        .filter(|s| Self::inbox_member_eligible(&mut dcs, inbox, s.pos()))
                         .collect()
                 }
             }
             _ => rfs.collect(),
         };
 
-        let mut rfs: Vec<Event> = if inbox.comm() != CommunicationModel::NoOrder {
-            // Respect the channel's delivery model, mirroring recv behavior.
-            // Deliberate, accepted semantics: the member pool is the
-            // sb-minimal ANTICHAIN, so a batch never holds two sb-ordered
-            // messages from one sender (a min >= 2 inbox facing a single
-            // sender starves by design; see the inbox_timed docs).
-            Self::retain_sb_minimals(rfs.into_iter(), false)
-                .iter()
-                .map(|lab| lab.pos())
-                .collect()
-        } else {
-            rfs.into_iter().map(|lab| lab.pos()).collect()
-        };
+        // The POOL is every available matching send, as in the source
+        // algorithm (an inbox blocks only when fewer than `min` unread
+        // matching sends exist, so two messages of one sender may share
+        // a batch). Which SUBSETS of the pool are read sets is decided
+        // where subsets are formed: closed under the delivery order
+        // (inbox_set_order_closed) when judged structurally, or by the
+        // oracle's skip disjunctions under the timed GC arm. The
+        // sb-minimal antichain of the plain-receive offer does not apply
+        // here: it held a sender's second message back while the first
+        // was unread, so an inbox of `min` messages facing a single
+        // sender blocked although enough messages were available.
+        let mut rfs: Vec<Event> = rfs.into_iter().map(|lab| lab.pos()).collect();
 
         // Stable ordering for canonical subset derivation.
         rfs.sort();
@@ -647,6 +695,22 @@ impl Consistency {
     }
 
     /// Returns whether an affected receive is maximal during a revisit
+    /// Rank the members of a revisit set last (stable). A deleted event
+    /// judged under an inbox revisit installing `set` at an older inbox
+    /// must not prefer a member of `set`: the revisited inbox consumes
+    /// those after the revisit, so they are its last resort, taken only
+    /// when no other candidate exists (then the branch reading the first
+    /// member of `set` is the unique launch point).
+    fn rank_set_last(list: Vec<Event>, set: &[Event]) -> Vec<Event> {
+        if set.is_empty() {
+            return list;
+        }
+        let (mut out, rest): (Vec<Event>, Vec<Event>) =
+            list.into_iter().partition(|e| !set.contains(e));
+        out.extend(rest);
+        out
+    }
+
     pub(crate) fn reads_tiebreaker(
         &self,
         g: &ExecutionGraph,
@@ -655,18 +719,29 @@ impl Consistency {
         porf_override: bool,
         timed: Option<&TimedConfig>,
     ) -> bool {
-        let (view, exclude) = match &rev.rev {
+        let (view, exclude, set_last): (VectorClock, Vec<Event>, Vec<Event>) = match &rev.rev {
             crate::revisit::RevisitPlacement::Default(send) => {
                 // rlab is not in the prefix of the revisitor
                 assert!(!g.send_label(*send).unwrap().porf().contains(rlab.pos()));
                 (
                     g.revisit_view(&Revisit::new(rlab.pos(), *send)),
-                    Some(*send),
+                    vec![*send],
+                    Vec::new(),
                 )
             }
             crate::revisit::RevisitPlacement::Inbox(sends) => {
+                // A deleted receive is ranked in its own view; the members
+                // of the set the revisited inbox is about to consume rank
+                // LAST (rank_set_last): the ones r already reads are
+                // dropped by the reader-in-view filter, the fresh send is
+                // not registered yet, and an older unread member is taken
+                // only when nothing else is available.
                 let rev_inbox = Revisit::new_inbox(rlab.pos(), sends.clone());
-                (g.revisit_view(&rev_inbox), None)
+                (
+                    g.revisit_view(&rev_inbox),
+                    Vec::new(),
+                    sends.clone().unwrap_or_default(),
+                )
             }
             // Forward-only placement: never subject to backward-revisit
             // consistency checks.
@@ -686,7 +761,8 @@ impl Consistency {
         // Maximality must rank the SAME filtered list the offer
         // uses, or base choice and tiebreak disagree (duplicate/lost runs).
         let rfs =
-            self.coherent_rfs_in_view(g, Some((&view, exclude)), rlab, porf_override, false, timed);
+            self.coherent_rfs_in_view(g, Some((&view, exclude.as_slice())), rlab, porf_override, false, timed);
+        let rfs = Self::rank_set_last(rfs, &set_last);
         if rfs.is_empty() {
             rlab.rf().is_some_and(|rf| {
                 g.send_label(rf)
@@ -734,26 +810,137 @@ impl Consistency {
             return false;
         }
 
-        let view = g.revisit_view(rev);
-        let exclude = match &rev.rev {
-            // For recv-style revisit placement, remove the newly inserted send.
-            crate::revisit::RevisitPlacement::Default(ev) => Some(*ev),
-            // Inbox placement already names the whole candidate set in the revisit view.
-            crate::revisit::RevisitPlacement::Inbox(_) => None,
+        // The judged inbox is ranked in ITS OWN view (its stamp prefix
+        // plus the causal past of the revisiting sends), exactly like a
+        // deleted plain receive in reads_tiebreaker. For the revisited
+        // inbox itself this is the revisit view.
+        let judged_is_revisited = ilab.pos() == rev.pos;
+        let (view, exclude, set_last): (VectorClock, Vec<Event>, Vec<Event>) = match &rev.rev {
+            // Recv-style placement: remove the newly inserted send.
+            crate::revisit::RevisitPlacement::Default(ev) => {
+                (g.revisit_view(&Revisit::new(ilab.pos(), *ev)), vec![*ev], Vec::new())
+            }
+            // Inbox placement: the revisited inbox ranks every stored
+            // candidate (its own reads included; the fresh send is not
+            // registered yet). A DELETED inbox ranks the members of the
+            // set the revisited inbox is about to consume LAST (see
+            // reads_tiebreaker).
+            crate::revisit::RevisitPlacement::Inbox(sends) => {
+                let own = g.revisit_view(&Revisit::new_inbox(ilab.pos(), sends.clone()));
+                let last = if judged_is_revisited {
+                    Vec::new()
+                } else {
+                    sends.clone().unwrap_or_default()
+                };
+                (own, Vec::new(), last)
+            }
             // Forward-only placement: never checked here.
             crate::revisit::RevisitPlacement::BlockInstead => unreachable!(),
         };
+        // The canonical set is drawn from the view, so a current read
+        // outside it can never match (cheap exit before any oracle).
+        if current.iter().any(|c| !view.contains(*c)) {
+            return false;
+        }
 
-        let mut cands =
-            self.coherent_inbox_rfs_in_view(g, Some((&view, exclude)), ilab, false, timed, None);
+        // Blocking timed inbox: the canonical read set is the one the
+        // offer path (visit_inbox_rfs) takes as its base in this view:
+        // the first `min` coherent sends when that batch is feasible,
+        // else the first feasible `min`-subset in enumeration order.
+        // One view-restricted oracle serves member eligibility and the
+        // joint subset probes.
+        let blocking_timed =
+            matches!(ilab.wait(), Some(crate::timed_cons::WaitTime::Infinite));
+        let mut oracle = match timed {
+            Some(cfg) if blocking_timed => {
+                Some(TimedDcs::build(g, cfg, Some(&view), Some(ilab.pos())))
+            }
+            _ => None,
+        };
+        if let Some(d) = oracle.as_ref() {
+            if !d.base_feasible() {
+                // The revisited cut world admits no timeline: no branch
+                // of this inbox can be its launch point.
+                return false;
+            }
+        }
+
+        let mut cands = self.coherent_inbox_rfs_in_view(
+            g,
+            Some((&view, exclude.as_slice())),
+            ilab,
+            false,
+            timed,
+            oracle.as_mut(),
+        );
 
         Consistency::normalize_event_set(&mut cands);
+        let cands = Self::rank_set_last(cands, &set_last);
 
-        // Canonical subset in the revisit view: first `min` coherent sends.
-        // Maximality requires the current inbox read to be exactly this subset.
-        let limit = ilab.min().min(cands.len());
-        let canonical: Vec<Event> = cands.into_iter().take(limit).collect();
+        let min = ilab.min();
+        let canonical: Vec<Event> = match oracle.as_mut() {
+            Some(d) if cands.len() >= min => {
+                let default: Vec<Event> = cands.iter().take(min).cloned().collect();
+                if d.probe_inbox_rfs(ilab.pos(), &default) {
+                    default
+                } else {
+                    let subsets = crate::must::compute_inbox_possible_subsets_from_rfs(
+                        &cands,
+                        min,
+                        ilab.max(),
+                        None,
+                    );
+                    match subsets
+                        .into_iter()
+                        .find(|sub| d.probe_inbox_rfs(ilab.pos(), sub))
+                    {
+                        Some(sub) => sub,
+                        // No feasible batch in this view: the inbox would
+                        // block here, so no read branch is canonical.
+                        None => return false,
+                    }
+                }
+            }
+            // Structural (untimed) judgement: the first `min` coherent
+            // sends when that set is closed under the delivery order,
+            // else the first closed `min`-subset in enumeration order,
+            // exactly the offer path's base in this view; with no
+            // closed subset (or fewer than `min` candidates) the inbox
+            // blocks here and no read branch is canonical.
+            _ => {
+                if cands.len() < min {
+                    return false;
+                }
+                let default: Vec<Event> = cands.iter().take(min).cloned().collect();
+                if Self::inbox_set_order_closed(g, &cands, &default) {
+                    default
+                } else {
+                    let subsets = crate::must::compute_inbox_possible_subsets_from_rfs(
+                        &cands,
+                        min,
+                        ilab.max(),
+                        None,
+                    );
+                    match subsets
+                        .into_iter()
+                        .find(|sub| Self::inbox_set_order_closed(g, &cands, sub))
+                    {
+                        Some(sub) => sub,
+                        None => return false,
+                    }
+                }
+            }
+        };
 
+        // An inbox read is a SET: the ranking above only decides WHICH
+        // set is canonical, never in which order its members are listed
+        // (rank_set_last and the stamp-ordered offer list both differ
+        // from event order), so the identity check must normalise both
+        // sides.
+        let mut current = current;
+        let mut canonical = canonical;
+        Consistency::normalize_event_set(&mut current);
+        Consistency::normalize_event_set(&mut canonical);
         current == canonical
     }
 
@@ -823,7 +1010,7 @@ impl Consistency {
 
         // if any of them, apart from slab, could be read by rlab after the revisit, then the execution is inconsistent
         let blockers: Vec<&SendMsg> =
-            Self::filter_available_sends_in_view(g, rlab, sends, Some((&view, Some(spos))), false)
+            Self::filter_available_sends_in_view(g, rlab, sends, Some((&view, std::slice::from_ref(&spos))), false)
                 .collect();
         if blockers.is_empty() {
             return true;
@@ -842,7 +1029,7 @@ impl Consistency {
                             g,
                             b,
                             rlab.pos(),
-                            Some((&view, Some(spos))),
+                            Some((&view, std::slice::from_ref(&spos))),
                         )
                     })
                     .collect();
@@ -876,6 +1063,7 @@ impl Consistency {
         g: &ExecutionGraph,
         inbox: &Inbox,
         sends: &[Event],
+        timed: Option<&TimedConfig>,
     ) -> bool {
         if let Some(max) = inbox.max() {
             if sends.len() > max {
@@ -886,7 +1074,11 @@ impl Consistency {
             return false;
         }
 
-        // Each chosen send must exist, match, be undropped, and not already read by another receiver.
+        // Each chosen send must exist, match, be undropped, be causally
+        // independent of the inbox, and not be read by a receiver that
+        // SURVIVES the revisit (a reader outside the revisit view is
+        // deleted by the cut, which frees the send).
+        let view = g.revisit_view(&Revisit::new_inbox(inbox.pos(), Some(sends.to_vec())));
         for &s in sends {
             let Some(slab) = g.send_label(s) else {
                 return false;
@@ -894,7 +1086,38 @@ impl Consistency {
             if slab.is_dropped() || !inbox.matches(slab) {
                 return false;
             }
-            if slab.reader().is_some_and(|r| r != inbox.pos()) {
+            // A member causally after the inbox can never be read by it
+            // (the revisited read would depend on its own successors).
+            if slab.porf().contains(inbox.pos()) {
+                return false;
+            }
+            if slab.reader().is_some_and(|r| r != inbox.pos() && view.contains(r)) {
+                return false;
+            }
+        }
+
+        // Delivery-order closure (Definition A.4(b) of the source
+        // algorithm), judged structurally when no timed GC arm applies:
+        // the pool is every matching send that survives the cut and is
+        // unread there (the revisited inbox's own former reads become
+        // unread), and the new set holds every pool member ordered
+        // before one of its members. Under the timed GC arm the cut-view
+        // probe (probe_inbox_rfs, with its skip disjunctions) judges
+        // this instead, since an older sibling that was dead before the
+        // wait began may legitimately be left behind there.
+        if Self::inbox_structural_order(timed, inbox) {
+            let pool: Vec<Event> = g
+                .matching_stores(inbox.recv_loc())
+                .filter(|b| {
+                    let bp = b.pos();
+                    view.contains(bp)
+                        && !b.is_dropped()
+                        && !b.porf().contains(inbox.pos())
+                        && b.reader().is_none_or(|r| r == inbox.pos() || !view.contains(r))
+                })
+                .map(|b| b.pos())
+                .collect();
+            if !Self::inbox_set_order_closed(g, &pool, sends) {
                 return false;
             }
         }

@@ -188,6 +188,11 @@ static EXPIRED: AtomicUsize = AtomicUsize::new(0);
 static RELEASED: AtomicUsize = AtomicUsize::new(0);
 static APPLIED: AtomicUsize = AtomicUsize::new(0);
 static STALE_REJECTED: AtomicUsize = AtomicUsize::new(0);
+/// Safety violations observed: a stale (non-increasing) token was
+/// applied. Counted BEFORE the assertion so that `--keep-going` runs,
+/// which do not abort on the first violation, can report how many
+/// explored executions break the property.
+static STALE_APPLIED: AtomicUsize = AtomicUsize::new(0);
 
 const DEFAULT_U: u64 = 1;
 const DEFAULT_L_RATIO: f64 = 0.0;
@@ -421,6 +426,9 @@ fn storage(total_writes: u32, fencing: bool) {
             // greater here.)
             STALE_REJECTED.fetch_add(1, Ordering::Relaxed);
         } else {
+            if w.token <= last_applied {
+                STALE_APPLIED.fetch_add(1, Ordering::Relaxed);
+            }
             // THE safety property: applied tokens strictly increase.
             traceforge::assert(w.token > last_applied);
             APPLIED.fetch_add(1, Ordering::Relaxed);
@@ -434,8 +442,30 @@ fn storage(total_writes: u32, fencing: bool) {
 // Verifier setup
 // =====================================================================
 
-fn build_config(mode: Mode, b: Bounds) -> Config {
-    let builder = Config::builder().with_progress_report(usize::MAX);
+/// Exploration strategy chosen on the command line (`--parallel`):
+/// `none` (single-threaded, the default; keeps the exact exit-code
+/// semantics of an aborting assertion), `shared` (the shared work-queue
+/// pool, count-identical to sequential exploration; pool size follows
+/// MUST_PARALLEL_WORKERS) or `partitioned`.
+static PARALLEL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+fn apply_parallel(builder: traceforge::ConfigBuilder) -> traceforge::ConfigBuilder {
+    match PARALLEL.get().map(|s| s.as_str()).unwrap_or("none") {
+        "none" => builder,
+        "shared" => builder.with_parallel(true),
+        "partitioned" => builder.with_partitioned_parallelization(true),
+        other => cli_bail(&format!("invalid --parallel: {other} (expected none|shared|partitioned)")),
+    }
+}
+
+fn build_config(mode: Mode, b: Bounds, keep_going: bool) -> Config {
+    let mut builder = apply_parallel(Config::builder().with_progress_report(usize::MAX));
+    if keep_going {
+        // Explore the whole state space even after a violation, so the
+        // untimed baseline (which always FIREs on this benchmark) yields
+        // a complete execution count comparable with the timed run.
+        builder = builder.with_keep_going_after_error(true);
+    }
     match mode {
         Mode::Baseline => builder.build(),
         Mode::Timed => builder.with_timed(b.l, b.u, b.sd).build(),
@@ -449,6 +479,7 @@ struct Counts {
     released: usize,
     applied: usize,
     stale: usize,
+    violations: usize,
 }
 
 fn read_counts() -> Counts {
@@ -458,6 +489,7 @@ fn read_counts() -> Counts {
         released: RELEASED.load(Ordering::Relaxed),
         applied: APPLIED.load(Ordering::Relaxed),
         stale: STALE_REJECTED.load(Ordering::Relaxed),
+        violations: STALE_APPLIED.load(Ordering::Relaxed),
     }
 }
 
@@ -467,13 +499,15 @@ fn run(
     b: Bounds,
     fencing: bool,
     rounds: u32,
+    keep_going: bool,
 ) -> (Stats, Duration) {
-    let cfg = build_config(mode, b);
+    let cfg = build_config(mode, b, keep_going);
     GRANTS.store(0, Ordering::Relaxed);
     EXPIRED.store(0, Ordering::Relaxed);
     RELEASED.store(0, Ordering::Relaxed);
     APPLIED.store(0, Ordering::Relaxed);
     STALE_REJECTED.store(0, Ordering::Relaxed);
+    STALE_APPLIED.store(0, Ordering::Relaxed);
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
         let main_tid = thread::current().id();
@@ -526,11 +560,11 @@ fn print_one(
     println!(
         "{label:<10} C={num_clients} R={rounds} fencing={f}  L={l} U={u} TTL={ttl} PAUSE={p} sd={sd}  execs={execs:<6} \
          blocked={block:<6} grants={grants:<6} expired={expired:<6} released={released:<6} \
-         applied={applied:<6} stale={stale:<6} time={dur:?}",
+         applied={applied:<6} stale={stale:<6} violations={viol:<6} time={dur:?}",
         f = fencing_str(fencing), l = b.l, u = b.u, ttl = b.ttl, p = b.pause, sd = b.sd,
         execs = stats.execs, block = stats.block,
         grants = c.grants, expired = c.expired, released = c.released,
-        applied = c.applied, stale = c.stale, dur = dur,
+        applied = c.applied, stale = c.stale, viol = c.violations, dur = dur,
     );
 }
 
@@ -600,6 +634,8 @@ struct Args {
     fencing: bool,
     clients: u32,
     rounds: u32,
+    keep_going: bool,
+    parallel: String,
 }
 
 fn next_val(args: &mut std::env::Args, flag: &str) -> String {
@@ -623,6 +659,8 @@ fn parse_args() -> Args {
         fencing: true,
         clients: DEFAULT_CLIENTS,
         rounds: DEFAULT_ROUNDS,
+        keep_going: false,
+        parallel: String::from("none"),
     };
     let mut args = std::env::args();
     args.next();
@@ -648,11 +686,15 @@ fn parse_args() -> Args {
                     other => cli_bail(&format!("invalid --fencing: {other} (expected on|off)")),
                 };
             }
+            "--keep-going" => a.keep_going = true,
+            "--parallel" => a.parallel = next_val(&mut args, "--parallel"),
             "--help" | "-h" => {
                 eprintln!(
                     "Usage: lease_timed [--mode baseline|timed|compare] [--clients C] [--rounds R] \
                      [--u U] [--l-ratio LR] [--sd-ratio SR] [--ttl-ratio TR] [--pause-ratio PR] \
-                     [--fencing on|off]\n\
+                     [--fencing on|off] [--keep-going] [--parallel none|shared|partitioned]\n\
+                     --keep-going explores the whole state space after a violation and reports\n\
+                     the number of violating writes (violations=) instead of aborting.\n\
                      Defaults: C=2, R=1, U=1, L/U=0, sd/U=0, TTL/U=6, PAUSE/U=0, fencing=on.\n\
                      Client 0 is the pauser; clients i>0 never pause. Clients demand the lock\n\
                      concurrently (no staggering); the service queues and serves them in every\n\
@@ -669,6 +711,7 @@ fn parse_args() -> Args {
 
 fn main() {
     let a = parse_args();
+    PARALLEL.set(a.parallel.clone()).expect("PARALLEL set once");
     if a.clients < 1 {
         cli_bail("need at least 1 client");
     }
@@ -681,19 +724,19 @@ fn main() {
     let b = Bounds::from_ratios(a.u, a.l_ratio, a.ttl_ratio, a.pause_ratio, a.sd_ratio);
     match a.mode.as_str() {
         "baseline" => {
-            let (s, d) = run(Mode::Baseline, a.clients, b, a.fencing, a.rounds);
+            let (s, d) = run(Mode::Baseline, a.clients, b, a.fencing, a.rounds, a.keep_going);
             print_one("baseline", a.clients, b, a.fencing, a.rounds, &s, d, read_counts());
             warn_if_vacuous("baseline", s.execs, s.block);
         }
         "timed" => {
-            let (s, d) = run(Mode::Timed, a.clients, b, a.fencing, a.rounds);
+            let (s, d) = run(Mode::Timed, a.clients, b, a.fencing, a.rounds, a.keep_going);
             print_one("timed", a.clients, b, a.fencing, a.rounds, &s, d, read_counts());
             warn_if_vacuous("timed", s.execs, s.block);
         }
         "compare" => {
-            let baseline = run(Mode::Baseline, a.clients, b, a.fencing, a.rounds);
+            let baseline = run(Mode::Baseline, a.clients, b, a.fencing, a.rounds, a.keep_going);
             let bc = read_counts();
-            let timed = run(Mode::Timed, a.clients, b, a.fencing, a.rounds);
+            let timed = run(Mode::Timed, a.clients, b, a.fencing, a.rounds, a.keep_going);
             let tc = read_counts();
             let (b_vac, t_vac) = (
                 (baseline.0.execs, baseline.0.block),

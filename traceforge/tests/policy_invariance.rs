@@ -516,7 +516,7 @@ fn env_u64(name: &str, default: u64) -> u64 {
 }
 
 #[test]
-#[ignore = "policy-divergence fuzz campaign; expected RED while the inbox order-invariance bug lives. Run with --ignored --nocapture (env: TF_FUZZ_SEED, TF_FUZZ_N). Last run: 61/400 divergent."]
+#[ignore = "policy-divergence fuzz campaign; expected RED while inbox exploration is schedule-dependent (the inbox construction assumes the left-to-right scheduler; divergences matter where LTR itself under-explores). Run with --ignored --nocapture (env: TF_FUZZ_SEED, TF_FUZZ_N). Last run 2026-09-14: 4/400 divergent, all timed, down from 61/400."]
 fn fuzz_inbox_policy_divergence() {
     let base_seed = env_u64("TF_FUZZ_SEED", 20260819);
     let n = env_u64("TF_FUZZ_N", 400) as usize;

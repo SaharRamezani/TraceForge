@@ -23,8 +23,11 @@
 //!     readable, so reading past an sb-earlier matching message is
 //!     legal only in timelines where that message was never readable
 //!     during the wait (skip = evict; time-dead fronts do not seal);
-//!   - the timed inbox member pool is the sb-minimal antichain: at
-//!     most one candidate per (sender, predicate) at a time.
+//!   - the inbox member pool is every unread matching send; a batch
+//!     leaves a delivery-ordered older sibling behind only where that
+//!     sibling is dead (before the wait began for a batch of one,
+//!     before the read for a batch of two or more), and it is then
+//!     evicted (skip = evict).
 //!
 //! Every expected (execs, block) pair is derived BY HAND in the
 //! comment above its assert; asserts are never tuned to the checker.
@@ -367,23 +370,22 @@ fn cross_sender_sends_not_coupled_under_local_order() {
 }
 
 // ---------------------------------------------------------------------
-// 6a. Same-sender min = 2 inbox: the antichain rule dominates the sd
-// question entirely.
+// 6a. Same-sender min = 2 inbox: the lifetimes decide it, exactly as
+// they do across senders.
 //
-// The task shape (same-sender m1 [0, 0], m2 [5, 5], a min = 2 inbox
-// on the channel) never even reaches the lifetime analysis: the inbox
-// member pool is the sb-minimal ANTICHAIN of the channel (accepted
-// semantics, see the "Single-sender batches" section of the
-// inbox_timed docs in src/lib.rs), so at most ONE message per
-// (sender, predicate) is a candidate at a time. The pool is {m1},
-// 1 < min = 2 in every timeline, and the only outcome is the timeout
-// empty at t0 + 10. This holds for ANY sd: with sd = 2 (disjoint
-// lifetimes [0, 2] and [5, 7]) and equally with sd = 5 (touching
-// lifetimes), pinning that sd is invisible in the same-sender shape.
+// An inbox collects a SET of the unread matching sends, so two
+// messages of one sender may share a batch and the same-sender shape
+// (m1 [0, 0], m2 [5, 5], a min = 2 inbox on the channel) reduces to
+// the lifetime analysis of 6b and 6c below. With sd = 2 the storage
+// lifetimes [0, 2] and [5, 7] are disjoint: no read time serves both
+// members, so the only outcome is the timeout empty at t0 + 10. With
+// sd = 5 they touch at 5, where m2 arrives and m1 is still stored, so
+// the batch is collected there as well.
 //
-// Expected: (1, 0) for both sd values. (Finite wait: the
-// never-collects world IS the timeout execution; GC refusal classes
-// exist only for infinite waits, so block = 0.)
+// Expected: (1, 0) at sd = 2 and (2, 0) at sd = 5, the same pair as
+// the cross-sender twin. (Finite wait: the never-collects world IS
+// the timeout execution; GC refusal classes exist only for infinite
+// waits, so block = 0.)
 // ---------------------------------------------------------------------
 
 fn run_min2_inbox(sd: u64, same_sender: bool) -> Stats {
@@ -411,11 +413,11 @@ fn run_min2_inbox(sd: u64, same_sender: bool) -> Stats {
 }
 
 #[test]
-fn same_sender_min2_inbox_starves_by_antichain() {
+fn same_sender_min2_inbox_follows_the_lifetimes() {
     let disjoint = run_min2_inbox(2, true);
     assert_eq!((disjoint.execs, disjoint.block), (1, 0));
     let touching = run_min2_inbox(5, true);
-    assert_eq!((touching.execs, touching.block), (1, 0));
+    assert_eq!((touching.execs, touching.block), (2, 0));
 }
 
 // ---------------------------------------------------------------------

@@ -1,0 +1,4 @@
+protocol,N,rounds,cell,side,variant,execs,block,extra,violations,verdict,expected,wall_s,cpu_s,rss_mb,workers,started,finished,cmd
+comm_closed_leader_election_inbox,4,2,B=2 regime C,timed,,,,,,"DNF (rebooted; ran >= 64.3 h, <= 76.3 h)",hold,231308,,,64,2026-09-06 21:51:33,2026-09-09 14:06:41,comm_closed_leader_election_inbox --nodes 4 --ballots 2 --u 20 --w 100 --l 2 --sd 5 --parallel shared --mode timed
+comm_closed_leader_election_inbox,6,1,regime A,timed,,,,,,"DNF (rebooted; ran >= 9.7 h, <= 21.7 h)",hold,34883,,,64,2026-09-09 04:25:18,2026-09-09 14:06:41,comm_closed_leader_election_inbox --nodes 6 --ballots 1 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode timed
+comm_closed_leader_election_inbox,6,1,regime F,timed,,,,,,"DNF (rebooted; ran >= 0.0 h, <= 12.0 h)",hold,30,,,64,2026-09-09 14:06:11,2026-09-09 14:06:41,comm_closed_leader_election_inbox --nodes 6 --ballots 1 --u 20 --w 40 --l 0 --sd 10 --parallel shared --mode timed

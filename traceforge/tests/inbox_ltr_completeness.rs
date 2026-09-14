@@ -219,14 +219,15 @@ fn case_d_three_senders_min2_max2() {
 }
 
 // =====================================================================
-// Second grid: shapes where the documented antichain rule bites, i.e. a
-// sender that sends TWICE (FIFO), and sequential inboxes.
+// Second grid: shapes where the delivery order bites, i.e. a sender that
+// sends TWICE (FIFO), and sequential inboxes.
 //
-// Documented semantics (traceforge/src/lib.rs, "Single-sender batches"):
-// the inbox member pool is the sb-minimal ANTICHAIN of the channel, so at
-// most ONE message per sender is a candidate for one inbox call; a second
-// message from the same sender is not a distinct member and only becomes
-// a candidate once its FIFO predecessor has been consumed.
+// Semantics (traceforge/src/lib.rs, "Single-sender batches", and
+// Definition A.4(b) of the source algorithm): the pool is every unread
+// matching send, and a read set is closed under the delivery order: a
+// batch holding a sender's second message also holds its first unless
+// that one was consumed earlier. So {1} alone is never a read set while
+// 0 is unread, but {0, 1} is.
 // =====================================================================
 
 /// `sends[i]` = how many messages sender i sends (ids are globally distinct,
@@ -273,8 +274,8 @@ fn multi_prog(sends: Vec<u32>, inboxes: Vec<(usize, Option<usize>)>) -> Arc<dyn 
 }
 
 // (e) ONE sender with two FIFO sends (ids 0,1); inbox min=1 max=1.
-// Antichain at the inbox = {0} only (1 sits behind 0 in the FIFO). min=1
-// forces exactly one member => the single class {0}. 1 execution, 0 blocked.
+// The only closed 1-subset is {0} (1 sits behind 0 in the FIFO): the
+// single class {0}. 1 execution, 0 blocked.
 #[test]
 fn case_e_one_sender_two_sends_min1_max1() {
     let r = run(SchedulePolicy::LTR, multi_prog(vec![2], vec![(1, Some(1))]));
@@ -284,21 +285,26 @@ fn case_e_one_sender_two_sends_min1_max1() {
 }
 
 // (f) flagship shape: sender A sends id 0; sender B sends ids 1,2 (FIFO).
-// Antichain at the inbox = {0, 1} (2 is behind 1). inbox min=1 max=None
-// => the nonempty subsets {0}, {1}, {0,1}: 3 executions, 0 blocked.
+// Pool {0, 1, 2}; inbox min=1 max=None => the nonempty subsets closed
+// under B's order, i.e. holding 2 only together with 1: {0}, {1},
+// {0,1}, {1,2}, {0,1,2}: 5 executions, 0 blocked.
 #[test]
 fn case_f_two_senders_one_and_two_sends_min1() {
     let r = run(SchedulePolicy::LTR, multi_prog(vec![1, 2], vec![(1, None)]));
     println!("=== case (f): senders 1x1 and 1x2 sends, inbox(min=1,max=None)");
-    let ok = report("inbox", &r, 3, &["i0[0]", "i0[1]", "i0[0, 1]"]);
+    let ok = report(
+        "inbox", &r, 5,
+        &["i0[0]", "i0[1]", "i0[0, 1]", "i0[1, 2]", "i0[0, 1, 2]"],
+    );
     assert!(ok, "LTR inbox exploration disagrees with the hand count");
 }
 
 // (g) mirror shape: ONE sender with two FIFO sends; inbox min=0 max=None
-// (the non-blocking untimed inbox). Antichain = {0}; admissible read-sets
-// are the subsets of that antichain: {} and {0} => 2 executions, 0 blocked.
-// Reading {1} or {0,1} would read past / batch a same-sender FIFO
-// predecessor and is NOT a legal outcome.
+// (the non-blocking untimed inbox). A read set is closed under the
+// sender's order, so 1 is read only together with 0: {}, {0}, {0, 1}
+// => 3 executions, 0 blocked.
+// The plain non-blocking receive oracle below has only {} and {0}: it
+// reads ONE message, and FIFO forbids it from taking 1 before 0.
 #[test]
 fn case_g_one_sender_two_sends_min0() {
     let r = run(SchedulePolicy::LTR, multi_prog(vec![2], vec![(0, None)]));
@@ -321,7 +327,7 @@ fn case_g_one_sender_two_sends_min0() {
     });
     let refr = run(SchedulePolicy::LTR, oracle);
     println!("=== case (g): 1 sender x 2 sends, inbox(min=0,max=None)");
-    let ok = report("inbox", &r, 2, &["i0[]", "i0[0]"]);
+    let ok = report("inbox", &r, 3, &["i0[]", "i0[0]", "i0[0, 1]"]);
     let ok_ref = report("non-blocking plain recv oracle", &refr, 2, &["i0[]", "i0[0]"]);
     assert!(ok_ref, "recv oracle itself disagrees with the hand count");
     assert!(ok, "LTR inbox exploration disagrees with the hand count");
@@ -518,6 +524,11 @@ fn sweep_one_send_per_sender_binomial_formula() {
     for n in 1..=4usize {
         for min in 0..=3usize {
             for max in [Some(1usize), Some(2), Some(3), None] {
+                if max.is_some_and(|m| m < min) {
+                    // min > max is rejected at the API (inbox_internal
+                    // asserts min <= max); nothing to sweep.
+                    continue;
+                }
                 let hi = max.unwrap_or(n).min(n);
                 let hand: usize = (min..=hi).map(|k| c(n, k)).sum();
                 let r = run(
@@ -543,16 +554,17 @@ fn sweep_one_send_per_sender_binomial_formula() {
 }
 
 /// Characterizes the case-(g) family: min=0 inboxes facing a sender that
-/// sends more than once. Hand truth = subsets of the sb-minimal antichain
-/// (one message per sender), i.e. 2^(#senders). Never asserts.
+/// sends more than once. Hand truth = subsets of the pool closed under
+/// each sender's order, i.e. the product over senders of (n_i + 1)
+/// prefixes. Never asserts.
 #[test]
 fn diagnostic_min0_multi_send_family() {
     for (name, sends, hand) in [
-        ("1 sender x 2 sends", vec![2u32], 2usize),
-        ("1 sender x 3 sends", vec![3], 2),
-        ("2 senders: 1 and 2 sends", vec![1, 2], 4),
-        ("2 senders x 2 sends", vec![2, 2], 4),
-        // control: no sender sends twice, so the antichain is everything
+        ("1 sender x 2 sends", vec![2u32], 3usize),
+        ("1 sender x 3 sends", vec![3], 4),
+        ("2 senders: 1 and 2 sends", vec![1, 2], 6),
+        ("2 senders x 2 sends", vec![2, 2], 9),
+        // control: no sender sends twice, so every subset is closed
         ("2 senders x 1 send", vec![1, 1], 4),
     ] {
         let r = run(SchedulePolicy::LTR, multi_prog(sends, vec![(0, None)]));
@@ -575,8 +587,8 @@ fn diagnostic_arbitrary_policy_side_by_side() {
         ("c: 2 senders min=2 max=2", inbox_prog(2, 2, Some(2)), 1),
         ("d: 3 senders min=2 max=2", inbox_prog(3, 2, Some(2)), 3),
         ("e: 1 sender x2 sends min=1 max=1", multi_prog(vec![2], vec![(1, Some(1))]), 1),
-        ("f: senders 1,2 sends min=1", multi_prog(vec![1, 2], vec![(1, None)]), 3),
-        ("g: 1 sender x2 sends min=0", multi_prog(vec![2], vec![(0, None)]), 2),
+        ("f: senders 1,2 sends min=1", multi_prog(vec![1, 2], vec![(1, None)]), 5),
+        ("g: 1 sender x2 sends min=0", multi_prog(vec![2], vec![(0, None)]), 3),
         (
             "h: 2 senders, two inbox(1,1)",
             multi_prog(vec![1, 1], vec![(1, Some(1)), (1, Some(1))]),

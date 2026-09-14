@@ -912,6 +912,7 @@ impl<'g> TimedDcs<'g> {
                                 pos,
                                 rlab,
                                 s,
+                                floating,
                             );
                         }
                         None => match wait {
@@ -944,6 +945,7 @@ impl<'g> TimedDcs<'g> {
                                 pos,
                                 ilab,
                                 &subset,
+                                floating,
                             );
                             let at_capacity = ilab.max() == Some(subset.len());
                             let excl = inbox_exclusions(
@@ -1573,6 +1575,7 @@ impl<'g> TimedDcs<'g> {
         sends: &[Event],
         loc: &crate::loc::RecvLoc,
         comm: crate::loc::CommunicationModel,
+        min: usize,
         at_capacity: bool,
     ) -> bool {
         let Some(&e) = self.vars.ev.get(&block_pos) else {
@@ -1612,7 +1615,52 @@ impl<'g> TimedDcs<'g> {
             // the caller, not this function, decides it.
             exclusion_options(i.checked_sub(1), &windows, at_capacity, e, sd, x)
         });
-        self.probe_exact_with_set(&[], &folded)
+        // Skip disjunctions for the older siblings the batch leaves
+        // behind (parity with the offer probe and the committed encoding).
+        let skips = inbox_skip_sets(
+            &self.vars,
+            self.g,
+            self.cfg,
+            e,
+            p,
+            block_pos,
+            loc,
+            comm,
+            min,
+            sends,
+        );
+        self.probe_cases_with_skips(folded, &skips)
+    }
+
+    /// Window-only wake-up eligibility of `send` for the inbox-shaped
+    /// block at `block_pos` (k >= 2): the counterpart of
+    /// `probe_inbox_member` on the wake path. The exact batch test is
+    /// `probe_unblock_inbox_subset` on a full min-subset.
+    pub(crate) fn probe_unblock_inbox_member(&mut self, block_pos: Event, send: Event) -> bool {
+        let Some(&e) = self.vars.ev.get(&block_pos) else {
+            debug_assert!(false, "block {block_pos} not in scope");
+            return true;
+        };
+        if block_pos.index == 0 {
+            return true;
+        }
+        let pred = Event::new(block_pos.thread, block_pos.index - 1);
+        let Some(&p) = self.vars.ev.get(&pred) else {
+            return self.feasible;
+        };
+        let Some(cases) = waited_inbox_cases(
+            &self.vars,
+            self.g,
+            self.cfg,
+            e,
+            p,
+            block_pos,
+            &[send],
+            WaitTime::Infinite,
+        ) else {
+            return true;
+        };
+        self.probe_exact_with_set(&[], &cases)
     }
 
     /// Feasibility of the GC refusal branch for the blocking receive
@@ -1638,6 +1686,34 @@ impl<'g> TimedDcs<'g> {
         let mut extra: Vec<Edge> = vec![(e, p, 0), (p, e, 0)];
         push_refusal_edges(&mut extra, &self.vars, self.g, self.cfg, pos, anchor, loc, e);
         self.probe_exact(&extra)
+    }
+
+    /// Window-only eligibility of one candidate member `s` of a k >= 2
+    /// inbox read at `inbox`: some timeline lets the floating read
+    /// complete while `s` is stored (immediately at t0, or at the
+    /// arrival of `s`). No exclusion dodges are folded in: the batch a
+    /// member ends up in is judged by `probe_inbox_rfs` on the full
+    /// subset, so this test only removes members no batch can contain.
+    pub(crate) fn probe_inbox_member(&mut self, inbox: Event, s: Event) -> bool {
+        let Some(&e) = self.vars.ev.get(&inbox) else {
+            return true;
+        };
+        let pred = Event::new(inbox.thread, inbox.index - 1);
+        let Some(&p) = self.vars.ev.get(&pred) else {
+            return self.feasible;
+        };
+        let ilab = self.g.inbox_label(inbox).unwrap();
+        let Some(wait) = ilab.wait() else {
+            let extra: [Edge; 2] = [(p, e, 0), (e, p, 0)];
+            return self.probe_exact(&extra);
+        };
+        let Some(cases) =
+            waited_inbox_cases(&self.vars, self.g, self.cfg, e, p, inbox, &[s], wait)
+        else {
+            debug_assert!(false, "member not in scope");
+            return true;
+        };
+        self.probe_exact_with_set(&[], &cases)
     }
 
     /// Exact feasibility of the floating inbox read at `inbox`
@@ -1724,8 +1800,81 @@ impl<'g> TimedDcs<'g> {
                 exclusion_options(i.checked_sub(1), &windows, at_capacity, e, sd, x)
             })
         };
+        // GC skip disjunctions for the older siblings this batch leaves
+        // behind (parity with push_inbox_skip_cases on committed reads).
+        let skips = inbox_skip_sets(
+            &self.vars,
+            self.g,
+            self.cfg,
+            e,
+            p,
+            inbox,
+            ilab.recv_loc(),
+            ilab.comm(),
+            ilab.min(),
+            subset,
+        );
         prof::add(&prof::IRF_CASES, cases.len() as u64);
-        self.probe_exact_with_set(&[], &cases)
+        self.probe_cases_with_skips(cases, &skips)
+    }
+
+    /// Probe `cases` (one read-case disjunction) under the GC skip
+    /// disjunctions `skips` (one two-way set per skipped send). Small
+    /// products are folded into a single alternative list; beyond the
+    /// fold cap the skip choices are enumerated one combination at a
+    /// time, so the verdict stays exact either way. Exactness matters:
+    /// an offer probe looser than the committed encoding lets a graph
+    /// with no timeline be counted (the completion gate is vouched off
+    /// by a feasible inbox-visit build, see must.rs).
+    fn probe_cases_with_skips(&mut self, cases: Vec<Vec<Edge>>, skips: &[Vec<Vec<Edge>>]) -> bool {
+        if skips.is_empty() {
+            return self.probe_exact_with_set(&[], &cases);
+        }
+        let product = skips
+            .iter()
+            .try_fold(cases.len(), |acc, s| acc.checked_mul(s.len()));
+        if let Some(n) = product.filter(|&n| n <= EXCLUSION_FOLD_CAP) {
+            let mut folded = cases;
+            for s in skips {
+                let mut next = Vec::with_capacity(folded.len() * s.len());
+                for c in &folded {
+                    for alt in s {
+                        let mut c2 = c.clone();
+                        c2.extend_from_slice(alt);
+                        next.push(c2);
+                    }
+                }
+                folded = next;
+            }
+            debug_assert_eq!(folded.len(), n);
+            return self.probe_exact_with_set(&[], &folded);
+        }
+        // Exact fallback: one alternative per skip set, odometer order.
+        let mut choice = vec![0usize; skips.len()];
+        loop {
+            let extra: Vec<Edge> = choice
+                .iter()
+                .enumerate()
+                .flat_map(|(i, &c)| skips[i][c].iter().copied())
+                .collect();
+            if self.probe_exact_with_set(&extra, &cases) {
+                return true;
+            }
+            let mut i = skips.len();
+            loop {
+                if i == 0 {
+                    return false;
+                }
+                i -= 1;
+                if choice[i] + 1 < skips[i].len() {
+                    choice[i] += 1;
+                    for c in choice.iter_mut().skip(i + 1) {
+                        *c = 0;
+                    }
+                    break;
+                }
+            }
+        }
     }
 
     /// Exact feasibility of the floating finite-wait inbox at `inbox`
@@ -2043,8 +2192,21 @@ fn inbox_exclusions(
         let Some(&av) = vars.arr.get(&bpos) else {
             continue; // outside the view: cannot be stored in this cut
         };
-        if b.reader().is_some_and(|r| vars.ev.contains_key(&r)) {
-            continue; // consumed in this view: no longer stored
+        // Consumed in this view: no longer stored. A send read by the
+        // probed position ITSELF is not exempt: the probe hypothesises
+        // that `pos` reads `subset`, so its current reads outside the
+        // subset are unread and stored in that world (mirrors
+        // push_refusal_edges; matters for tie-break and revisit probes,
+        // where the floating inbox carries committed reads). A consumer
+        // that FOLLOWS the read (porf-after `pos`, present only in the
+        // full-graph completion encoding) leaves the send stored at the
+        // read instant, so it does not exempt: only a reader that
+        // precedes the read took the message away before it.
+        if b
+            .reader()
+            .is_some_and(|r| r != pos && vars.ev.contains_key(&r) && g.in_porf(r, pos))
+        {
+            continue;
         }
         if b.monitor_readers()
             .iter()
@@ -2063,6 +2225,7 @@ fn inbox_exclusions(
                         && s2.reader().is_some_and(|r2| {
                             r2 != pos
                                 && vars.ev.contains_key(&r2)
+                                && g.in_porf(r2, pos)
                                 // Full parity with send_overtaken_in_view:
                                 // the skipper's reader must be one that
                                 // COULD have read b (channel + predicate),
@@ -2187,6 +2350,7 @@ fn push_recv_skip_cases(
     pos: Event,
     rlab: &RecvMsg,
     source: Event,
+    floating: Option<Event>,
 ) {
     if rlab.comm() == crate::loc::CommunicationModel::NoOrder
         || rlab.comm() == crate::loc::CommunicationModel::TotalOrder
@@ -2214,7 +2378,9 @@ fn push_recv_skip_cases(
         if b.is_cancelled_wrt(rlab.as_event_label()) {
             continue;
         }
-        if b.reader().is_some_and(|r| view.contains(r)) {
+        // The floating event's reads are hypothetical (the probe decides
+        // them), so they never count as consumption here.
+        if b.reader().is_some_and(|r| Some(r) != floating && view.contains(r)) {
             continue; // read in this view: not skipped
         }
         if b
@@ -2241,6 +2407,7 @@ fn push_recv_skip_cases(
                 s2.sb().contains(bpos)
                     && s2.reader().is_some_and(|r2| {
                         r2 != pos
+                            && Some(r2) != floating
                             && view.contains(r2)
                             && g.in_porf(r2, pos)
                             && match g.label(r2) {
@@ -2275,8 +2442,14 @@ fn push_recv_skip_cases(
 /// Inbox sibling of `push_recv_skip_cases`: a committed inbox batch
 /// that excluded an sb-earlier unread matching send b (GC skip) must
 /// not have been able to see b at its read in the witness timeline.
-/// Same dodge disjunction and guards as the recv version; b qualifies
-/// when it is ordered before SOME included member.
+/// Same guards as the recv version; b qualifies when it is ordered
+/// before SOME included member. The dead alternative is anchored at
+/// the WAIT START for a batch of one (a waiting reader takes a
+/// readable front the instant it appears, the recv rule) and at the
+/// READ for `min >= 2` (a single readable sibling completes nothing,
+/// so it may expire mid-wait and be left behind, exactly like a
+/// non-sibling exclusion: `exclusion_options` alternative B, with the
+/// same documented co-storage slack). `inbox_skip_sets` mirrors both.
 #[allow(clippy::too_many_arguments)]
 fn push_inbox_skip_cases(
     case_sets: &mut Vec<Vec<Vec<Edge>>>,
@@ -2288,6 +2461,7 @@ fn push_inbox_skip_cases(
     pos: Event,
     ilab: &crate::event_label::Inbox,
     subset: &[Event],
+    floating: Option<Event>,
 ) {
     if ilab.comm() == crate::loc::CommunicationModel::NoOrder
         || ilab.comm() == crate::loc::CommunicationModel::TotalOrder
@@ -2313,7 +2487,9 @@ fn push_inbox_skip_cases(
         if !member_sbs.iter().any(|sb| sb.contains(bpos)) {
             continue; // not ordered before any included member
         }
-        if b.reader().is_some_and(|r| view.contains(r)) {
+        // The floating event's reads are hypothetical (the probe decides
+        // them), so they never count as consumption here.
+        if b.reader().is_some_and(|r| Some(r) != floating && view.contains(r)) {
             continue;
         }
         if b
@@ -2335,6 +2511,7 @@ fn push_inbox_skip_cases(
                 s2.sb().contains(bpos)
                     && s2.reader().is_some_and(|r2| {
                         r2 != pos
+                            && Some(r2) != floating
                             && view.contains(r2)
                             && g.in_porf(r2, pos)
                             && match g.label(r2) {
@@ -2348,15 +2525,113 @@ fn push_inbox_skip_cases(
             continue;
         }
         // See push_recv_skip_cases: no wide-window shortcut under FIFO
-        // coupling, and the dead dodge anchors at the WAIT START.
+        // coupling. The dead dodge anchors at the wait start for a
+        // batch of one and at the read for min >= 2 (doc above).
         let Some(&av) = vars.arr.get(&bpos) else {
             continue;
         };
         case_sets.push(vec![
             vec![(av, e, -1)],
-            vec![(p, av, -(sd + 1))],
+            inbox_dead_alt(ilab.min(), e, p, av, sd),
         ]);
     }
+}
+
+/// The "b dead" alternative of an inbox skip disjunction: before the
+/// wait began (`t_p`) for a batch of one, before the read (`t_e`) for
+/// `min >= 2`.
+fn inbox_dead_alt(min: usize, e: u32, p: u32, av: u32, sd: i128) -> Vec<Edge> {
+    if min >= 2 {
+        vec![(e, av, -(sd + 1))]
+    } else {
+        vec![(p, av, -(sd + 1))]
+    }
+}
+
+/// Probe-side twin of `push_inbox_skip_cases` for a HYPOTHESISED batch
+/// of the floating read at `pos` (an inbox visit, a tie-break or
+/// revisit judgement on a cut view, or an inbox-shaped block's wake
+/// test): every in-scope unread matching send `b` that is
+/// delivery-ordered before some member and left out of `subset` is a
+/// GC skip, legal only where `b` arrives strictly after the read or is
+/// fully dead before the wait began. Returned as one two-way
+/// disjunction per skipped send for the caller to fold into its read
+/// cases. Scope is the oracle's variable set (`vars`), the probe-time
+/// counterpart of the committed emitter's view; reads by `pos` itself
+/// are hypothetical and never count as consumption, and a skipper that
+/// already evicted `b` (first-skipper discipline) exempts it.
+#[allow(clippy::too_many_arguments)]
+fn inbox_skip_sets(
+    vars: &ScopeVars,
+    g: &ExecutionGraph,
+    cfg: &TimedConfig,
+    e: u32,
+    p: u32,
+    pos: Event,
+    loc: &crate::loc::RecvLoc,
+    comm: crate::loc::CommunicationModel,
+    min: usize,
+    subset: &[Event],
+) -> Vec<Vec<Vec<Edge>>> {
+    let mut out: Vec<Vec<Vec<Edge>>> = Vec::new();
+    if comm == crate::loc::CommunicationModel::NoOrder
+        || comm == crate::loc::CommunicationModel::TotalOrder
+    {
+        return out;
+    }
+    let member_sbs: Vec<_> = subset
+        .iter()
+        .filter_map(|&m| g.send_label(m).map(|sl| sl.sb()))
+        .collect();
+    let sd = i128::from(cfg.sd_for(pos.thread));
+    for b in g.matching_stores(loc) {
+        let bpos = b.pos();
+        if subset.contains(&bpos) {
+            continue;
+        }
+        let Some(&av) = vars.arr.get(&bpos) else {
+            continue; // outside the scope: not stored in this cut
+        };
+        if !member_sbs.iter().any(|sb| sb.contains(bpos)) {
+            continue; // not ordered before any included member
+        }
+        if b.reader().is_some_and(|r| r != pos && vars.ev.contains_key(&r)) {
+            continue; // consumed in scope: not skipped
+        }
+        if b
+            .monitor_readers()
+            .iter()
+            .any(|&mr| mr.thread == pos.thread && vars.ev.contains_key(&mr))
+        {
+            continue;
+        }
+        let earlier_skipper = g.get_thr(&bpos.thread).labels[(bpos.index as usize + 1)..]
+            .iter()
+            .any(|lab2| {
+                let LabelEnum::SendMsg(s2) = lab2 else {
+                    return false;
+                };
+                s2.sb().contains(bpos)
+                    && s2.reader().is_some_and(|r2| {
+                        r2 != pos
+                            && vars.ev.contains_key(&r2)
+                            && g.in_porf(r2, pos)
+                            && match g.label(r2) {
+                                LabelEnum::RecvMsg(rl) => rl.matches(b),
+                                LabelEnum::Inbox(il) => il.matches(b),
+                                _ => false,
+                            }
+                    })
+            });
+        if earlier_skipper {
+            continue;
+        }
+        out.push(vec![
+            vec![(av, e, -1)], // read strictly before b arrives
+            inbox_dead_alt(min, e, p, av, sd),
+        ]);
+    }
+    out
 }
 
 /// TEMPORARY profiling counters, env-gated (TF_DCS_PROF=1); dumped at

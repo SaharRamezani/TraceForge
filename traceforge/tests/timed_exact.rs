@@ -717,6 +717,21 @@ fn inbox_backward_revisits_coexist_with_exact() {
             traceforge::send_msg(c, 3u32); // the plain recv's message
         },
     );
+    // With L = 0, U = 1, sd = 0 every read is knife-edge (a message is
+    // readable only exactly at its arrival) and the finite-wait timeout
+    // branch is explorable by design. Three classes: inbox {1} with the
+    // receive taking 2 or timing out, and the inbox timeout with the
+    // receive timing out. The inbox never reads the sender's second or
+    // third message: the first arrives by time 1 and a waiting inbox
+    // takes a stored front the instant it becomes readable, so a batch
+    // holding the second message would need the first dead before the
+    // wait began (Definition A.4(b) of the source algorithm, FIFO
+    // closure of a batch). Between the pool correction and the
+    // probe-side skip disjunctions this reported (5, 0): the two extra
+    // classes read the second or third message with the first alive, a
+    // batch the committed encoding refuses but the offer probe did not,
+    // and the completion-time gate had been vouched off by the inbox
+    // visit.
     assert_eq!((stats.execs, stats.block), (3, 0));
 }
 

@@ -1,0 +1,93 @@
+Printing exec graph
+thread "main"[tid=t0]:
+	(t0, 0): BEGIN
+	(t0, 1): TCREATE(t1)
+	(t0, 2): TCREATE(t2)
+	(t0, 3): TCREATE(t3)
+	(t0, 4): TCREATE(t4)
+	(t0, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Init { clients: [ThreadId { opaque_id: 3 }, ThreadId { opaque_id: 4 }] }, type_name: "lease_timed::SMsg" })
+	(t0, 6): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Init { service: ThreadId { opaque_id: 2 }, storage: ThreadId { opaque_id: 1 } }, type_name: "lease_timed::CMsg" })
+	(t0, 7): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Init { service: ThreadId { opaque_id: 2 }, storage: ThreadId { opaque_id: 1 } }, type_name: "lease_timed::CMsg" })
+	(t0, 8): BLK Join(ThreadId { opaque_id: 3 })
+thread t1:
+	(t1, 0): BEGIN
+	(t1, 1): RECV W_r=∞() [(t4, 5)]
+	(t1, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: WriteAck, type_name: "lease_timed::CMsg" })
+	(t1, 3): RECV W_r=∞() [(t3, 6)]
+	(t1, 4): BLK Assert
+thread t2:
+	(t2, 0): BEGIN
+	(t2, 1): RECV() [(t0, 5)]
+	(t2, 2): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: RoundStart { round: 0 }, type_name: "lease_timed::CMsg" })
+	(t2, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: RoundStart { round: 0 }, type_name: "lease_timed::CMsg" })
+	(t2, 4): RECV W_r=∞() [(t3, 3)]
+	(t2, 5): RECV W_r=∞() [(t4, 3)]
+	(t2, 6): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 3 }))), Val { val: Grant { token: 1 }, type_name: "lease_timed::CMsg" })
+	(t2, 7): RECV W_r=10() [TIMEOUT]
+	(t2, 8): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 4 }))), Val { val: Grant { token: 2 }, type_name: "lease_timed::CMsg" })
+	(t2, 9): RECV W_r=10() [TIMEOUT]
+	(t2, 10): END
+thread t3:
+	(t3, 0): BEGIN
+	(t3, 1): RECV() [(t0, 6)]
+	(t3, 2): RECV W_r=∞() [(t2, 2)]
+	(t3, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Acquire { client: ThreadId { opaque_id: 3 }, round: 0 }, type_name: "lease_timed::SMsg" })
+	(t3, 4): RECV W_r=∞() [(t2, 6)]
+	(t3, 5): SLEEP(10)
+	(t3, 6): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: WMsg { token: 1, writer: ThreadId { opaque_id: 3 } }, type_name: "lease_timed::WMsg" })
+	(t3, 7): BLK Value W_r=∞(RecvLoc { locs: Some([Loc(Thread(ThreadId { opaque_id: 3 }))]), tag: Some(<tag_predicate>) })
+thread t4:
+	(t4, 0): BEGIN
+	(t4, 1): RECV() [(t0, 7)]
+	(t4, 2): RECV W_r=∞() [(t2, 3)]
+	(t4, 3): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Acquire { client: ThreadId { opaque_id: 4 }, round: 0 }, type_name: "lease_timed::SMsg" })
+	(t4, 4): RECV W_r=∞() [(t2, 8)]
+	(t4, 5): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 1 }))), Val { val: WMsg { token: 2, writer: ThreadId { opaque_id: 4 } }, type_name: "lease_timed::WMsg" })
+	(t4, 6): RECV W_r=∞() [(t1, 2)]
+	(t4, 7): SEND(TSome(Loc(Thread(ThreadId { opaque_id: 2 }))), Val { val: Release { token: 2 }, type_name: "lease_timed::SMsg" })
+	(t4, 8): END
+
+Certified witness timeline (event @ time):
+  (t0, 0) @ 0
+  (t0, 1) @ 0
+  (t0, 2) @ 0
+  (t0, 3) @ 0
+  (t0, 4) @ 0
+  (t0, 5) @ 0
+  (t0, 6) @ 0
+  (t0, 7) @ 0
+  (t1, 0) @ 0
+  (t1, 1) @ 18
+  (t1, 2) @ 18
+  (t1, 3) @ 18
+  (t1, 4) @ 18
+  (t2, 0) @ 0
+  (t2, 1) @ 0
+  (t2, 2) @ 0
+  (t2, 3) @ 0
+  (t2, 4) @ 4
+  (t2, 5) @ 4
+  (t2, 6) @ 4
+  (t2, 7) @ 14
+  (t2, 8) @ 14
+  (t3, 0) @ 0
+  (t3, 1) @ 0
+  (t3, 2) @ 2
+  (t3, 3) @ 2
+  (t3, 4) @ 6
+  (t3, 5) @ 16
+  (t3, 6) @ 16
+  (t4, 0) @ 0
+  (t4, 1) @ 0
+  (t4, 2) @ 2
+  (t4, 3) @ 2
+  (t4, 4) @ 16
+  (t4, 5) @ 16
+
+Random schedule seed: 8627437642380643222.
+
+thread 'main' (982713) panicked at traceforge/src/must.rs:1584:13:
+assertion failed (certified timed counterexample; graph and witness above)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Command exited with non-zero status 101
+TFRUSAGE user=0.00 sys=0.00 maxrss_kb=3988

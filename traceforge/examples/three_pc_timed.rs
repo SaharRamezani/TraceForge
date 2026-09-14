@@ -268,8 +268,23 @@ fn participant(b: Bounds, crashes: bool, rounds: u32) {
 // Verifier setup
 // =====================================================================
 
+/// Exploration strategy chosen on the command line (`--parallel`):
+/// `none` (single-threaded, the default), `shared` (the shared work-queue
+/// pool, count-identical to sequential exploration; pool size follows
+/// MUST_PARALLEL_WORKERS) or `partitioned`.
+static PARALLEL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+fn apply_parallel(builder: traceforge::ConfigBuilder) -> traceforge::ConfigBuilder {
+    match PARALLEL.get().map(|s| s.as_str()).unwrap_or("none") {
+        "none" => builder,
+        "shared" => builder.with_parallel(true),
+        "partitioned" => builder.with_partitioned_parallelization(true),
+        other => panic!("invalid --parallel: {other} (expected none|shared|partitioned)"),
+    }
+}
+
 fn build_config(mode: Mode, b: Bounds) -> Config {
-    let builder = Config::builder().with_progress_report(usize::MAX);
+    let builder = apply_parallel(Config::builder().with_progress_report(usize::MAX));
     match mode {
         Mode::Baseline => builder.build(),
         Mode::Timed => builder.with_timed(b.l, b.u, b.sd).build(),
@@ -366,8 +381,9 @@ fn print_n_sweep(u: u64, w_ratio: u64, rounds: u32, crashes: bool, rows: &[(u32,
 // CLI
 // =====================================================================
 
-fn parse_args() -> (String, u32, u64, u64, u32, bool, f64, f64) {
+fn parse_args() -> (String, u32, u64, u64, u32, bool, f64, f64, String) {
     let mut mode = String::from("compare");
+    let mut parallel = String::from("none");
     let mut num_ps = DEFAULT_PARTICIPANTS;
     let mut u = DEFAULT_U;
     let mut w_ratio = DEFAULT_W_RATIO;
@@ -386,8 +402,9 @@ fn parse_args() -> (String, u32, u64, u64, u32, bool, f64, f64) {
             "--l-ratio" => l_ratio = args.next().expect("--l-ratio value").parse().expect("f64"),
             "--sd-ratio" => sd_ratio = args.next().expect("--sd-ratio value").parse().expect("f64"),
             "--crashes" => crashes = true,
+            "--parallel" => parallel = args.next().expect("--parallel value"),
             "--help" | "-h" => {
-                eprintln!("Usage: three_pc_timed [--mode MODE] [--participants N] [--u U] [--w-ratio R] [--rounds R] [--l-ratio LR] [--sd-ratio SR] [--crashes]\n\
+                eprintln!("Usage: three_pc_timed [--mode MODE] [--participants N] [--u U] [--w-ratio R] [--rounds R] [--l-ratio LR] [--sd-ratio SR] [--crashes] [--parallel none|shared|partitioned]\n\
                           Modes: baseline | timed | compare | sweep | n-sweep\n\
                           Defaults: U=1, W/U=2 (Skeen), N=3, R=1, L/U=0, sd/U=0.");
                 std::process::exit(0);
@@ -395,11 +412,12 @@ fn parse_args() -> (String, u32, u64, u64, u32, bool, f64, f64) {
             other => panic!("unknown argument: {other}"),
         }
     }
-    (mode, num_ps, u, w_ratio, rounds, crashes, l_ratio, sd_ratio)
+    (mode, num_ps, u, w_ratio, rounds, crashes, l_ratio, sd_ratio, parallel)
 }
 
 fn main() {
-    let (mode_str, num_ps, u, w_ratio, rounds, crashes, l_ratio, sd_ratio) = parse_args();
+    let (mode_str, num_ps, u, w_ratio, rounds, crashes, l_ratio, sd_ratio, parallel) = parse_args();
+    PARALLEL.set(parallel).expect("PARALLEL set once");
     assert!(num_ps >= 1);
     assert!(rounds >= 1);
     // L and sd are derived from dimensionless ratios over U (network-parameters §2).

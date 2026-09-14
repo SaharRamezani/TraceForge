@@ -261,3 +261,22 @@ inbox_unique_ids_test!(unique_ids_6_inboxes_3_senders, 6, 3);
 inbox_unique_ids_test!(unique_ids_6_inboxes_4_senders, 6, 4);
 inbox_unique_ids_test!(unique_ids_6_inboxes_5_senders, 6, 5);
 inbox_unique_ids_test!(unique_ids_6_inboxes_6_senders, 6, 6);
+// The inbox is defined for unordered, FIFO and causal delivery only; under
+// mailbox (total-order) delivery the constructor refuses up front instead
+// of failing later in the mailbox coherence check.
+#[test]
+#[should_panic(expected = "mailbox (total-order) delivery is not supported for inboxes")]
+fn inbox_refuses_mailbox_delivery() {
+    let _ = traceforge::verify(
+        traceforge::Config::builder()
+            .with_cons_type(traceforge::ConsType::Mailbox)
+            .build(),
+        || {
+            let c = thread::spawn(|| {
+                let _ = traceforge::inbox_with_bounds(1, Some(1));
+            });
+            let cid = c.thread().id();
+            traceforge::send_msg(cid, Msg { id: 1 });
+        },
+    );
+}

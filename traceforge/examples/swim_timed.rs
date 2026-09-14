@@ -490,8 +490,31 @@ fn bystander(b: Bounds, main_tid: ThreadId) {
 // Verifier setup
 // =====================================================================
 
-fn build_config(mode: Mode, b: Bounds, dot_out: Option<&str>) -> Config {
-    let mut builder = Config::builder().with_progress_report(usize::MAX);
+/// Exploration strategy chosen on the command line (`--parallel`):
+/// `none` (single-threaded, the default; keeps the exact exit-code
+/// semantics of an aborting assertion), `shared` (the shared work-queue
+/// pool, count-identical to sequential exploration; pool size follows
+/// MUST_PARALLEL_WORKERS) or `partitioned`.
+static PARALLEL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+fn apply_parallel(builder: traceforge::ConfigBuilder) -> traceforge::ConfigBuilder {
+    match PARALLEL.get().map(|s| s.as_str()).unwrap_or("none") {
+        "none" => builder,
+        "shared" => builder.with_parallel(true),
+        "partitioned" => builder.with_partitioned_parallelization(true),
+        other => cli_bail(&format!("invalid --parallel: {other} (expected none|shared|partitioned)")),
+    }
+}
+
+fn build_config(mode: Mode, b: Bounds, dot_out: Option<&str>, keep_going: bool) -> Config {
+    let mut builder = apply_parallel(Config::builder().with_progress_report(usize::MAX));
+    if keep_going {
+        // Explore the whole state space even after a violation, so the
+        // untimed baseline (which always FIREs on this benchmark) yields
+        // a complete execution count comparable with the timed run; the
+        // number of false positives is then `dead=` (= violations=).
+        builder = builder.with_keep_going_after_error(true);
+    }
     // Debug/visualization aid: dump the execution graph (the
     // counterexample's causal prefix on a FIRE) as Graphviz dot; in
     // timed mode every node carries its tau interval. See viz_out/.
@@ -504,8 +527,8 @@ fn build_config(mode: Mode, b: Bounds, dot_out: Option<&str>) -> Config {
     }
 }
 
-fn run(mode: Mode, nodes: u32, b: Bounds, rounds: u32, dot_out: Option<&str>) -> (Stats, Duration) {
-    let cfg = build_config(mode, b, dot_out);
+fn run(mode: Mode, nodes: u32, b: Bounds, rounds: u32, dot_out: Option<&str>, keep_going: bool) -> (Stats, Duration) {
+    let cfg = build_config(mode, b, dot_out, keep_going);
     ACKS_IN_TIME.store(0, Ordering::Relaxed);
     SUSPECTS_RAISED.store(0, Ordering::Relaxed);
     REFUTED_IN_TIME.store(0, Ordering::Relaxed);
@@ -588,7 +611,7 @@ fn print_one(label: &str, nodes: u32, b: Bounds, rounds: u32, stats: &Stats, dur
     println!(
         "{label:<10} N={nodes} R={rounds}  L={l} U={u} Wp={wp} Ws={ws} sd={sd}  execs={execs:<6} \
          blocked={block:<6} acks={acks:<6} suspects={suspects:<6} refuted={refuted:<6} \
-         dead={dead:<6} time={dur:?}",
+         dead={dead:<6} violations={dead:<6} time={dur:?}",
         l = b.l, u = b.u, wp = b.w_probe, ws = b.w_suspect, sd = b.sd,
         execs = stats.execs, block = stats.block,
         acks = c.acks, suspects = c.suspects, refuted = c.refuted, dead = c.dead, dur = dur,
@@ -635,6 +658,8 @@ struct Args {
     w_probe_ratio: f64,
     w_suspect_ratio: f64,
     dot_out: Option<String>,
+    keep_going: bool,
+    parallel: String,
 }
 
 fn next_val(args: &mut std::env::Args, flag: &str) -> String {
@@ -661,6 +686,8 @@ fn parse_args() -> Args {
         w_probe_ratio: DEFAULT_W_PROBE_RATIO,
         w_suspect_ratio: DEFAULT_W_SUSPECT_RATIO,
         dot_out: None,
+        keep_going: false,
+        parallel: String::from("none"),
     };
     let mut args = std::env::args();
     args.next();
@@ -680,11 +707,15 @@ fn parse_args() -> Args {
                     parse_num(next_val(&mut args, "--w-suspect-ratio"), "--w-suspect-ratio")
             }
             "--dot-out" => a.dot_out = Some(next_val(&mut args, "--dot-out")),
+            "--keep-going" => a.keep_going = true,
+            "--parallel" => a.parallel = next_val(&mut args, "--parallel"),
             "--help" | "-h" => {
                 eprintln!(
                     "Usage: swim_timed [--mode MODE] [--nodes N] [--rounds R] [--u U] \
                      [--l-ratio LR] [--sd-ratio SR] [--w-probe-ratio R] [--w-suspect-ratio R] \
-                     [--dot-out PATH]\n\
+                     [--dot-out PATH] [--keep-going] [--parallel none|shared|partitioned]\n\
+                     --keep-going explores the whole state space after a violation and reports \
+                     the number of false positives (violations=) instead of aborting.\n\
                      --dot-out dumps the execution graph (counterexample prefix on a FIRE) as \
                      Graphviz dot with tau intervals in timed mode.\n\
                      Modes: baseline | timed | compare (default timed; compare's baseline leg \
@@ -703,6 +734,7 @@ fn parse_args() -> Args {
 
 fn main() {
     let a = parse_args();
+    PARALLEL.set(a.parallel.clone()).expect("PARALLEL set once");
     if a.nodes < 2 {
         cli_bail("need at least 2 members (prober + target)");
     }
@@ -712,19 +744,19 @@ fn main() {
     let b = Bounds::from_ratios(a.u, a.l_ratio, a.sd_ratio, a.w_probe_ratio, a.w_suspect_ratio);
     match a.mode.as_str() {
         "baseline" => {
-            let (s, d) = run(Mode::Baseline, a.nodes, b, a.rounds, a.dot_out.as_deref());
+            let (s, d) = run(Mode::Baseline, a.nodes, b, a.rounds, a.dot_out.as_deref(), a.keep_going);
             print_one("baseline", a.nodes, b, a.rounds, &s, d, read_counts());
             warn_if_vacuous("baseline", s.execs, s.block, read_counts());
         }
         "timed" => {
-            let (s, d) = run(Mode::Timed, a.nodes, b, a.rounds, a.dot_out.as_deref());
+            let (s, d) = run(Mode::Timed, a.nodes, b, a.rounds, a.dot_out.as_deref(), a.keep_going);
             print_one("timed", a.nodes, b, a.rounds, &s, d, read_counts());
             warn_if_vacuous("timed", s.execs, s.block, read_counts());
         }
         "compare" => {
-            let baseline = run(Mode::Baseline, a.nodes, b, a.rounds, a.dot_out.as_deref());
+            let baseline = run(Mode::Baseline, a.nodes, b, a.rounds, a.dot_out.as_deref(), a.keep_going);
             let bc = read_counts();
-            let timed = run(Mode::Timed, a.nodes, b, a.rounds, a.dot_out.as_deref());
+            let timed = run(Mode::Timed, a.nodes, b, a.rounds, a.dot_out.as_deref(), a.keep_going);
             let tc = read_counts();
             let (b_vac, t_vac) = (
                 (baseline.0.execs, baseline.0.block),

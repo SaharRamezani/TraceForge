@@ -107,13 +107,19 @@ impl Stats {
 
 /// Available scheduling policies for TraceForge.
 ///
-/// For recv-only programs the policy does not affect which executions
-/// are explored. KNOWN ISSUE (audit 2026-08-09): for programs with
-/// INBOXES (timed or untimed), exploration is currently
-/// schedule-dependent: different policies can explore different sets
-/// of execution classes, and both can under-explore. Until fixed, do
-/// not rely on a single policy for exhaustiveness claims on
-/// inbox-heavy models.
+/// For receive-only programs the policy does not affect which
+/// executions are explored (fuzzed on 2026-09-14 over 400 generated
+/// programs, `tests/policy_invariance_recv.rs`: counted outcomes agree
+/// under LTR and Arbitrary for every seed, with one open exception, a
+/// program in which two classes are explored twice under some Arbitrary
+/// seeds, pinned there as a canary). Programs with INBOXES are
+/// different by construction: the inbox exploration assumes the
+/// left-to-right scheduler, as its source algorithm does, so
+/// exhaustiveness claims on inbox models hold for `LTR` only; under
+/// `Arbitrary` the explored class set may differ. As of 2026-09-14
+/// four of 400 generated inbox programs still diverge between the two
+/// policies (all timed), two of them because the blocked inbox is not
+/// woken under `LTR` itself; see `tests/policy_invariance.rs`.
 #[derive(PartialEq, Eq, Default, Clone, Copy, Serialize, Deserialize, Debug)]
 pub enum SchedulePolicy {
     /// left-to-right (default)
@@ -1625,6 +1631,18 @@ where
 
 /// Returns an order-insensitive collection of messages from the queue of at least `min` messages
 /// and at most `max` if `max` != None
+///
+/// # Read sets
+///
+/// The pool is every unread matching send. A returned set respects the
+/// channel's delivery order the way a run of plain receives would:
+/// under FIFO it holds a sender's later message only together with that
+/// sender's earlier unread ones, under causal delivery together with
+/// the causally earlier unread ones, and under an unordered channel any
+/// subset is a read set (Definition A.4(b) of the inbox DPOR paper: no
+/// unread matching send precedes a read one). The same rule applies to
+/// the tagged variants below. Mailbox (total-order) delivery is not
+/// supported for inboxes: the constructor panics under that model.
 pub fn inbox_with_bounds(min: usize, max: Option<usize>) -> Vec<Option<Val>> {
     inbox_internal(None, min, max)
 }
@@ -1654,8 +1672,21 @@ where
     inbox_internal(Some(PredicateType(Arc::new(f))), min, max)
 }
 
+/// The inbox reads a set of a thread's queue and is defined for unordered,
+/// FIFO and causal delivery. Under mailbox (total-order) delivery the set
+/// would have to be a prefix of an existential total order, a semantics
+/// the source algorithm does not fix and the checker does not implement;
+/// the primitive refuses the combination up front instead of failing in
+/// the post-hoc coherence check.
+const INBOX_MAILBOX_MSG: &str =
+    "inbox: mailbox (total-order) delivery is not supported for inboxes; use FIFO, causal or unordered delivery";
+
 fn inbox_internal(tag: Option<PredicateType>, min: usize, max: Option<usize>) -> Vec<Option<Val>> {
+    if let Some(m) = max {
+        assert!(m >= min, "inbox: min ({min}) exceeds max ({m})");
+    }
     let (loc, comm) = self_loc_comm();
+    assert!(comm != CommunicationModel::TotalOrder, "{}", INBOX_MAILBOX_MSG);
     let locs = iter::once(&loc).collect::<Vec<_>>();
     validate_locs(&locs);
 
@@ -1742,13 +1773,21 @@ const TIMED_INBOX_MIN_MSG: &str =
 /// - non-blocking (do not wait at all): use `wait = WaitTime::Finite(0)`;
 /// - receive one message with a timeout: use `inbox_timed(1, wait)`.
 ///
-/// # Single-sender batches (accepted semantics)
+/// # Single-sender batches
 ///
-/// The inbox member pool is the sb-minimal antichain of the channel: at
-/// most ONE message per (sender, predicate) is a candidate at a time.
-/// A `k >= 2` infinite-wait inbox facing a single sender therefore
-/// blocks forever by design; a second message from the same sender is
-/// not a distinct member. For `k >= 2` the "never completes" blocked
+/// The member pool is every unread matching send, so two messages of
+/// one sender may share a batch and a `k >= 2` inbox facing a single
+/// sender collects them as soon as `k` of its messages are available.
+/// A batch respects the channel's delivery order the way a run of plain
+/// receives would: under FIFO it holds a sender's later message only
+/// together with that sender's earlier unread ones (under causal
+/// delivery, together with the causally earlier unread ones), and it
+/// may leave such a message behind only when that message is dead: for
+/// `k = 1` dead before the wait began (a waiting reader takes a
+/// readable front the instant it appears), for `k >= 2` dead before
+/// the batch completed (one readable message completes nothing, so it
+/// may expire mid-wait, the same rule as for a message of another
+/// sender). The message is then discarded for good. For `k >= 2` the "never completes" blocked
 /// classes are enumerated conservatively (all-messages-dead refusal
 /// plus the no-feasible-subset block); disjoint-lifetime refusal worlds
 /// with a message still alive are not separately enumerated.
@@ -1763,7 +1802,7 @@ pub fn inbox_timed(k: usize, wait: WaitTime) -> Vec<Option<Val>> {
 
 /// Timed inbox with a single-tag predicate. Like [`inbox_timed`], `k` must be
 /// `>= 1`; passing `k == 0` panics. The single-sender batch semantics of
-/// [`inbox_timed`] apply here too (member pool = sb-minimal antichain).
+/// [`inbox_timed`] apply here too (member pool = the unread matching sends).
 pub fn inbox_with_tag_timed<F>(f: F, k: usize, wait: WaitTime) -> Vec<Option<Val>>
 where
     F: Fn(ThreadId, Option<u32>) -> bool + 'static + Send + Sync,
@@ -1795,6 +1834,7 @@ fn inbox_internal_timed(
     wait: WaitTime,
 ) -> Vec<Option<Val>> {
     let (loc, comm) = self_loc_comm();
+    assert!(comm != CommunicationModel::TotalOrder, "{}", INBOX_MAILBOX_MSG);
     let locs = iter::once(&loc).collect::<Vec<_>>();
     validate_locs(&locs);
 

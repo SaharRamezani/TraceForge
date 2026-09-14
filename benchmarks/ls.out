@@ -1,0 +1,1394 @@
+[v6:lease_swim] 695 cells, 1390 work items to run (0 rows already present), jobs=8, workers=8, timeout=None
+[1/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=6 pause=4 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[2/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=6 pause=4 fence=on      baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[3/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=8 pause=6 fence=on      baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[4/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=6 pause=3 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[5/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=10 pause=8 fence=on     baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[6/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=12 pause=10 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[7/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=8 pause=6 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[8/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=10 pause=8 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[9/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=8 pause=5 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[10/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=12 pause=10 fence=on    baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[11/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=6 pause=2 fence=on      baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[12/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=6 pause=2 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[13/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=6 pause=1 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[14/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=8 pause=4 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[15/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=10 pause=7 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[16/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=8 pause=4 fence=on      baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[17/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=8 pause=3 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[18/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=12 pause=9 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[19/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=10 pause=5 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[20/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=10 pause=6 fence=on     baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[21/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=10 pause=6 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[22/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=12 pause=8 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[23/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=12 pause=8 fence=on     baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[24/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=6 pause=6 fence=on      baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[25/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=6 pause=6 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[26/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=8 pause=7 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[27/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=8 pause=8 fence=on      baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[28/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=12 pause=7 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[29/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=8 pause=8 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[30/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=6 pause=5 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[31/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=10 pause=10 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[32/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=10 pause=9 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[33/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=12 pause=12 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[34/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=12 pause=12 fence=on    baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[35/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=10 pause=10 fence=on    baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[36/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=6 pause=4 fence=on      baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[37/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=6 pause=4 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[38/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=6 pause=3 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[39/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=12 pause=11 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[40/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=10 pause=8 fence=on     baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[41/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=8 pause=6 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[42/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=10 pause=8 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[43/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=12 pause=10 fence=on    baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[44/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=8 pause=5 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[45/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=12 pause=10 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[46/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=8 pause=6 fence=on      baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[47/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=6 pause=2 fence=on      baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[48/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=8 pause=4 fence=on      baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[49/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=12 pause=9 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[50/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=6 pause=1 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[51/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=10 pause=7 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[52/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=10 pause=6 fence=on     baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[53/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=6 pause=2 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[54/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=8 pause=3 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[55/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=10 pause=6 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[56/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=12 pause=8 fence=on     baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[57/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=12 pause=8 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[58/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=6 pause=0 fence=on      baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[59/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=8 pause=4 fence=off     baseline= FIRE/ viol= wall=0.1s cpu=0.0s
+[60/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=8 pause=2 fence=on      baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[61/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=10 pause=5 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[62/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=6 pause=0 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[63/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=12 pause=7 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[64/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=8 pause=2 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[65/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=8 pause=1 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[66/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=10 pause=4 fence=on     baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[67/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=10 pause=3 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[68/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=10 pause=4 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[69/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=12 pause=5 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[70/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=12 pause=6 fence=on     baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[71/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=6 pause=6 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[72/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=12 pause=6 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[73/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=6 pause=6 fence=on      baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[74/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=8 pause=8 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[75/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=6 pause=5 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[76/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=10 pause=10 fence=on    baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[77/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=8 pause=8 fence=on      baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[78/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=10 pause=10 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[79/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=10 pause=9 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[80/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=12 pause=11 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[81/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=8 pause=7 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[82/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=12 pause=12 fence=on    baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[83/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=6 pause=4 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[84/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=8 pause=6 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[85/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=12 pause=12 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[86/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=6 pause=4 fence=on      baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[87/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=6 pause=3 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[88/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=8 pause=6 fence=on      baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[89/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=10 pause=8 fence=on     baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[90/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=8 pause=5 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[91/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=12 pause=10 fence=on    baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[92/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=10 pause=8 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[93/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=12 pause=10 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[94/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=6 pause=3 fence=off        timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[95/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=6 pause=4 fence=on         timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[96/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=10 pause=7 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[97/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=12 pause=9 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[98/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=6 pause=4 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[99/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=8 pause=6 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[100/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=8 pause=5 fence=off        timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[101/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=8 pause=6 fence=on         timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[102/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=10 pause=8 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[103/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=10 pause=7 fence=off       timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[104/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=10 pause=8 fence=on        timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[105/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=12 pause=10 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[106/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=12 pause=10 fence=on       timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[107/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=6 pause=1 fence=off        timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[108/1390]                        lease_timed N2 R1 U=1 L=0 sd=0 TTL=12 pause=9 fence=off       timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[109/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=8 pause=3 fence=off        timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[110/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=6 pause=2 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[111/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=8 pause=4 fence=on         timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[112/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=10 pause=6 fence=on        timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[113/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=6 pause=2 fence=on         timed= hold/11 viol=0 wall=0.1s cpu=0.0s
+[114/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=12 pause=7 fence=off       timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[115/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=10 pause=5 fence=off       timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[116/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=8 pause=4 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[117/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=12 pause=8 fence=on        timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[118/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=6 pause=5 fence=off        timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[119/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=12 pause=8 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[120/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=6 pause=6 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[121/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=8 pause=8 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[122/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=8 pause=8 fence=on         timed= hold/6 viol=0 wall=0.0s cpu=0.0s
+[123/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=6 pause=6 fence=on         timed= hold/6 viol=0 wall=0.0s cpu=0.0s
+[124/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=10 pause=10 fence=on       timed= hold/6 viol=0 wall=0.0s cpu=0.0s
+[125/1390]                        lease_timed N2 R1 U=1 L=0 sd=1 TTL=10 pause=6 fence=off       timed= FIRE/ viol= wall=0.1s cpu=0.0s
+[126/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=8 pause=7 fence=off        timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[127/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=12 pause=12 fence=on       timed= hold/6 viol=0 wall=0.0s cpu=0.0s
+[128/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=10 pause=9 fence=off       timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[129/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=6 pause=3 fence=off        timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[130/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=12 pause=11 fence=off      timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[131/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=10 pause=10 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[132/1390]                        lease_timed N2 R1 U=1 L=1 sd=0 TTL=12 pause=12 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[133/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=8 pause=5 fence=off        timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[134/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=10 pause=8 fence=on        timed= hold/7 viol=0 wall=0.0s cpu=0.0s
+[135/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=6 pause=4 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[136/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=8 pause=6 fence=on         timed= hold/7 viol=0 wall=0.0s cpu=0.0s
+[137/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=6 pause=4 fence=on         timed= hold/7 viol=0 wall=0.0s cpu=0.0s
+[138/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=10 pause=7 fence=off       timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[139/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=12 pause=9 fence=off       timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[140/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=12 pause=10 fence=on       timed= hold/7 viol=0 wall=0.0s cpu=0.0s
+[141/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=10 pause=8 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[142/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=8 pause=6 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[143/1390]                        lease_timed N2 R1 U=1 L=1 sd=1 TTL=12 pause=10 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[144/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=8 pause=4 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[145/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=6 pause=1 fence=off        timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[146/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=6 pause=2 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[147/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=8 pause=3 fence=off        timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[148/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=6 pause=2 fence=on         timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[149/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=10 pause=5 fence=off       timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[150/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=8 pause=4 fence=on         timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[151/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=10 pause=6 fence=on        timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[152/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=12 pause=8 fence=on        timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[153/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=12 pause=8 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[154/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=12 pause=7 fence=off       timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[155/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=8 pause=1 fence=off        timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[156/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=6 pause=0 fence=on         timed= hold/14 viol=0 wall=0.0s cpu=0.0s
+[157/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=8 pause=2 fence=on         timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[158/1390]                        lease_timed N2 R1 U=2 L=0 sd=0 TTL=10 pause=6 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[159/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=10 pause=4 fence=on        timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[160/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=6 pause=0 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[161/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=10 pause=4 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[162/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=12 pause=5 fence=off       timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[163/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=10 pause=3 fence=off       timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[164/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=12 pause=6 fence=on        timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[165/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=6 pause=6 fence=on         timed= hold/3 viol=0 wall=0.0s cpu=0.0s
+[166/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=6 pause=5 fence=off        timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[167/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=6 pause=6 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[168/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=12 pause=6 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[169/1390]                        lease_timed N2 R1 U=2 L=0 sd=1 TTL=8 pause=2 fence=off        timed= FIRE/ viol= wall=0.1s cpu=0.0s
+[170/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=10 pause=9 fence=off       timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[171/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=10 pause=10 fence=on       timed= hold/6 viol=0 wall=0.0s cpu=0.0s
+[172/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=8 pause=8 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[173/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=8 pause=8 fence=on         timed= hold/6 viol=0 wall=0.0s cpu=0.0s
+[174/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=8 pause=7 fence=off        timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[175/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=10 pause=10 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[176/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=12 pause=11 fence=off      timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[177/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=8 pause=5 fence=off        timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[178/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=12 pause=12 fence=on       timed= hold/6 viol=0 wall=0.0s cpu=0.0s
+[179/1390]                        lease_timed N2 R1 U=2 L=2 sd=0 TTL=12 pause=12 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[180/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=6 pause=4 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[181/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=6 pause=4 fence=on         timed= hold/3 viol=0 wall=0.0s cpu=0.0s
+[182/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=6 pause=3 fence=off        timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[183/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=8 pause=6 fence=on         timed= hold/7 viol=0 wall=0.0s cpu=0.0s
+[184/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=10 pause=8 fence=on        timed= hold/7 viol=0 wall=0.0s cpu=0.0s
+[185/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=10 pause=7 fence=off       timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[186/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=10 pause=8 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[187/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=8 pause=6 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[188/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=12 pause=10 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[189/1390]                         swim_timed N3 R1 U=1 L=0 sd=0 Wp=1 Ws=2                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[190/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=12 pause=9 fence=off       timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[191/1390]                        lease_timed N2 R1 U=2 L=2 sd=1 TTL=12 pause=10 fence=on       timed= hold/7 viol=0 wall=0.0s cpu=0.0s
+[192/1390]                         swim_timed N3 R1 U=1 L=0 sd=0 Wp=1 Ws=3                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[193/1390]                         swim_timed N3 R1 U=1 L=1 sd=1 Wp=1 Ws=4                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[194/1390]                         swim_timed N3 R1 U=1 L=0 sd=1 Wp=1 Ws=5                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[195/1390]                         swim_timed N3 R1 U=1 L=1 sd=0 Wp=1 Ws=1                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[196/1390]                         swim_timed N3 R1 U=1 L=1 sd=1 Wp=1 Ws=3                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[197/1390]                         swim_timed N3 R1 U=1 L=1 sd=0 Wp=1 Ws=2                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[198/1390]                         swim_timed N3 R1 U=2 L=0 sd=0 Wp=2 Ws=4                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[199/1390]                         swim_timed N3 R1 U=1 L=0 sd=1 Wp=1 Ws=4                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[200/1390]                         swim_timed N3 R1 U=2 L=0 sd=1 Wp=2 Ws=6                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[201/1390]                         swim_timed N3 R1 U=2 L=2 sd=0 Wp=2 Ws=3                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[202/1390]                         swim_timed N3 R1 U=2 L=0 sd=1 Wp=2 Ws=7                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[203/1390]                         swim_timed N3 R1 U=2 L=0 sd=0 Wp=2 Ws=5                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[204/1390]                         swim_timed N3 R1 U=2 L=2 sd=1 Wp=2 Ws=4                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[205/1390]                         swim_timed N3 R1 U=2 L=2 sd=0 Wp=2 Ws=2                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[206/1390]                         swim_timed N3 R1 U=2 L=2 sd=1 Wp=2 Ws=5                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[207/1390]                         swim_timed N3 R1 U=4 L=3 sd=0 Wp=4 Ws=6                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[208/1390]                         swim_timed N3 R1 U=3 L=2 sd=0 Wp=3 Ws=5                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[209/1390]                         swim_timed N3 R1 U=1 L=0 sd=1 Wp=1 Ws=5                      timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[210/1390]                         swim_timed N3 R1 U=3 L=2 sd=0 Wp=3 Ws=6                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[211/1390]                         swim_timed N3 R1 U=1 L=0 sd=0 Wp=1 Ws=3                      timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[212/1390]                         swim_timed N3 R1 U=4 L=3 sd=0 Wp=4 Ws=7                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[213/1390]                         swim_timed N3 R1 U=1 L=1 sd=0 Wp=1 Ws=2                      timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[214/1390]                         swim_timed N3 R1 U=1 L=1 sd=1 Wp=1 Ws=4                      timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[215/1390]                         swim_timed N3 R1 U=1 L=1 sd=0 Wp=1 Ws=1                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[216/1390]                         swim_timed N3 R1 U=1 L=0 sd=1 Wp=1 Ws=4                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[217/1390]                         swim_timed N3 R1 U=2 L=0 sd=0 Wp=2 Ws=5                      timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[218/1390]                         swim_timed N3 R1 U=1 L=0 sd=0 Wp=1 Ws=2                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[219/1390]                         swim_timed N3 R1 U=1 L=1 sd=1 Wp=1 Ws=3                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[220/1390]                         swim_timed N3 R1 U=2 L=0 sd=1 Wp=2 Ws=7                      timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[221/1390]                         swim_timed N3 R1 U=2 L=2 sd=0 Wp=2 Ws=3                      timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[222/1390]                         swim_timed N3 R1 U=2 L=2 sd=1 Wp=2 Ws=5                      timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[223/1390]                         swim_timed N3 R1 U=2 L=0 sd=0 Wp=2 Ws=4                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[224/1390]                         swim_timed N3 R1 U=2 L=0 sd=1 Wp=2 Ws=6                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[225/1390]                         swim_timed N3 R1 U=4 L=3 sd=0 Wp=4 Ws=6                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[226/1390]                         swim_timed N3 R1 U=3 L=2 sd=0 Wp=3 Ws=6                      timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[227/1390]                         swim_timed N3 R1 U=2 L=2 sd=1 Wp=2 Ws=4                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[228/1390]                         swim_timed N3 R1 U=2 L=2 sd=0 Wp=2 Ws=2                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[229/1390]                         swim_timed N3 R1 U=3 L=2 sd=0 Wp=3 Ws=5                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[230/1390]                         swim_timed N3 R1 U=4 L=3 sd=0 Wp=4 Ws=7                      timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[231/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=6 pause=3 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[232/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=8 pause=6 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[233/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=6 pause=4 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[234/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=8 pause=6 fence=on      baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[235/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=6 pause=4 fence=on      baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[236/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=8 pause=5 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[237/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=10 pause=7 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[238/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=10 pause=8 fence=on     baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[239/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=12 pause=10 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[240/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=12 pause=9 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[241/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=12 pause=10 fence=on    baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[242/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=6 pause=2 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[243/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=10 pause=8 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[244/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=6 pause=2 fence=on      baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[245/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=8 pause=4 fence=on      baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[246/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=8 pause=3 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[247/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=8 pause=4 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[248/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=10 pause=5 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[249/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=6 pause=1 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[250/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=12 pause=8 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[251/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=10 pause=6 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[252/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=10 pause=6 fence=on     baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[253/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=12 pause=7 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[254/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=12 pause=8 fence=on     baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[255/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=8 pause=7 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[256/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=6 pause=6 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[257/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=6 pause=6 fence=on      baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[258/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=10 pause=9 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[259/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=8 pause=8 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[260/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=6 pause=5 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[261/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=10 pause=10 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[262/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=8 pause=8 fence=on      baseline= hold/144 viol=0 wall=0.1s cpu=0.0s
+[263/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=10 pause=10 fence=on    baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[264/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=12 pause=11 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[265/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=12 pause=12 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[266/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=6 pause=3 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[267/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=8 pause=6 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[268/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=12 pause=12 fence=on    baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[269/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=6 pause=4 fence=on      baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[270/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=8 pause=5 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[271/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=6 pause=4 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[272/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=10 pause=8 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[273/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=10 pause=7 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[274/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=10 pause=8 fence=on     baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[275/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=8 pause=6 fence=on      baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[276/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=12 pause=10 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[277/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=12 pause=10 fence=on    baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[278/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=6 pause=2 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[279/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=6 pause=2 fence=on      baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[280/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=8 pause=3 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[281/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=8 pause=4 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[282/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=6 pause=1 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[283/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=12 pause=9 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[284/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=10 pause=5 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[285/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=8 pause=4 fence=on      baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[286/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=12 pause=8 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[287/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=10 pause=6 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[288/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=12 pause=7 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[289/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=6 pause=0 fence=on      baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[290/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=12 pause=8 fence=on     baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[291/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=10 pause=6 fence=on     baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[292/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=8 pause=1 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[293/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=6 pause=0 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[294/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=8 pause=2 fence=on      baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[295/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=8 pause=2 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[296/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=12 pause=6 fence=on     baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[297/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=10 pause=4 fence=on     baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[298/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=10 pause=3 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[299/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=12 pause=6 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[300/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=10 pause=4 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[301/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=12 pause=5 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[302/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=6 pause=5 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[303/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=6 pause=6 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[304/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=6 pause=6 fence=on      baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[305/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=8 pause=7 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[306/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=8 pause=8 fence=on      baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[307/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=10 pause=9 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[308/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=12 pause=12 fence=on    baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[309/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=12 pause=11 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[310/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=10 pause=10 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[311/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=8 pause=8 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[312/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=6 pause=4 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[313/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=6 pause=3 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[314/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=12 pause=12 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[315/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=8 pause=6 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[316/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=6 pause=4 fence=on      baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[317/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=8 pause=5 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[318/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=8 pause=6 fence=on      baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[319/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=10 pause=7 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[320/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=10 pause=8 fence=on     baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[321/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=10 pause=10 fence=on    baseline= hold/144 viol=0 wall=0.1s cpu=0.0s
+[322/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=12 pause=9 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[323/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=10 pause=8 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[324/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=12 pause=10 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[325/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=12 pause=10 fence=on    baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[326/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=8 pause=6 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[327/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=6 pause=4 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[328/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=10 pause=8 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[329/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=12 pause=10 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[330/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=6 pause=3 fence=off        timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[331/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=8 pause=5 fence=off        timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[332/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=10 pause=7 fence=off       timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[333/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=6 pause=2 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[334/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=6 pause=4 fence=on         timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[335/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=12 pause=9 fence=off       timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[336/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=8 pause=4 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[337/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=8 pause=6 fence=on         timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[338/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=10 pause=6 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[339/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=10 pause=8 fence=on        timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[340/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=6 pause=1 fence=off        timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[341/1390]                        lease_timed N2 R2 U=1 L=0 sd=0 TTL=12 pause=10 fence=on       timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[342/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=12 pause=8 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[343/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=8 pause=3 fence=off        timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[344/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=6 pause=6 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[345/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=10 pause=5 fence=off       timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[346/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=6 pause=2 fence=on         timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[347/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=6 pause=5 fence=off        timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[348/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=8 pause=8 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[349/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=8 pause=4 fence=on         timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[350/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=12 pause=7 fence=off       timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[351/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=6 pause=6 fence=on         timed= hold/24 viol=0 wall=0.0s cpu=0.0s
+[352/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=8 pause=7 fence=off        timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[353/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=10 pause=10 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[354/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=10 pause=6 fence=on        timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[355/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=10 pause=9 fence=off       timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[356/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=8 pause=8 fence=on         timed= hold/24 viol=0 wall=0.0s cpu=0.0s
+[357/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=12 pause=11 fence=off      timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[358/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=10 pause=10 fence=on       timed= hold/24 viol=0 wall=0.0s cpu=0.0s
+[359/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=12 pause=12 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[360/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=6 pause=4 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[361/1390]                        lease_timed N2 R2 U=1 L=1 sd=0 TTL=12 pause=12 fence=on       timed= hold/24 viol=0 wall=0.0s cpu=0.0s
+[362/1390]                        lease_timed N2 R2 U=1 L=0 sd=1 TTL=12 pause=8 fence=on        timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[363/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=8 pause=6 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[364/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=6 pause=3 fence=off        timed= hold/16 viol=0 wall=0.0s cpu=0.0s
+[365/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=10 pause=8 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[366/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=8 pause=5 fence=off        timed= hold/16 viol=0 wall=0.0s cpu=0.0s
+[367/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=12 pause=10 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[368/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=6 pause=4 fence=on         timed= hold/49 viol=0 wall=0.1s cpu=0.1s
+[369/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=6 pause=2 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[370/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=10 pause=7 fence=off       timed= hold/16 viol=0 wall=0.0s cpu=0.0s
+[371/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=12 pause=9 fence=off       timed= hold/16 viol=0 wall=0.0s cpu=0.0s
+[372/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=8 pause=6 fence=on         timed= hold/49 viol=0 wall=0.1s cpu=0.1s
+[373/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=10 pause=8 fence=on        timed= hold/49 viol=0 wall=0.1s cpu=0.1s
+[374/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=8 pause=4 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[375/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=10 pause=6 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[376/1390]                        lease_timed N2 R2 U=1 L=1 sd=1 TTL=12 pause=10 fence=on       timed= hold/49 viol=0 wall=0.1s cpu=0.0s
+[377/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=6 pause=1 fence=off        timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[378/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=12 pause=8 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[379/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=8 pause=3 fence=off        timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[380/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=6 pause=0 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[381/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=10 pause=5 fence=off       timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[382/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=8 pause=2 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[383/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=6 pause=2 fence=on         timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[384/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=12 pause=7 fence=off       timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[385/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=8 pause=4 fence=on         timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[386/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=10 pause=4 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[387/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=10 pause=6 fence=on        timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[388/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=12 pause=6 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[389/1390]                        lease_timed N2 R2 U=2 L=0 sd=0 TTL=12 pause=8 fence=on        timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[390/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=8 pause=1 fence=off        timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[391/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=6 pause=6 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[392/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=10 pause=3 fence=off       timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[393/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=6 pause=5 fence=off        timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[394/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=8 pause=8 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[395/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=6 pause=6 fence=on         timed= hold/6 viol=0 wall=0.0s cpu=0.0s
+[396/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=8 pause=2 fence=on         timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[397/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=12 pause=5 fence=off       timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[398/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=6 pause=0 fence=on         timed= hold/196 viol=0 wall=0.1s cpu=0.1s
+[399/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=8 pause=7 fence=off        timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[400/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=10 pause=4 fence=on        timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[401/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=10 pause=10 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[402/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=10 pause=9 fence=off       timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[403/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=8 pause=8 fence=on         timed= hold/24 viol=0 wall=0.0s cpu=0.0s
+[404/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=12 pause=11 fence=off      timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[405/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=12 pause=12 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[406/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=10 pause=10 fence=on       timed= hold/24 viol=0 wall=0.0s cpu=0.0s
+[407/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=6 pause=4 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[408/1390]                        lease_timed N2 R2 U=2 L=0 sd=1 TTL=12 pause=6 fence=on        timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[409/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=6 pause=4 fence=on         timed= hold/6 viol=0 wall=0.0s cpu=0.0s
+[410/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=6 pause=3 fence=off        timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[411/1390]                        lease_timed N2 R2 U=2 L=2 sd=0 TTL=12 pause=12 fence=on       timed= hold/24 viol=0 wall=0.0s cpu=0.0s
+[412/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=8 pause=6 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[413/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=10 pause=8 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[414/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=8 pause=5 fence=off        timed= hold/16 viol=0 wall=0.0s cpu=0.0s
+[415/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=12 pause=10 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[416/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=10 pause=7 fence=off       timed= hold/16 viol=0 wall=0.0s cpu=0.0s
+[417/1390]                         swim_timed N3 R2 U=1 L=0 sd=0 Wp=1 Ws=2                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[418/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=8 pause=6 fence=on         timed= hold/35 viol=0 wall=0.1s cpu=0.0s
+[419/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=12 pause=9 fence=off       timed= hold/16 viol=0 wall=0.0s cpu=0.0s
+[420/1390]                         swim_timed N3 R2 U=1 L=0 sd=1 Wp=1 Ws=4                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[421/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=10 pause=8 fence=on        timed= hold/35 viol=0 wall=0.1s cpu=0.0s
+[422/1390]                         swim_timed N3 R2 U=1 L=0 sd=1 Wp=1 Ws=5                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[423/1390]                         swim_timed N3 R2 U=1 L=1 sd=0 Wp=1 Ws=1                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[424/1390]                         swim_timed N3 R2 U=1 L=0 sd=0 Wp=1 Ws=3                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[425/1390]                         swim_timed N3 R2 U=1 L=1 sd=0 Wp=1 Ws=2                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[426/1390]                         swim_timed N3 R2 U=1 L=1 sd=1 Wp=1 Ws=3                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[427/1390]                         swim_timed N3 R2 U=1 L=1 sd=1 Wp=1 Ws=4                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[428/1390]                        lease_timed N2 R2 U=2 L=2 sd=1 TTL=12 pause=10 fence=on       timed= hold/35 viol=0 wall=0.1s cpu=0.0s
+[429/1390]                         swim_timed N3 R2 U=2 L=0 sd=0 Wp=2 Ws=5                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[430/1390]                         swim_timed N3 R2 U=2 L=0 sd=1 Wp=2 Ws=6                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[431/1390]                         swim_timed N3 R2 U=2 L=0 sd=0 Wp=2 Ws=4                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[432/1390]                         swim_timed N3 R2 U=2 L=2 sd=1 Wp=2 Ws=4                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[433/1390]                         swim_timed N3 R2 U=2 L=0 sd=1 Wp=2 Ws=7                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[434/1390]                         swim_timed N3 R2 U=2 L=2 sd=0 Wp=2 Ws=2                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[435/1390]                         swim_timed N3 R2 U=1 L=0 sd=0 Wp=1 Ws=3                      timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[436/1390]                         swim_timed N3 R2 U=2 L=2 sd=0 Wp=2 Ws=3                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[437/1390]                         swim_timed N3 R2 U=1 L=1 sd=0 Wp=1 Ws=1                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[438/1390]                         swim_timed N3 R2 U=1 L=1 sd=0 Wp=1 Ws=2                      timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[439/1390]                         swim_timed N3 R2 U=1 L=0 sd=0 Wp=1 Ws=2                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[440/1390]                         swim_timed N3 R2 U=1 L=0 sd=1 Wp=1 Ws=5                      timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[441/1390]                         swim_timed N3 R2 U=1 L=0 sd=1 Wp=1 Ws=4                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[442/1390]                         swim_timed N3 R2 U=1 L=1 sd=1 Wp=1 Ws=4                      timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[443/1390]                         swim_timed N3 R2 U=2 L=0 sd=0 Wp=2 Ws=4                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[444/1390]                         swim_timed N3 R2 U=2 L=2 sd=1 Wp=2 Ws=5                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[445/1390]                         swim_timed N3 R2 U=1 L=1 sd=1 Wp=1 Ws=3                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[446/1390]                         swim_timed N3 R2 U=2 L=2 sd=1 Wp=2 Ws=5                      timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[447/1390]                         swim_timed N3 R2 U=2 L=0 sd=0 Wp=2 Ws=5                      timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[448/1390]                         swim_timed N3 R2 U=2 L=2 sd=0 Wp=2 Ws=2                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[449/1390]                         swim_timed N3 R2 U=2 L=0 sd=1 Wp=2 Ws=7                      timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[450/1390]                         swim_timed N3 R2 U=2 L=2 sd=0 Wp=2 Ws=3                      timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[451/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=6 pause=4 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[452/1390]                         swim_timed N3 R2 U=2 L=0 sd=1 Wp=2 Ws=6                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[453/1390]                         swim_timed N3 R2 U=2 L=2 sd=1 Wp=2 Ws=4                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[454/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=6 pause=3 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[455/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=8 pause=6 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[456/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=8 pause=5 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[457/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=10 pause=7 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[458/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=10 pause=8 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[459/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=12 pause=9 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[460/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=12 pause=10 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[461/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=6 pause=2 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[462/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=6 pause=1 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[463/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=8 pause=4 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[464/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=8 pause=3 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[465/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=10 pause=6 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[466/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=10 pause=5 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[467/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=12 pause=8 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[468/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=12 pause=7 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[469/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=6 pause=4 fence=on      baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[470/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=6 pause=6 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[471/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=8 pause=6 fence=on      baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[472/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=10 pause=8 fence=on     baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[473/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=6 pause=5 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[474/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=12 pause=10 fence=on    baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[475/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=8 pause=8 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[476/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=8 pause=7 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[477/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=6 pause=2 fence=on      baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[478/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=10 pause=10 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[479/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=8 pause=4 fence=on      baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[480/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=10 pause=9 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[481/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=12 pause=11 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[482/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=12 pause=12 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[483/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=10 pause=6 fence=on     baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[484/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=6 pause=4 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[485/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=6 pause=3 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[486/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=8 pause=6 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[487/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=8 pause=5 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[488/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=12 pause=8 fence=on     baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[489/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=10 pause=8 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[490/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=10 pause=7 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[491/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=12 pause=10 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[492/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=12 pause=9 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[493/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=6 pause=6 fence=on      baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[494/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=8 pause=8 fence=on      baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[495/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=6 pause=2 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[496/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=6 pause=1 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[497/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=10 pause=10 fence=on    baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[498/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=8 pause=4 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[499/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=12 pause=12 fence=on    baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[500/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=8 pause=3 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[501/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=6 pause=4 fence=on      baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[502/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=10 pause=6 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[503/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=10 pause=5 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[504/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=12 pause=8 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[505/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=8 pause=6 fence=on      baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[506/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=12 pause=7 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[507/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=6 pause=0 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[508/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=10 pause=8 fence=on     baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[509/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=8 pause=2 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[510/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=8 pause=1 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[511/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=10 pause=4 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[512/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=12 pause=10 fence=on    baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[513/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=10 pause=3 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[514/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=12 pause=6 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[515/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=12 pause=5 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[516/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=6 pause=2 fence=on      baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[517/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=6 pause=6 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[518/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=8 pause=4 fence=on      baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[519/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=6 pause=5 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[520/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=8 pause=8 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[521/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=10 pause=6 fence=on     baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[522/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=8 pause=7 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[523/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=12 pause=8 fence=on     baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[524/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=6 pause=0 fence=on      baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[525/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=10 pause=10 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[526/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=10 pause=9 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[527/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=12 pause=12 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[528/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=8 pause=2 fence=on      baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[529/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=12 pause=11 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[530/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=6 pause=4 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[531/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=6 pause=3 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[532/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=8 pause=6 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[533/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=10 pause=4 fence=on     baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[534/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=8 pause=5 fence=off     baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[535/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=10 pause=8 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[536/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=12 pause=6 fence=on     baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[537/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=10 pause=7 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[538/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=12 pause=10 fence=off   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[539/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=12 pause=9 fence=off    baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[540/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=6 pause=6 fence=on      baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[541/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=6 pause=4 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[542/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=8 pause=8 fence=on      baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[543/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=10 pause=10 fence=on    baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[544/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=12 pause=12 fence=on    baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[545/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=8 pause=6 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[546/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=6 pause=4 fence=on      baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[547/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=10 pause=8 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[548/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=8 pause=6 fence=on      baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[549/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=10 pause=8 fence=on     baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[550/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=12 pause=10 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[551/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=12 pause=10 fence=on    baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[552/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=6 pause=3 fence=off        timed= hold/512 viol=0 wall=0.7s cpu=0.7s
+[553/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=6 pause=2 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[554/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=8 pause=5 fence=off        timed= hold/512 viol=0 wall=0.7s cpu=0.7s
+[555/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=10 pause=7 fence=off       timed= hold/512 viol=0 wall=0.7s cpu=0.7s
+[556/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=8 pause=4 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[557/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=12 pause=9 fence=off       timed= hold/512 viol=0 wall=0.7s cpu=0.7s
+[558/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=6 pause=1 fence=off        timed= hold/512 viol=0 wall=0.7s cpu=0.7s
+[559/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=10 pause=6 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[560/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=8 pause=3 fence=off        timed= hold/512 viol=0 wall=0.7s cpu=0.7s
+[561/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=6 pause=4 fence=on         timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[562/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=12 pause=8 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[563/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=8 pause=6 fence=on         timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[564/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=10 pause=8 fence=on        timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[565/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=6 pause=6 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[566/1390]                        lease_timed N2 R3 U=1 L=0 sd=0 TTL=12 pause=10 fence=on       timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[567/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=6 pause=5 fence=off        timed= hold/16 viol=0 wall=0.1s cpu=0.1s
+[568/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=8 pause=8 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[569/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=8 pause=7 fence=off        timed= hold/16 viol=0 wall=0.1s cpu=0.1s
+[570/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=6 pause=6 fence=on         timed= hold/96 viol=0 wall=0.2s cpu=0.2s
+[571/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=10 pause=10 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[572/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=10 pause=5 fence=off       timed= hold/512 viol=0 wall=0.7s cpu=0.7s
+[573/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=10 pause=9 fence=off       timed= hold/16 viol=0 wall=0.1s cpu=0.1s
+[574/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=8 pause=8 fence=on         timed= hold/96 viol=0 wall=0.2s cpu=0.2s
+[575/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=12 pause=12 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[576/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=12 pause=11 fence=off      timed= hold/16 viol=0 wall=0.1s cpu=0.1s
+[577/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=6 pause=4 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[578/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=10 pause=10 fence=on       timed= hold/96 viol=0 wall=0.2s cpu=0.2s
+[579/1390]                        lease_timed N2 R3 U=1 L=1 sd=0 TTL=12 pause=12 fence=on       timed= hold/96 viol=0 wall=0.2s cpu=0.2s
+[580/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=8 pause=6 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[581/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=12 pause=7 fence=off       timed= hold/512 viol=0 wall=0.7s cpu=0.7s
+[582/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=6 pause=2 fence=on         timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[583/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=10 pause=8 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[584/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=6 pause=3 fence=off        timed= hold/76 viol=0 wall=0.2s cpu=0.2s
+[585/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=8 pause=4 fence=on         timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[586/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=12 pause=10 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[587/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=8 pause=5 fence=off        timed= hold/76 viol=0 wall=0.2s cpu=0.2s
+[588/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=10 pause=7 fence=off       timed= hold/76 viol=0 wall=0.2s cpu=0.2s
+[589/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=6 pause=2 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[590/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=12 pause=9 fence=off       timed= hold/76 viol=0 wall=0.2s cpu=0.2s
+[591/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=6 pause=4 fence=on         timed= hold/385 viol=0 wall=0.7s cpu=0.7s
+[592/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=8 pause=4 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[593/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=8 pause=6 fence=on         timed= hold/385 viol=0 wall=0.7s cpu=0.7s
+[594/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=10 pause=8 fence=on        timed= hold/385 viol=0 wall=0.7s cpu=0.7s
+[595/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=10 pause=6 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[596/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=10 pause=6 fence=on        timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[597/1390]                        lease_timed N2 R3 U=1 L=1 sd=1 TTL=12 pause=10 fence=on       timed= hold/385 viol=0 wall=0.7s cpu=0.7s
+[598/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=12 pause=8 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[599/1390]                        lease_timed N2 R3 U=1 L=0 sd=1 TTL=12 pause=8 fence=on        timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[600/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=6 pause=1 fence=off        timed= hold/576 viol=0 wall=0.7s cpu=0.7s
+[601/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=6 pause=0 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[602/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=8 pause=3 fence=off        timed= hold/576 viol=0 wall=0.8s cpu=0.7s
+[603/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=8 pause=2 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[604/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=10 pause=5 fence=off       timed= hold/576 viol=0 wall=0.8s cpu=0.7s
+[605/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=12 pause=7 fence=off       timed= hold/576 viol=0 wall=0.8s cpu=0.7s
+[606/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=10 pause=4 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[607/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=6 pause=2 fence=on         timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[608/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=8 pause=1 fence=off        timed= hold/576 viol=0 wall=0.7s cpu=0.7s
+[609/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=12 pause=6 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[610/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=8 pause=4 fence=on         timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[611/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=10 pause=6 fence=on        timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[612/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=6 pause=6 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[613/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=6 pause=5 fence=off        timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[614/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=10 pause=3 fence=off       timed= hold/576 viol=0 wall=0.8s cpu=0.7s
+[615/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=8 pause=8 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[616/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=6 pause=6 fence=on         timed= hold/12 viol=0 wall=0.0s cpu=0.0s
+[617/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=8 pause=7 fence=off        timed= hold/16 viol=0 wall=0.1s cpu=0.1s
+[618/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=10 pause=10 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[619/1390]                        lease_timed N2 R3 U=2 L=0 sd=0 TTL=12 pause=8 fence=on        timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[620/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=10 pause=9 fence=off       timed= hold/16 viol=0 wall=0.1s cpu=0.1s
+[621/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=12 pause=12 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[622/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=8 pause=8 fence=on         timed= hold/96 viol=0 wall=0.2s cpu=0.2s
+[623/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=12 pause=11 fence=off      timed= hold/16 viol=0 wall=0.1s cpu=0.1s
+[624/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=6 pause=4 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[625/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=6 pause=3 fence=off        timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[626/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=10 pause=10 fence=on       timed= hold/96 viol=0 wall=0.2s cpu=0.2s
+[627/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=8 pause=6 fence=off        timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[628/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=6 pause=4 fence=on         timed= hold/12 viol=0 wall=0.1s cpu=0.0s
+[629/1390]                        lease_timed N2 R3 U=2 L=2 sd=0 TTL=12 pause=12 fence=on       timed= hold/96 viol=0 wall=0.2s cpu=0.2s
+[630/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=10 pause=8 fence=off       timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[631/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=12 pause=5 fence=off       timed= hold/576 viol=0 wall=0.8s cpu=0.7s
+[632/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=8 pause=5 fence=off        timed= hold/76 viol=0 wall=0.2s cpu=0.2s
+[633/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=12 pause=10 fence=off      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[634/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=10 pause=7 fence=off       timed= hold/76 viol=0 wall=0.2s cpu=0.2s
+[635/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=8 pause=2 fence=on         timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[636/1390]                         swim_timed N3 R3 U=1 L=0 sd=0 Wp=1 Ws=2                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[637/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=8 pause=6 fence=on         timed= hold/175 viol=0 wall=0.3s cpu=0.3s
+[638/1390]                         swim_timed N3 R3 U=1 L=0 sd=0 Wp=1 Ws=3                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[639/1390]                         swim_timed N3 R3 U=1 L=0 sd=1 Wp=1 Ws=4                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[640/1390]                         swim_timed N3 R3 U=1 L=0 sd=1 Wp=1 Ws=5                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[641/1390]                         swim_timed N3 R3 U=1 L=1 sd=0 Wp=1 Ws=1                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[642/1390]                         swim_timed N3 R3 U=1 L=1 sd=0 Wp=1 Ws=2                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[643/1390]                         swim_timed N3 R3 U=1 L=1 sd=1 Wp=1 Ws=3                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[644/1390]                         swim_timed N3 R3 U=1 L=1 sd=1 Wp=1 Ws=4                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[645/1390]                         swim_timed N3 R3 U=2 L=0 sd=0 Wp=2 Ws=4                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[646/1390]                         swim_timed N3 R3 U=2 L=0 sd=0 Wp=2 Ws=5                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[647/1390]                         swim_timed N3 R3 U=2 L=0 sd=1 Wp=2 Ws=6                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[648/1390]                         swim_timed N3 R3 U=2 L=0 sd=1 Wp=2 Ws=7                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[649/1390]                         swim_timed N3 R3 U=2 L=2 sd=0 Wp=2 Ws=2                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[650/1390]                         swim_timed N3 R3 U=2 L=2 sd=0 Wp=2 Ws=3                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[651/1390]                         swim_timed N3 R3 U=2 L=2 sd=1 Wp=2 Ws=4                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[652/1390]                         swim_timed N3 R3 U=2 L=2 sd=1 Wp=2 Ws=5                   baseline= FIRE/ viol= wall=0.0s cpu=0.0s
+[653/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=12 pause=9 fence=off       timed= hold/76 viol=0 wall=0.2s cpu=0.2s
+[654/1390]                         swim_timed N3 R3 U=1 L=0 sd=0 Wp=1 Ws=2                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[655/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=10 pause=8 fence=on        timed= hold/175 viol=0 wall=0.3s cpu=0.3s
+[656/1390]                         swim_timed N3 R3 U=1 L=0 sd=1 Wp=1 Ws=4                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[657/1390]                         swim_timed N3 R3 U=1 L=0 sd=0 Wp=1 Ws=3                      timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[658/1390]                         swim_timed N3 R3 U=1 L=1 sd=0 Wp=1 Ws=1                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[659/1390]                         swim_timed N3 R3 U=1 L=1 sd=0 Wp=1 Ws=2                      timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[660/1390]                         swim_timed N3 R3 U=1 L=0 sd=1 Wp=1 Ws=5                      timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[661/1390]                         swim_timed N3 R3 U=1 L=1 sd=1 Wp=1 Ws=3                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[662/1390]                         swim_timed N3 R3 U=1 L=1 sd=1 Wp=1 Ws=4                      timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[663/1390]                         swim_timed N3 R3 U=2 L=0 sd=0 Wp=2 Ws=4                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[664/1390]                         swim_timed N3 R3 U=2 L=0 sd=1 Wp=2 Ws=6                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[665/1390]                         swim_timed N3 R3 U=2 L=0 sd=0 Wp=2 Ws=5                      timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[666/1390]                         swim_timed N3 R3 U=2 L=2 sd=0 Wp=2 Ws=2                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[667/1390]                         swim_timed N3 R3 U=2 L=0 sd=1 Wp=2 Ws=7                      timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[668/1390]                         swim_timed N3 R3 U=2 L=2 sd=0 Wp=2 Ws=3                      timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[669/1390]                         swim_timed N3 R3 U=2 L=2 sd=1 Wp=2 Ws=4                      timed= FIRE/ viol= wall=0.0s cpu=0.0s
+[670/1390]                        lease_timed N2 R1 C=2 U=1 L=0 sd=0 TTL=6 pause=3 fence=off baseline= FIRE/8 viol=4 wall=0.0s cpu=0.0s
+[671/1390]                        lease_timed N2 R1 C=2 U=1 L=0 sd=0 TTL=10 pause=7 fence=off baseline= FIRE/8 viol=4 wall=0.0s cpu=0.0s
+[672/1390]                         swim_timed N3 R3 U=2 L=2 sd=1 Wp=2 Ws=5                      timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[673/1390]                        lease_timed N2 R1 C=2 U=1 L=0 sd=0 TTL=6 pause=4 fence=on  baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[674/1390]                        lease_timed N2 R1 C=2 U=1 L=0 sd=0 TTL=10 pause=8 fence=on baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[675/1390]                        lease_timed N2 R1 C=2 U=1 L=0 sd=1 TTL=6 pause=1 fence=off baseline= FIRE/8 viol=4 wall=0.0s cpu=0.0s
+[676/1390]                        lease_timed N2 R1 C=2 U=1 L=0 sd=1 TTL=10 pause=5 fence=off baseline= FIRE/8 viol=4 wall=0.0s cpu=0.0s
+[677/1390]                        lease_timed N2 R1 C=2 U=1 L=0 sd=1 TTL=10 pause=6 fence=on baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[678/1390]                        lease_timed N2 R1 C=2 U=1 L=0 sd=1 TTL=6 pause=2 fence=on  baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[679/1390]                        lease_timed N2 R1 C=2 U=1 L=1 sd=0 TTL=6 pause=6 fence=on  baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[680/1390]                        lease_timed N2 R1 C=2 U=1 L=1 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/8 viol=4 wall=0.0s cpu=0.0s
+[681/1390]                        lease_timed N2 R1 C=2 U=1 L=1 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/8 viol=4 wall=0.0s cpu=0.0s
+[682/1390]                        lease_timed N2 R1 C=2 U=1 L=1 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/8 viol=4 wall=0.0s cpu=0.0s
+[683/1390]                        lease_timed N2 R1 C=2 U=1 L=1 sd=0 TTL=10 pause=10 fence=on baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[684/1390]                        lease_timed N2 R1 C=2 U=1 L=1 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/8 viol=4 wall=0.0s cpu=0.0s
+[685/1390]                        lease_timed N2 R1 C=2 U=1 L=1 sd=1 TTL=6 pause=4 fence=on  baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[686/1390]                        lease_timed N2 R1 C=2 U=1 L=1 sd=1 TTL=10 pause=8 fence=on baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[687/1390]                        lease_timed N2 R1 C=2 U=2 L=0 sd=0 TTL=6 pause=2 fence=on  baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[688/1390]                        lease_timed N2 R3 U=2 L=2 sd=1 TTL=12 pause=10 fence=on       timed= hold/175 viol=0 wall=0.4s cpu=0.3s
+[689/1390]                        lease_timed N2 R1 C=2 U=2 L=0 sd=0 TTL=10 pause=5 fence=off baseline= FIRE/8 viol=4 wall=0.0s cpu=0.0s
+[690/1390]                        lease_timed N2 R1 C=2 U=2 L=0 sd=1 TTL=10 pause=4 fence=on baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[691/1390]                        lease_timed N2 R1 C=2 U=2 L=0 sd=0 TTL=6 pause=1 fence=off baseline= FIRE/8 viol=4 wall=0.0s cpu=0.0s
+[692/1390]                        lease_timed N2 R1 C=2 U=2 L=2 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/8 viol=4 wall=0.0s cpu=0.0s
+[693/1390]                        lease_timed N2 R1 C=2 U=2 L=0 sd=0 TTL=10 pause=6 fence=on baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[694/1390]                        lease_timed N2 R1 C=2 U=2 L=2 sd=0 TTL=6 pause=6 fence=on  baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[695/1390]                        lease_timed N2 R1 C=2 U=2 L=0 sd=1 TTL=10 pause=3 fence=off baseline= FIRE/8 viol=4 wall=0.0s cpu=0.0s
+[696/1390]                        lease_timed N2 R1 C=2 U=2 L=2 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/8 viol=4 wall=0.0s cpu=0.0s
+[697/1390]                        lease_timed N2 R1 C=2 U=2 L=2 sd=0 TTL=10 pause=10 fence=on baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[698/1390]                        lease_timed N2 R1 C=2 U=2 L=2 sd=1 TTL=6 pause=4 fence=on  baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[699/1390]                        lease_timed N2 R1 C=2 U=2 L=2 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/8 viol=4 wall=0.0s cpu=0.0s
+[700/1390]                        lease_timed N2 R1 C=2 U=2 L=2 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/8 viol=4 wall=0.0s cpu=0.0s
+[701/1390]                        lease_timed N2 R1 C=2 U=1 L=0 sd=0 TTL=6 pause=3 fence=off    timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[702/1390]                        lease_timed N2 R1 C=2 U=1 L=0 sd=0 TTL=10 pause=8 fence=on    timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[703/1390]                        lease_timed N2 R1 C=2 U=2 L=2 sd=1 TTL=10 pause=8 fence=on baseline= hold/12 viol=0 wall=0.0s cpu=0.0s
+[704/1390]                        lease_timed N2 R1 C=2 U=1 L=0 sd=0 TTL=6 pause=4 fence=on     timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[705/1390]                        lease_timed N2 R1 C=2 U=1 L=0 sd=0 TTL=10 pause=7 fence=off    timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[706/1390]                        lease_timed N2 R1 C=2 U=1 L=0 sd=1 TTL=6 pause=1 fence=off    timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[707/1390]                        lease_timed N2 R1 C=2 U=1 L=0 sd=1 TTL=10 pause=5 fence=off    timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[708/1390]                        lease_timed N2 R1 C=2 U=1 L=1 sd=0 TTL=6 pause=5 fence=off    timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[709/1390]                        lease_timed N2 R1 C=2 U=1 L=1 sd=0 TTL=6 pause=6 fence=on     timed= hold/6 viol=0 wall=0.0s cpu=0.0s
+[710/1390]                        lease_timed N2 R1 C=2 U=1 L=1 sd=0 TTL=10 pause=9 fence=off    timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[711/1390]                        lease_timed N2 R1 C=2 U=1 L=0 sd=1 TTL=6 pause=2 fence=on     timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[712/1390]                        lease_timed N2 R1 C=2 U=1 L=0 sd=1 TTL=10 pause=6 fence=on    timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[713/1390]                        lease_timed N2 R1 C=2 U=1 L=1 sd=0 TTL=10 pause=10 fence=on    timed= hold/6 viol=0 wall=0.0s cpu=0.0s
+[714/1390]                        lease_timed N2 R1 C=2 U=1 L=1 sd=1 TTL=6 pause=3 fence=off    timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[715/1390]                        lease_timed N2 R1 C=2 U=1 L=1 sd=1 TTL=10 pause=8 fence=on    timed= hold/7 viol=0 wall=0.0s cpu=0.0s
+[716/1390]                        lease_timed N2 R1 C=2 U=2 L=0 sd=0 TTL=6 pause=1 fence=off    timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[717/1390]                        lease_timed N2 R1 C=2 U=1 L=1 sd=1 TTL=6 pause=4 fence=on     timed= hold/7 viol=0 wall=0.0s cpu=0.0s
+[718/1390]                        lease_timed N2 R1 C=2 U=2 L=0 sd=0 TTL=6 pause=2 fence=on     timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[719/1390]                        lease_timed N2 R1 C=2 U=1 L=1 sd=1 TTL=10 pause=7 fence=off    timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[720/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=6 pause=0 fence=on         timed= hold/2744 viol=0 wall=2.5s cpu=2.5s
+[721/1390]                        lease_timed N2 R1 C=2 U=2 L=0 sd=0 TTL=10 pause=5 fence=off    timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[722/1390]                        lease_timed N2 R1 C=2 U=2 L=0 sd=0 TTL=10 pause=6 fence=on    timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[723/1390]                        lease_timed N2 R1 C=2 U=2 L=2 sd=0 TTL=6 pause=5 fence=off    timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[724/1390]                        lease_timed N2 R1 C=2 U=2 L=0 sd=1 TTL=10 pause=4 fence=on    timed= hold/11 viol=0 wall=0.0s cpu=0.0s
+[725/1390]                        lease_timed N2 R1 C=2 U=2 L=0 sd=1 TTL=10 pause=3 fence=off    timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[726/1390]                        lease_timed N2 R1 C=2 U=2 L=2 sd=0 TTL=6 pause=6 fence=on     timed= hold/3 viol=0 wall=0.0s cpu=0.0s
+[727/1390]                        lease_timed N2 R1 C=2 U=2 L=2 sd=0 TTL=10 pause=10 fence=on    timed= hold/6 viol=0 wall=0.0s cpu=0.0s
+[728/1390]                        lease_timed N2 R1 C=2 U=2 L=2 sd=1 TTL=6 pause=4 fence=on     timed= hold/3 viol=0 wall=0.0s cpu=0.0s
+[729/1390]                        lease_timed N2 R1 C=2 U=2 L=2 sd=1 TTL=10 pause=7 fence=off    timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[730/1390]                        lease_timed N2 R1 C=2 U=2 L=2 sd=0 TTL=10 pause=9 fence=off    timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[731/1390]                        lease_timed N2 R1 C=2 U=2 L=2 sd=1 TTL=6 pause=3 fence=off    timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[732/1390]                        lease_timed N2 R1 C=2 U=2 L=2 sd=1 TTL=10 pause=8 fence=on    timed= hold/7 viol=0 wall=0.0s cpu=0.0s
+[733/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=10 pause=4 fence=on        timed= hold/1485 viol=0 wall=1.7s cpu=1.6s
+[734/1390]                        lease_timed N3 R1 C=3 U=1 L=0 sd=0 TTL=6 pause=4 fence=on  baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[735/1390]                        lease_timed N3 R1 C=3 U=1 L=0 sd=0 TTL=6 pause=3 fence=off baseline= FIRE/48 viol=84 wall=0.0s cpu=0.0s
+[736/1390]                        lease_timed N3 R1 C=3 U=1 L=0 sd=0 TTL=10 pause=7 fence=off baseline= FIRE/48 viol=84 wall=0.0s cpu=0.0s
+[737/1390]                        lease_timed N3 R1 C=3 U=1 L=0 sd=0 TTL=10 pause=8 fence=on baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[738/1390]                        lease_timed N3 R1 C=3 U=1 L=0 sd=1 TTL=6 pause=2 fence=on  baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[739/1390]                        lease_timed N3 R1 C=3 U=1 L=0 sd=1 TTL=6 pause=1 fence=off baseline= FIRE/48 viol=84 wall=0.0s cpu=0.0s
+[740/1390]                        lease_timed N3 R1 C=3 U=1 L=0 sd=1 TTL=10 pause=5 fence=off baseline= FIRE/48 viol=84 wall=0.0s cpu=0.0s
+[741/1390]                        lease_timed N3 R1 C=3 U=1 L=1 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/48 viol=84 wall=0.0s cpu=0.0s
+[742/1390]                        lease_timed N3 R1 C=3 U=1 L=1 sd=0 TTL=10 pause=10 fence=on baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[743/1390]                        lease_timed N3 R1 C=3 U=1 L=0 sd=1 TTL=10 pause=6 fence=on baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[744/1390]                        lease_timed N3 R1 C=3 U=1 L=1 sd=0 TTL=6 pause=6 fence=on  baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[745/1390]                        lease_timed N3 R1 C=3 U=1 L=1 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/48 viol=84 wall=0.0s cpu=0.0s
+[746/1390]                        lease_timed N3 R1 C=3 U=1 L=1 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/48 viol=84 wall=0.0s cpu=0.0s
+[747/1390]                        lease_timed N3 R1 C=3 U=1 L=1 sd=1 TTL=10 pause=8 fence=on baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[748/1390]                        lease_timed N3 R1 C=3 U=1 L=1 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/48 viol=84 wall=0.0s cpu=0.0s
+[749/1390]                        lease_timed N3 R1 C=3 U=1 L=1 sd=1 TTL=6 pause=4 fence=on  baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[750/1390]                        lease_timed N3 R1 C=3 U=2 L=0 sd=0 TTL=6 pause=2 fence=on  baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[751/1390]                        lease_timed N3 R1 C=3 U=2 L=0 sd=0 TTL=6 pause=1 fence=off baseline= FIRE/48 viol=84 wall=0.0s cpu=0.0s
+[752/1390]                        lease_timed N3 R1 C=3 U=2 L=0 sd=0 TTL=10 pause=5 fence=off baseline= FIRE/48 viol=84 wall=0.0s cpu=0.0s
+[753/1390]                        lease_timed N3 R1 C=3 U=2 L=0 sd=1 TTL=10 pause=3 fence=off baseline= FIRE/48 viol=84 wall=0.0s cpu=0.0s
+[754/1390]                        lease_timed N3 R1 C=3 U=2 L=0 sd=0 TTL=10 pause=6 fence=on baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[755/1390]                        lease_timed N3 R1 C=3 U=2 L=0 sd=1 TTL=10 pause=4 fence=on baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[756/1390]                        lease_timed N3 R1 C=3 U=2 L=2 sd=0 TTL=6 pause=6 fence=on  baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[757/1390]                        lease_timed N3 R1 C=3 U=2 L=2 sd=0 TTL=10 pause=10 fence=on baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[758/1390]                        lease_timed N3 R1 C=3 U=2 L=2 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/48 viol=84 wall=0.0s cpu=0.0s
+[759/1390]                        lease_timed N3 R1 C=3 U=2 L=2 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/48 viol=84 wall=0.0s cpu=0.0s
+[760/1390]                        lease_timed N3 R1 C=3 U=2 L=2 sd=1 TTL=6 pause=4 fence=on  baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[761/1390]                        lease_timed N3 R1 C=3 U=2 L=2 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/48 viol=84 wall=0.0s cpu=0.0s
+[762/1390]                        lease_timed N3 R1 C=3 U=2 L=2 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/48 viol=84 wall=0.0s cpu=0.0s
+[763/1390]                        lease_timed N3 R1 C=3 U=2 L=2 sd=1 TTL=10 pause=8 fence=on baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[764/1390]                        lease_timed N3 R1 C=3 U=1 L=0 sd=0 TTL=6 pause=3 fence=off    timed= hold/48 viol=0 wall=0.1s cpu=0.0s
+[765/1390]                        lease_timed N3 R1 C=3 U=1 L=0 sd=0 TTL=10 pause=7 fence=off    timed= hold/48 viol=0 wall=0.1s cpu=0.0s
+[766/1390]                        lease_timed N3 R1 C=3 U=1 L=0 sd=1 TTL=6 pause=1 fence=off    timed= hold/48 viol=0 wall=0.1s cpu=0.0s
+[767/1390]                        lease_timed N3 R1 C=3 U=1 L=0 sd=0 TTL=6 pause=4 fence=on     timed= hold/74 viol=0 wall=0.1s cpu=0.1s
+[768/1390]                        lease_timed N3 R1 C=3 U=1 L=0 sd=1 TTL=10 pause=5 fence=off    timed= hold/48 viol=0 wall=0.1s cpu=0.0s
+[769/1390]                        lease_timed N3 R1 C=3 U=1 L=0 sd=1 TTL=6 pause=2 fence=on     timed= hold/74 viol=0 wall=0.1s cpu=0.1s
+[770/1390]                        lease_timed N3 R1 C=3 U=1 L=0 sd=0 TTL=10 pause=8 fence=on    timed= hold/74 viol=0 wall=0.1s cpu=0.1s
+[771/1390]                        lease_timed N3 R1 C=3 U=1 L=1 sd=0 TTL=6 pause=5 fence=off    timed= hold/24 viol=0 wall=0.0s cpu=0.0s
+[772/1390]                        lease_timed N3 R1 C=3 U=1 L=1 sd=0 TTL=10 pause=9 fence=off    timed= hold/24 viol=0 wall=0.0s cpu=0.0s
+[773/1390]                        lease_timed N3 R1 C=3 U=1 L=0 sd=1 TTL=10 pause=6 fence=on    timed= hold/74 viol=0 wall=0.1s cpu=0.1s
+[774/1390]                        lease_timed N3 R1 C=3 U=1 L=1 sd=0 TTL=6 pause=6 fence=on     timed= hold/40 viol=0 wall=0.1s cpu=0.0s
+[775/1390]                        lease_timed N3 R1 C=3 U=1 L=1 sd=0 TTL=10 pause=10 fence=on    timed= hold/40 viol=0 wall=0.1s cpu=0.0s
+[776/1390]                        lease_timed N3 R1 C=3 U=1 L=1 sd=1 TTL=6 pause=3 fence=off    timed= hold/24 viol=0 wall=0.0s cpu=0.0s
+[777/1390]                        lease_timed N3 R1 C=3 U=1 L=1 sd=1 TTL=6 pause=4 fence=on     timed= hold/44 viol=0 wall=0.1s cpu=0.0s
+[778/1390]                        lease_timed N3 R1 C=3 U=1 L=1 sd=1 TTL=10 pause=7 fence=off    timed= hold/24 viol=0 wall=0.1s cpu=0.0s
+[779/1390]                        lease_timed N3 R1 C=3 U=1 L=1 sd=1 TTL=10 pause=8 fence=on    timed= hold/44 viol=0 wall=0.1s cpu=0.0s
+[780/1390]                        lease_timed N3 R1 C=3 U=2 L=0 sd=0 TTL=6 pause=1 fence=off    timed= hold/48 viol=0 wall=0.1s cpu=0.0s
+[781/1390]                        lease_timed N3 R1 C=3 U=2 L=0 sd=0 TTL=10 pause=5 fence=off    timed= hold/48 viol=0 wall=0.1s cpu=0.0s
+[782/1390]                        lease_timed N2 R3 U=2 L=0 sd=1 TTL=12 pause=6 fence=on        timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[783/1390]                        lease_timed N3 R1 C=3 U=2 L=0 sd=0 TTL=6 pause=2 fence=on     timed= hold/74 viol=0 wall=0.1s cpu=0.1s
+[784/1390]                        lease_timed N3 R1 C=3 U=2 L=2 sd=0 TTL=6 pause=5 fence=off    timed= hold/6 viol=0 wall=0.0s cpu=0.0s
+[785/1390]                        lease_timed N3 R1 C=3 U=2 L=0 sd=0 TTL=10 pause=6 fence=on    timed= hold/74 viol=0 wall=0.1s cpu=0.1s
+[786/1390]                        lease_timed N3 R1 C=3 U=2 L=0 sd=1 TTL=10 pause=3 fence=off    timed= hold/48 viol=0 wall=0.1s cpu=0.0s
+[787/1390]                        lease_timed N3 R1 C=3 U=2 L=2 sd=0 TTL=6 pause=6 fence=on     timed= hold/10 viol=0 wall=0.0s cpu=0.0s
+[788/1390]                        lease_timed N3 R1 C=3 U=2 L=0 sd=1 TTL=10 pause=4 fence=on    timed= hold/74 viol=0 wall=0.1s cpu=0.1s
+[789/1390]                        lease_timed N3 R1 C=3 U=2 L=2 sd=1 TTL=6 pause=3 fence=off    timed= hold/6 viol=0 wall=0.0s cpu=0.0s
+[790/1390]                        lease_timed N3 R1 C=3 U=2 L=2 sd=0 TTL=10 pause=9 fence=off    timed= hold/24 viol=0 wall=0.0s cpu=0.0s
+[791/1390]                         swim_timed N3 R1 N=3 U=1 L=0 sd=0 Wp=1 Ws=3               baseline= FIRE/3 viol=4 wall=0.0s cpu=0.0s
+[792/1390]                        lease_timed N3 R1 C=3 U=2 L=2 sd=1 TTL=6 pause=4 fence=on     timed= hold/10 viol=0 wall=0.0s cpu=0.0s
+[793/1390]                         swim_timed N3 R1 N=3 U=1 L=0 sd=1 Wp=1 Ws=5               baseline= FIRE/3 viol=4 wall=0.0s cpu=0.0s
+[794/1390]                         swim_timed N3 R1 N=3 U=1 L=1 sd=1 Wp=1 Ws=4               baseline= FIRE/3 viol=4 wall=0.0s cpu=0.0s
+[795/1390]                         swim_timed N3 R1 N=3 U=2 L=0 sd=0 Wp=2 Ws=5               baseline= FIRE/3 viol=4 wall=0.0s cpu=0.0s
+[796/1390]                         swim_timed N3 R1 N=3 U=1 L=1 sd=0 Wp=1 Ws=2               baseline= FIRE/3 viol=4 wall=0.0s cpu=0.0s
+[797/1390]                         swim_timed N3 R1 N=3 U=2 L=2 sd=0 Wp=2 Ws=3               baseline= FIRE/3 viol=4 wall=0.0s cpu=0.0s
+[798/1390]                         swim_timed N3 R1 N=3 U=2 L=0 sd=1 Wp=2 Ws=7               baseline= FIRE/3 viol=4 wall=0.0s cpu=0.0s
+[799/1390]                        lease_timed N3 R1 C=3 U=2 L=2 sd=1 TTL=10 pause=7 fence=off    timed= hold/24 viol=0 wall=0.1s cpu=0.0s
+[800/1390]                         swim_timed N3 R1 N=3 U=2 L=2 sd=1 Wp=2 Ws=5               baseline= FIRE/3 viol=4 wall=0.0s cpu=0.0s
+[801/1390]                         swim_timed N3 R1 N=3 U=1 L=0 sd=0 Wp=1 Ws=3                  timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[802/1390]                         swim_timed N3 R1 N=3 U=1 L=0 sd=1 Wp=1 Ws=5                  timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[803/1390]                         swim_timed N3 R1 N=3 U=1 L=1 sd=0 Wp=1 Ws=2                  timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[804/1390]                         swim_timed N3 R1 N=3 U=2 L=0 sd=1 Wp=2 Ws=7                  timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[805/1390]                        lease_timed N3 R1 C=3 U=2 L=2 sd=1 TTL=10 pause=8 fence=on    timed= hold/44 viol=0 wall=0.1s cpu=0.0s
+[806/1390]                         swim_timed N3 R1 N=3 U=2 L=2 sd=0 Wp=2 Ws=3                  timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[807/1390]                         swim_timed N3 R1 N=3 U=2 L=0 sd=0 Wp=2 Ws=5                  timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[808/1390]                         swim_timed N3 R1 N=3 U=2 L=2 sd=1 Wp=2 Ws=5                  timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[809/1390]                         swim_timed N3 R1 N=3 U=1 L=1 sd=1 Wp=1 Ws=4                  timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[810/1390]                        lease_timed N2 R2 C=2 U=1 L=0 sd=0 TTL=6 pause=3 fence=off baseline= FIRE/64 viol=36 wall=0.0s cpu=0.0s
+[811/1390]                        lease_timed N3 R1 C=3 U=2 L=2 sd=0 TTL=10 pause=10 fence=on    timed= hold/40 viol=0 wall=0.1s cpu=0.0s
+[812/1390]                        lease_timed N2 R2 C=2 U=1 L=0 sd=0 TTL=6 pause=4 fence=on  baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[813/1390]                        lease_timed N2 R2 C=2 U=1 L=0 sd=0 TTL=10 pause=7 fence=off baseline= FIRE/64 viol=36 wall=0.0s cpu=0.0s
+[814/1390]                        lease_timed N2 R2 C=2 U=1 L=0 sd=1 TTL=6 pause=2 fence=on  baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[815/1390]                        lease_timed N2 R2 C=2 U=1 L=0 sd=1 TTL=6 pause=1 fence=off baseline= FIRE/64 viol=36 wall=0.0s cpu=0.0s
+[816/1390]                        lease_timed N2 R2 C=2 U=1 L=0 sd=0 TTL=10 pause=8 fence=on baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[817/1390]                        lease_timed N2 R2 C=2 U=1 L=1 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/64 viol=36 wall=0.0s cpu=0.0s
+[818/1390]                        lease_timed N2 R2 C=2 U=1 L=1 sd=0 TTL=6 pause=6 fence=on  baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[819/1390]                        lease_timed N2 R2 C=2 U=1 L=0 sd=1 TTL=10 pause=5 fence=off baseline= FIRE/64 viol=36 wall=0.0s cpu=0.0s
+[820/1390]                        lease_timed N2 R2 C=2 U=1 L=1 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/64 viol=36 wall=0.0s cpu=0.0s
+[821/1390]                        lease_timed N2 R2 C=2 U=1 L=0 sd=1 TTL=10 pause=6 fence=on baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[822/1390]                        lease_timed N2 R2 C=2 U=1 L=1 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/64 viol=36 wall=0.0s cpu=0.0s
+[823/1390]                        lease_timed N2 R2 C=2 U=1 L=1 sd=1 TTL=6 pause=4 fence=on  baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[824/1390]                        lease_timed N2 R2 C=2 U=1 L=1 sd=1 TTL=10 pause=8 fence=on baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[825/1390]                        lease_timed N2 R2 C=2 U=2 L=0 sd=0 TTL=10 pause=5 fence=off baseline= FIRE/64 viol=36 wall=0.0s cpu=0.0s
+[826/1390]                        lease_timed N2 R2 C=2 U=2 L=0 sd=0 TTL=6 pause=1 fence=off baseline= FIRE/64 viol=36 wall=0.0s cpu=0.0s
+[827/1390]                        lease_timed N2 R2 C=2 U=1 L=1 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/64 viol=36 wall=0.0s cpu=0.0s
+[828/1390]                        lease_timed N2 R2 C=2 U=2 L=0 sd=0 TTL=6 pause=2 fence=on  baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[829/1390]                        lease_timed N2 R2 C=2 U=2 L=0 sd=1 TTL=10 pause=3 fence=off baseline= FIRE/64 viol=36 wall=0.0s cpu=0.0s
+[830/1390]                        lease_timed N2 R2 C=2 U=1 L=1 sd=0 TTL=10 pause=10 fence=on baseline= hold/144 viol=0 wall=0.1s cpu=0.0s
+[831/1390]                        lease_timed N2 R2 C=2 U=2 L=0 sd=1 TTL=10 pause=4 fence=on baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[832/1390]                        lease_timed N2 R2 C=2 U=2 L=2 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/64 viol=36 wall=0.0s cpu=0.0s
+[833/1390]                        lease_timed N2 R2 C=2 U=2 L=0 sd=0 TTL=10 pause=6 fence=on baseline= hold/144 viol=0 wall=0.1s cpu=0.0s
+[834/1390]                        lease_timed N2 R2 C=2 U=2 L=2 sd=0 TTL=6 pause=6 fence=on  baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[835/1390]                        lease_timed N2 R2 C=2 U=2 L=2 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/64 viol=36 wall=0.0s cpu=0.0s
+[836/1390]                        lease_timed N2 R2 C=2 U=2 L=2 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/64 viol=36 wall=0.0s cpu=0.0s
+[837/1390]                        lease_timed N2 R2 C=2 U=2 L=2 sd=1 TTL=6 pause=4 fence=on  baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[838/1390]                        lease_timed N2 R2 C=2 U=2 L=2 sd=0 TTL=10 pause=10 fence=on baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[839/1390]                        lease_timed N2 R2 C=2 U=2 L=2 sd=1 TTL=10 pause=8 fence=on baseline= hold/144 viol=0 wall=0.0s cpu=0.0s
+[840/1390]                        lease_timed N2 R2 C=2 U=2 L=2 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/64 viol=36 wall=0.1s cpu=0.0s
+[841/1390]                        lease_timed N2 R2 C=2 U=1 L=0 sd=0 TTL=6 pause=3 fence=off    timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[842/1390]                        lease_timed N2 R2 C=2 U=1 L=0 sd=0 TTL=10 pause=7 fence=off    timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[843/1390]                        lease_timed N2 R2 C=2 U=1 L=0 sd=1 TTL=6 pause=1 fence=off    timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[844/1390]                        lease_timed N2 R2 C=2 U=1 L=1 sd=0 TTL=6 pause=5 fence=off    timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[845/1390]                        lease_timed N2 R2 C=2 U=1 L=0 sd=1 TTL=10 pause=5 fence=off    timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[846/1390]                        lease_timed N2 R2 C=2 U=1 L=0 sd=0 TTL=6 pause=4 fence=on     timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[847/1390]                        lease_timed N2 R2 C=2 U=1 L=1 sd=0 TTL=10 pause=9 fence=off    timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[848/1390]                        lease_timed N2 R2 C=2 U=1 L=1 sd=0 TTL=6 pause=6 fence=on     timed= hold/24 viol=0 wall=0.0s cpu=0.0s
+[849/1390]                        lease_timed N2 R2 C=2 U=1 L=0 sd=0 TTL=10 pause=8 fence=on    timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[850/1390]                        lease_timed N2 R2 C=2 U=1 L=0 sd=1 TTL=6 pause=2 fence=on     timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[851/1390]                        lease_timed N2 R2 C=2 U=1 L=1 sd=0 TTL=10 pause=10 fence=on    timed= hold/24 viol=0 wall=0.0s cpu=0.0s
+[852/1390]                        lease_timed N2 R2 C=2 U=1 L=0 sd=1 TTL=10 pause=6 fence=on    timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[853/1390]                        lease_timed N2 R2 C=2 U=1 L=1 sd=1 TTL=6 pause=3 fence=off    timed= hold/16 viol=0 wall=0.0s cpu=0.0s
+[854/1390]                        lease_timed N2 R2 C=2 U=1 L=1 sd=1 TTL=10 pause=7 fence=off    timed= hold/16 viol=0 wall=0.0s cpu=0.0s
+[855/1390]                        lease_timed N2 R2 C=2 U=1 L=1 sd=1 TTL=6 pause=4 fence=on     timed= hold/49 viol=0 wall=0.1s cpu=0.1s
+[856/1390]                        lease_timed N2 R2 C=2 U=1 L=1 sd=1 TTL=10 pause=8 fence=on    timed= hold/49 viol=0 wall=0.1s cpu=0.1s
+[857/1390]                        lease_timed N2 R2 C=2 U=2 L=2 sd=0 TTL=6 pause=5 fence=off    timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[858/1390]                        lease_timed N2 R2 C=2 U=2 L=0 sd=0 TTL=6 pause=1 fence=off    timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[859/1390]                        lease_timed N2 R2 C=2 U=2 L=2 sd=0 TTL=6 pause=6 fence=on     timed= hold/6 viol=0 wall=0.0s cpu=0.0s
+[860/1390]                        lease_timed N2 R2 C=2 U=2 L=0 sd=0 TTL=10 pause=5 fence=off    timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[861/1390]                        lease_timed N2 R2 C=2 U=2 L=0 sd=1 TTL=10 pause=3 fence=off    timed= hold/64 viol=0 wall=0.1s cpu=0.1s
+[862/1390]                        lease_timed N2 R2 C=2 U=2 L=2 sd=0 TTL=10 pause=9 fence=off    timed= hold/8 viol=0 wall=0.0s cpu=0.0s
+[863/1390]                        lease_timed N2 R2 C=2 U=2 L=2 sd=1 TTL=6 pause=3 fence=off    timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[864/1390]                        lease_timed N2 R2 C=2 U=2 L=0 sd=0 TTL=6 pause=2 fence=on     timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[865/1390]                        lease_timed N2 R2 C=2 U=2 L=2 sd=1 TTL=6 pause=4 fence=on     timed= hold/6 viol=0 wall=0.0s cpu=0.0s
+[866/1390]                        lease_timed N2 R2 C=2 U=2 L=2 sd=0 TTL=10 pause=10 fence=on    timed= hold/24 viol=0 wall=0.0s cpu=0.0s
+[867/1390]                        lease_timed N2 R2 C=2 U=2 L=0 sd=0 TTL=10 pause=6 fence=on    timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[868/1390]                        lease_timed N2 R2 C=2 U=2 L=0 sd=1 TTL=10 pause=4 fence=on    timed= hold/121 viol=0 wall=0.1s cpu=0.1s
+[869/1390]                        lease_timed N2 R2 C=2 U=2 L=2 sd=1 TTL=10 pause=7 fence=off    timed= hold/16 viol=0 wall=0.0s cpu=0.0s
+[870/1390]                        lease_timed N2 R2 C=2 U=2 L=2 sd=1 TTL=10 pause=8 fence=on    timed= hold/35 viol=0 wall=0.0s cpu=0.0s
+[871/1390]                        lease_timed N4 R1 C=4 U=1 L=0 sd=0 TTL=6 pause=3 fence=off baseline= FIRE/384 viol=1632 wall=0.2s cpu=0.2s
+[872/1390]                        lease_timed N4 R1 C=4 U=1 L=0 sd=1 TTL=6 pause=1 fence=off baseline= FIRE/384 viol=1632 wall=0.2s cpu=0.2s
+[873/1390]                        lease_timed N4 R1 C=4 U=1 L=0 sd=0 TTL=10 pause=7 fence=off baseline= FIRE/384 viol=1632 wall=0.2s cpu=0.2s
+[874/1390]                        lease_timed N4 R1 C=4 U=1 L=0 sd=1 TTL=10 pause=5 fence=off baseline= FIRE/384 viol=1632 wall=0.2s cpu=0.2s
+[875/1390]                        lease_timed N4 R1 C=4 U=1 L=0 sd=0 TTL=6 pause=4 fence=on  baseline= hold/2880 viol=0 wall=0.3s cpu=0.2s
+[876/1390]                        lease_timed N4 R1 C=4 U=1 L=0 sd=0 TTL=10 pause=8 fence=on baseline= hold/2880 viol=0 wall=0.3s cpu=0.2s
+[877/1390]                        lease_timed N4 R1 C=4 U=1 L=0 sd=1 TTL=6 pause=2 fence=on  baseline= hold/2880 viol=0 wall=0.3s cpu=0.2s
+[878/1390]                        lease_timed N4 R1 C=4 U=1 L=0 sd=1 TTL=10 pause=6 fence=on baseline= hold/2880 viol=0 wall=0.3s cpu=0.3s
+[879/1390]                        lease_timed N4 R1 C=4 U=1 L=1 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/384 viol=1632 wall=0.2s cpu=0.2s
+[880/1390]                        lease_timed N4 R1 C=4 U=1 L=1 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/384 viol=1632 wall=0.2s cpu=0.2s
+[881/1390]                        lease_timed N4 R1 C=4 U=1 L=1 sd=0 TTL=6 pause=6 fence=on  baseline= hold/2880 viol=0 wall=0.3s cpu=0.2s
+[882/1390]                        lease_timed N4 R1 C=4 U=1 L=1 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/384 viol=1632 wall=0.2s cpu=0.2s
+[883/1390]                        lease_timed N4 R1 C=4 U=1 L=1 sd=0 TTL=10 pause=10 fence=on baseline= hold/2880 viol=0 wall=0.3s cpu=0.3s
+[884/1390]                        lease_timed N4 R1 C=4 U=1 L=1 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/384 viol=1632 wall=0.3s cpu=0.2s
+[885/1390]                        lease_timed N4 R1 C=4 U=1 L=1 sd=1 TTL=6 pause=4 fence=on  baseline= hold/2880 viol=0 wall=0.3s cpu=0.2s
+[886/1390]                        lease_timed N4 R1 C=4 U=1 L=1 sd=1 TTL=10 pause=8 fence=on baseline= hold/2880 viol=0 wall=0.3s cpu=0.3s
+[887/1390]                        lease_timed N4 R1 C=4 U=2 L=0 sd=0 TTL=6 pause=1 fence=off baseline= FIRE/384 viol=1632 wall=0.2s cpu=0.2s
+[888/1390]                        lease_timed N4 R1 C=4 U=2 L=0 sd=0 TTL=6 pause=2 fence=on  baseline= hold/2880 viol=0 wall=0.3s cpu=0.2s
+[889/1390]                        lease_timed N4 R1 C=4 U=2 L=0 sd=0 TTL=10 pause=5 fence=off baseline= FIRE/384 viol=1632 wall=0.2s cpu=0.2s
+[890/1390]                        lease_timed N4 R1 C=4 U=2 L=0 sd=1 TTL=10 pause=3 fence=off baseline= FIRE/384 viol=1632 wall=0.2s cpu=0.2s
+[891/1390]                        lease_timed N4 R1 C=4 U=2 L=2 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/384 viol=1632 wall=0.2s cpu=0.2s
+[892/1390]                        lease_timed N4 R1 C=4 U=2 L=0 sd=0 TTL=10 pause=6 fence=on baseline= hold/2880 viol=0 wall=0.3s cpu=0.3s
+[893/1390]                        lease_timed N4 R1 C=4 U=2 L=0 sd=1 TTL=10 pause=4 fence=on baseline= hold/2880 viol=0 wall=0.3s cpu=0.3s
+[894/1390]                        lease_timed N4 R1 C=4 U=2 L=2 sd=0 TTL=6 pause=6 fence=on  baseline= hold/2880 viol=0 wall=0.3s cpu=0.3s
+[895/1390]                        lease_timed N4 R1 C=4 U=2 L=2 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/384 viol=1632 wall=0.2s cpu=0.2s
+[896/1390]                        lease_timed N4 R1 C=4 U=2 L=2 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/384 viol=1632 wall=0.2s cpu=0.2s
+[897/1390]                        lease_timed N4 R1 C=4 U=2 L=2 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/384 viol=1632 wall=0.2s cpu=0.2s
+[898/1390]                        lease_timed N4 R1 C=4 U=2 L=2 sd=0 TTL=10 pause=10 fence=on baseline= hold/2880 viol=0 wall=0.3s cpu=0.2s
+[899/1390]                        lease_timed N4 R1 C=4 U=2 L=2 sd=1 TTL=6 pause=4 fence=on  baseline= hold/2880 viol=0 wall=0.3s cpu=0.3s
+[900/1390]                        lease_timed N4 R1 C=4 U=2 L=2 sd=1 TTL=10 pause=8 fence=on baseline= hold/2880 viol=0 wall=0.3s cpu=0.3s
+[901/1390]                        lease_timed N4 R1 C=4 U=1 L=0 sd=0 TTL=6 pause=3 fence=off    timed= hold/384 viol=0 wall=0.8s cpu=0.8s
+[902/1390]                        lease_timed N4 R1 C=4 U=1 L=0 sd=0 TTL=10 pause=7 fence=off    timed= hold/384 viol=0 wall=0.8s cpu=0.8s
+[903/1390]                        lease_timed N4 R1 C=4 U=1 L=0 sd=1 TTL=6 pause=1 fence=off    timed= hold/384 viol=0 wall=0.8s cpu=0.8s
+[904/1390]                        lease_timed N4 R1 C=4 U=1 L=0 sd=1 TTL=10 pause=5 fence=off    timed= hold/384 viol=0 wall=0.9s cpu=0.9s
+[905/1390]                        lease_timed N4 R1 C=4 U=1 L=0 sd=0 TTL=6 pause=4 fence=on     timed= hold/645 viol=0 wall=1.1s cpu=1.1s
+[906/1390]                        lease_timed N4 R1 C=4 U=1 L=0 sd=0 TTL=10 pause=8 fence=on    timed= hold/645 viol=0 wall=1.1s cpu=1.1s
+[907/1390]                        lease_timed N4 R1 C=4 U=1 L=0 sd=1 TTL=6 pause=2 fence=on     timed= hold/645 viol=0 wall=1.1s cpu=1.1s
+[908/1390]                        lease_timed N4 R1 C=4 U=1 L=0 sd=1 TTL=10 pause=6 fence=on    timed= hold/645 viol=0 wall=1.1s cpu=1.1s
+[909/1390]                        lease_timed N4 R1 C=4 U=1 L=1 sd=0 TTL=6 pause=5 fence=off    timed= hold/192 viol=0 wall=0.7s cpu=0.7s
+[910/1390]                        lease_timed N4 R1 C=4 U=1 L=1 sd=0 TTL=10 pause=9 fence=off    timed= hold/192 viol=0 wall=0.7s cpu=0.7s
+[911/1390]                        lease_timed N4 R1 C=4 U=1 L=1 sd=0 TTL=6 pause=6 fence=on     timed= hold/336 viol=0 wall=0.8s cpu=0.8s
+[912/1390]                        lease_timed N4 R1 C=4 U=1 L=1 sd=1 TTL=6 pause=3 fence=off    timed= hold/192 viol=0 wall=0.7s cpu=0.7s
+[913/1390]                        lease_timed N4 R1 C=4 U=1 L=1 sd=1 TTL=10 pause=7 fence=off    timed= hold/192 viol=0 wall=0.7s cpu=0.7s
+[914/1390]                        lease_timed N4 R1 C=4 U=1 L=1 sd=0 TTL=10 pause=10 fence=on    timed= hold/336 viol=0 wall=0.9s cpu=0.8s
+[915/1390]                        lease_timed N4 R1 C=4 U=1 L=1 sd=1 TTL=6 pause=4 fence=on     timed= hold/360 viol=0 wall=1.0s cpu=1.0s
+[916/1390]                        lease_timed N4 R1 C=4 U=1 L=1 sd=1 TTL=10 pause=8 fence=on    timed= hold/360 viol=0 wall=0.9s cpu=0.9s
+[917/1390]                        lease_timed N4 R1 C=4 U=2 L=0 sd=0 TTL=6 pause=1 fence=off    timed= hold/384 viol=0 wall=0.9s cpu=0.9s
+[918/1390]                        lease_timed N4 R1 C=4 U=2 L=2 sd=0 TTL=6 pause=5 fence=off    timed= hold/24 viol=0 wall=0.2s cpu=0.2s
+[919/1390]                        lease_timed N4 R1 C=4 U=2 L=2 sd=0 TTL=6 pause=6 fence=on     timed= hold/42 viol=0 wall=0.3s cpu=0.2s
+[920/1390]                        lease_timed N4 R1 C=4 U=2 L=0 sd=0 TTL=10 pause=5 fence=off    timed= hold/384 viol=0 wall=0.8s cpu=0.8s
+[921/1390]                        lease_timed N4 R1 C=4 U=2 L=2 sd=1 TTL=6 pause=3 fence=off    timed= hold/24 viol=0 wall=0.2s cpu=0.2s
+[922/1390]                        lease_timed N4 R1 C=4 U=2 L=0 sd=1 TTL=10 pause=3 fence=off    timed= hold/384 viol=0 wall=0.9s cpu=0.8s
+[923/1390]                        lease_timed N4 R1 C=4 U=2 L=2 sd=1 TTL=6 pause=4 fence=on     timed= hold/42 viol=0 wall=0.3s cpu=0.3s
+[924/1390]                        lease_timed N4 R1 C=4 U=2 L=0 sd=0 TTL=6 pause=2 fence=on     timed= hold/645 viol=0 wall=1.2s cpu=1.1s
+[925/1390]                         swim_timed N4 R1 N=4 U=1 L=0 sd=0 Wp=1 Ws=3               baseline= FIRE/5 viol=12 wall=0.0s cpu=0.0s
+[926/1390]                         swim_timed N4 R1 N=4 U=1 L=0 sd=1 Wp=1 Ws=5               baseline= FIRE/5 viol=12 wall=0.0s cpu=0.0s
+[927/1390]                         swim_timed N4 R1 N=4 U=1 L=1 sd=0 Wp=1 Ws=2               baseline= FIRE/5 viol=12 wall=0.0s cpu=0.0s
+[928/1390]                         swim_timed N4 R1 N=4 U=1 L=1 sd=1 Wp=1 Ws=4               baseline= FIRE/5 viol=12 wall=0.0s cpu=0.0s
+[929/1390]                         swim_timed N4 R1 N=4 U=2 L=0 sd=0 Wp=2 Ws=5               baseline= FIRE/5 viol=12 wall=0.0s cpu=0.0s
+[930/1390]                         swim_timed N4 R1 N=4 U=2 L=0 sd=1 Wp=2 Ws=7               baseline= FIRE/5 viol=12 wall=0.0s cpu=0.0s
+[931/1390]                         swim_timed N4 R1 N=4 U=2 L=2 sd=0 Wp=2 Ws=3               baseline= FIRE/5 viol=12 wall=0.0s cpu=0.0s
+[932/1390]                         swim_timed N4 R1 N=4 U=2 L=2 sd=1 Wp=2 Ws=5               baseline= FIRE/5 viol=12 wall=0.0s cpu=0.0s
+[933/1390]                         swim_timed N4 R1 N=4 U=1 L=0 sd=0 Wp=1 Ws=3                  timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[934/1390]                         swim_timed N4 R1 N=4 U=1 L=0 sd=1 Wp=1 Ws=5                  timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[935/1390]                         swim_timed N4 R1 N=4 U=1 L=1 sd=0 Wp=1 Ws=2                  timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[936/1390]                         swim_timed N4 R1 N=4 U=1 L=1 sd=1 Wp=1 Ws=4                  timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[937/1390]                         swim_timed N4 R1 N=4 U=2 L=0 sd=0 Wp=2 Ws=5                  timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[938/1390]                         swim_timed N4 R1 N=4 U=2 L=0 sd=1 Wp=2 Ws=7                  timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[939/1390]                         swim_timed N4 R1 N=4 U=2 L=2 sd=0 Wp=2 Ws=3                  timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[940/1390]                         swim_timed N4 R1 N=4 U=2 L=2 sd=1 Wp=2 Ws=5                  timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[941/1390]                        lease_timed N4 R1 C=4 U=2 L=0 sd=0 TTL=10 pause=6 fence=on    timed= hold/645 viol=0 wall=1.2s cpu=1.2s
+[942/1390]                        lease_timed N4 R1 C=4 U=2 L=2 sd=0 TTL=10 pause=9 fence=off    timed= hold/192 viol=0 wall=0.7s cpu=0.7s
+[943/1390]                        lease_timed N4 R1 C=4 U=2 L=0 sd=1 TTL=10 pause=4 fence=on    timed= hold/645 viol=0 wall=1.2s cpu=1.1s
+[944/1390]                        lease_timed N4 R1 C=4 U=2 L=2 sd=0 TTL=10 pause=10 fence=on    timed= hold/336 viol=0 wall=0.9s cpu=0.8s
+[945/1390]                        lease_timed N4 R1 C=4 U=2 L=2 sd=1 TTL=10 pause=7 fence=off    timed= hold/192 viol=0 wall=0.8s cpu=0.7s
+[946/1390]                        lease_timed N4 R1 C=4 U=2 L=2 sd=1 TTL=10 pause=8 fence=on    timed= hold/360 viol=0 wall=1.0s cpu=1.0s
+[947/1390]                        lease_timed N3 R2 C=3 U=1 L=0 sd=0 TTL=6 pause=3 fence=off baseline= FIRE/2304 viol=4164 wall=0.9s cpu=0.8s
+[948/1390]                        lease_timed N3 R2 C=3 U=1 L=0 sd=0 TTL=10 pause=7 fence=off baseline= FIRE/2304 viol=4164 wall=0.9s cpu=0.8s
+[949/1390]                        lease_timed N3 R2 C=3 U=1 L=0 sd=1 TTL=6 pause=1 fence=off baseline= FIRE/2304 viol=4164 wall=0.9s cpu=0.8s
+[950/1390]                        lease_timed N3 R2 C=3 U=1 L=0 sd=1 TTL=10 pause=5 fence=off baseline= FIRE/2304 viol=4164 wall=0.9s cpu=0.8s
+[951/1390]                        lease_timed N3 R2 C=3 U=1 L=1 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/2304 viol=4164 wall=0.9s cpu=0.9s
+[952/1390]                        lease_timed N3 R2 C=3 U=1 L=1 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/2304 viol=4164 wall=0.9s cpu=0.9s
+[953/1390]                        lease_timed N3 R2 C=3 U=1 L=0 sd=0 TTL=6 pause=4 fence=on  baseline= hold/20736 viol=0 wall=2.4s cpu=2.4s
+[954/1390]                        lease_timed N3 R2 C=3 U=1 L=0 sd=0 TTL=10 pause=8 fence=on baseline= hold/20736 viol=0 wall=2.4s cpu=2.4s
+[955/1390]                        lease_timed N3 R2 C=3 U=1 L=1 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/2304 viol=4164 wall=0.8s cpu=0.8s
+[956/1390]                        lease_timed N3 R2 C=3 U=1 L=0 sd=1 TTL=6 pause=2 fence=on  baseline= hold/20736 viol=0 wall=2.4s cpu=2.4s
+[957/1390]                        lease_timed N3 R2 C=3 U=1 L=1 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/2304 viol=4164 wall=0.8s cpu=0.8s
+[958/1390]                        lease_timed N3 R2 C=3 U=1 L=0 sd=1 TTL=10 pause=6 fence=on baseline= hold/20736 viol=0 wall=2.4s cpu=2.4s
+[959/1390]                        lease_timed N3 R2 C=3 U=1 L=1 sd=0 TTL=6 pause=6 fence=on  baseline= hold/20736 viol=0 wall=2.4s cpu=2.3s
+[960/1390]                        lease_timed N3 R2 C=3 U=2 L=0 sd=0 TTL=6 pause=1 fence=off baseline= FIRE/2304 viol=4164 wall=0.8s cpu=0.8s
+[961/1390]                        lease_timed N3 R2 C=3 U=1 L=1 sd=0 TTL=10 pause=10 fence=on baseline= hold/20736 viol=0 wall=2.4s cpu=2.3s
+[962/1390]                        lease_timed N3 R2 C=3 U=2 L=0 sd=0 TTL=10 pause=5 fence=off baseline= FIRE/2304 viol=4164 wall=0.8s cpu=0.8s
+[963/1390]                        lease_timed N3 R2 C=3 U=2 L=0 sd=1 TTL=10 pause=3 fence=off baseline= FIRE/2304 viol=4164 wall=0.8s cpu=0.8s
+[964/1390]                        lease_timed N3 R2 C=3 U=1 L=1 sd=1 TTL=6 pause=4 fence=on  baseline= hold/20736 viol=0 wall=2.4s cpu=2.4s
+[965/1390]                        lease_timed N3 R2 C=3 U=2 L=2 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/2304 viol=4164 wall=0.8s cpu=0.8s
+[966/1390]                        lease_timed N3 R2 C=3 U=1 L=1 sd=1 TTL=10 pause=8 fence=on baseline= hold/20736 viol=0 wall=2.3s cpu=2.3s
+[967/1390]                        lease_timed N3 R2 C=3 U=2 L=2 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/2304 viol=4164 wall=0.8s cpu=0.8s
+[968/1390]                        lease_timed N3 R2 C=3 U=2 L=0 sd=0 TTL=6 pause=2 fence=on  baseline= hold/20736 viol=0 wall=2.4s cpu=2.3s
+[969/1390]                        lease_timed N3 R2 C=3 U=2 L=2 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/2304 viol=4164 wall=0.8s cpu=0.8s
+[970/1390]                        lease_timed N3 R2 C=3 U=2 L=0 sd=0 TTL=10 pause=6 fence=on baseline= hold/20736 viol=0 wall=2.3s cpu=2.3s
+[971/1390]                        lease_timed N3 R2 C=3 U=2 L=2 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/2304 viol=4164 wall=0.8s cpu=0.8s
+[972/1390]                        lease_timed N3 R2 C=3 U=2 L=0 sd=1 TTL=10 pause=4 fence=on baseline= hold/20736 viol=0 wall=2.3s cpu=2.3s
+[973/1390]                        lease_timed N3 R2 C=3 U=2 L=2 sd=0 TTL=6 pause=6 fence=on  baseline= hold/20736 viol=0 wall=2.3s cpu=2.3s
+[974/1390]                        lease_timed N3 R2 C=3 U=2 L=2 sd=0 TTL=10 pause=10 fence=on baseline= hold/20736 viol=0 wall=2.3s cpu=2.3s
+[975/1390]                        lease_timed N3 R2 C=3 U=2 L=2 sd=1 TTL=6 pause=4 fence=on  baseline= hold/20736 viol=0 wall=2.3s cpu=2.3s
+[976/1390]                        lease_timed N3 R2 C=3 U=2 L=2 sd=1 TTL=10 pause=8 fence=on baseline= hold/20736 viol=0 wall=2.3s cpu=2.3s
+[977/1390]                        lease_timed N3 R2 C=3 U=1 L=0 sd=0 TTL=6 pause=3 fence=off    timed= hold/3920 viol=0 wall=7.6s cpu=7.6s
+[978/1390]                        lease_timed N3 R2 C=3 U=1 L=0 sd=0 TTL=10 pause=7 fence=off    timed= hold/3920 viol=0 wall=7.6s cpu=7.6s
+[979/1390]                        lease_timed N3 R2 C=3 U=1 L=0 sd=1 TTL=6 pause=1 fence=off    timed= hold/3920 viol=0 wall=7.5s cpu=7.5s
+[980/1390]                        lease_timed N3 R2 C=3 U=1 L=1 sd=0 TTL=6 pause=5 fence=off    timed= hold/384 viol=0 wall=1.3s cpu=1.3s
+[981/1390]                        lease_timed N3 R2 C=3 U=1 L=0 sd=1 TTL=10 pause=5 fence=off    timed= hold/3920 viol=0 wall=7.6s cpu=7.6s
+[982/1390]                        lease_timed N3 R2 C=3 U=1 L=1 sd=0 TTL=10 pause=9 fence=off    timed= hold/384 viol=0 wall=1.3s cpu=1.3s
+[983/1390]                        lease_timed N3 R2 C=3 U=1 L=1 sd=0 TTL=6 pause=6 fence=on     timed= hold/1280 viol=0 wall=2.9s cpu=2.9s
+[984/1390]                        lease_timed N3 R2 C=3 U=1 L=1 sd=0 TTL=10 pause=10 fence=on    timed= hold/1280 viol=0 wall=2.9s cpu=2.9s
+[985/1390]                        lease_timed N3 R2 C=3 U=1 L=1 sd=1 TTL=6 pause=3 fence=off    timed= hold/888 viol=0 wall=3.0s cpu=3.0s
+[986/1390]                        lease_timed N3 R2 C=3 U=1 L=1 sd=1 TTL=10 pause=7 fence=off    timed= hold/888 viol=0 wall=3.1s cpu=3.0s
+[987/1390]                        lease_timed N3 R2 C=3 U=1 L=0 sd=0 TTL=6 pause=4 fence=on     timed= hold/9546 viol=0 wall=14.7s cpu=14.7s
+[988/1390]                        lease_timed N3 R2 C=3 U=1 L=0 sd=0 TTL=10 pause=8 fence=on    timed= hold/9546 viol=0 wall=14.7s cpu=14.7s
+[989/1390]                        lease_timed N3 R2 C=3 U=1 L=0 sd=1 TTL=6 pause=2 fence=on     timed= hold/9546 viol=0 wall=14.6s cpu=14.6s
+[990/1390]                        lease_timed N3 R2 C=3 U=1 L=1 sd=1 TTL=6 pause=4 fence=on     timed= hold/2844 viol=0 wall=6.7s cpu=6.7s
+[991/1390]                        lease_timed N3 R2 C=3 U=1 L=0 sd=1 TTL=10 pause=6 fence=on    timed= hold/9546 viol=0 wall=14.7s cpu=14.7s
+[992/1390]                        lease_timed N3 R2 C=3 U=2 L=2 sd=0 TTL=6 pause=5 fence=off    timed= hold/24 viol=0 wall=0.2s cpu=0.2s
+[993/1390]                        lease_timed N3 R2 C=3 U=2 L=2 sd=0 TTL=6 pause=6 fence=on     timed= hold/80 viol=0 wall=0.4s cpu=0.4s
+[994/1390]                        lease_timed N3 R2 C=3 U=1 L=1 sd=1 TTL=10 pause=8 fence=on    timed= hold/2844 viol=0 wall=6.7s cpu=6.7s
+[995/1390]                        lease_timed N3 R2 C=3 U=2 L=2 sd=0 TTL=10 pause=9 fence=off    timed= hold/384 viol=0 wall=1.4s cpu=1.4s
+[996/1390]                        lease_timed N3 R2 C=3 U=2 L=2 sd=1 TTL=6 pause=3 fence=off    timed= hold/44 viol=0 wall=0.4s cpu=0.3s
+[997/1390]                        lease_timed N3 R2 C=3 U=2 L=2 sd=1 TTL=6 pause=4 fence=on     timed= hold/95 viol=0 wall=0.5s cpu=0.5s
+[998/1390]                        lease_timed N3 R2 C=3 U=2 L=0 sd=0 TTL=6 pause=1 fence=off    timed= hold/4352 viol=0 wall=8.4s cpu=8.4s
+[999/1390]                        lease_timed N3 R2 C=3 U=2 L=2 sd=0 TTL=10 pause=10 fence=on    timed= hold/1280 viol=0 wall=2.9s cpu=2.9s
+[1000/1390]                         swim_timed N3 R2 N=3 U=1 L=0 sd=0 Wp=1 Ws=3               baseline= FIRE/8 viol=15 wall=0.0s cpu=0.0s
+[1001/1390]                         swim_timed N3 R2 N=3 U=1 L=0 sd=1 Wp=1 Ws=5               baseline= FIRE/8 viol=15 wall=0.0s cpu=0.0s
+[1002/1390]                         swim_timed N3 R2 N=3 U=1 L=1 sd=0 Wp=1 Ws=2               baseline= FIRE/8 viol=15 wall=0.0s cpu=0.0s
+[1003/1390]                         swim_timed N3 R2 N=3 U=1 L=1 sd=1 Wp=1 Ws=4               baseline= FIRE/8 viol=15 wall=0.0s cpu=0.0s
+[1004/1390]                         swim_timed N3 R2 N=3 U=2 L=0 sd=0 Wp=2 Ws=5               baseline= FIRE/8 viol=15 wall=0.0s cpu=0.0s
+[1005/1390]                         swim_timed N3 R2 N=3 U=2 L=0 sd=1 Wp=2 Ws=7               baseline= FIRE/8 viol=15 wall=0.0s cpu=0.0s
+[1006/1390]                         swim_timed N3 R2 N=3 U=2 L=2 sd=0 Wp=2 Ws=3               baseline= FIRE/8 viol=15 wall=0.0s cpu=0.0s
+[1007/1390]                         swim_timed N3 R2 N=3 U=2 L=2 sd=1 Wp=2 Ws=5               baseline= FIRE/8 viol=15 wall=0.0s cpu=0.0s
+[1008/1390]                         swim_timed N3 R2 N=3 U=1 L=0 sd=0 Wp=1 Ws=3                  timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[1009/1390]                         swim_timed N3 R2 N=3 U=1 L=0 sd=1 Wp=1 Ws=5                  timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[1010/1390]                         swim_timed N3 R2 N=3 U=1 L=1 sd=0 Wp=1 Ws=2                  timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[1011/1390]                         swim_timed N3 R2 N=3 U=1 L=1 sd=1 Wp=1 Ws=4                  timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[1012/1390]                         swim_timed N3 R2 N=3 U=2 L=0 sd=0 Wp=2 Ws=5                  timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[1013/1390]                         swim_timed N3 R2 N=3 U=2 L=0 sd=1 Wp=2 Ws=7                  timed= hold/4 viol=0 wall=0.0s cpu=0.0s
+[1014/1390]                         swim_timed N3 R2 N=3 U=2 L=2 sd=0 Wp=2 Ws=3                  timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[1015/1390]                         swim_timed N3 R2 N=3 U=2 L=2 sd=1 Wp=2 Ws=5                  timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[1016/1390]                         swim_timed N5 R1 N=5 U=1 L=0 sd=0 Wp=1 Ws=3               baseline= FIRE/9 viol=32 wall=0.0s cpu=0.0s
+[1017/1390]                         swim_timed N5 R1 N=5 U=1 L=0 sd=1 Wp=1 Ws=5               baseline= FIRE/9 viol=32 wall=0.0s cpu=0.0s
+[1018/1390]                         swim_timed N5 R1 N=5 U=1 L=1 sd=0 Wp=1 Ws=2               baseline= FIRE/9 viol=32 wall=0.0s cpu=0.0s
+[1019/1390]                         swim_timed N5 R1 N=5 U=1 L=1 sd=1 Wp=1 Ws=4               baseline= FIRE/9 viol=32 wall=0.0s cpu=0.0s
+[1020/1390]                         swim_timed N5 R1 N=5 U=2 L=0 sd=0 Wp=2 Ws=5               baseline= FIRE/9 viol=32 wall=0.0s cpu=0.0s
+[1021/1390]                         swim_timed N5 R1 N=5 U=2 L=0 sd=1 Wp=2 Ws=7               baseline= FIRE/9 viol=32 wall=0.0s cpu=0.0s
+[1022/1390]                         swim_timed N5 R1 N=5 U=2 L=2 sd=0 Wp=2 Ws=3               baseline= FIRE/9 viol=32 wall=0.0s cpu=0.0s
+[1023/1390]                         swim_timed N5 R1 N=5 U=2 L=2 sd=1 Wp=2 Ws=5               baseline= FIRE/9 viol=32 wall=0.0s cpu=0.0s
+[1024/1390]                         swim_timed N5 R1 N=5 U=1 L=0 sd=0 Wp=1 Ws=3                  timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[1025/1390]                         swim_timed N5 R1 N=5 U=1 L=0 sd=1 Wp=1 Ws=5                  timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[1026/1390]                         swim_timed N5 R1 N=5 U=1 L=1 sd=0 Wp=1 Ws=2                  timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[1027/1390]                         swim_timed N5 R1 N=5 U=1 L=1 sd=1 Wp=1 Ws=4                  timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[1028/1390]                         swim_timed N5 R1 N=5 U=2 L=0 sd=0 Wp=2 Ws=5                  timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[1029/1390]                         swim_timed N5 R1 N=5 U=2 L=0 sd=1 Wp=2 Ws=7                  timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[1030/1390]                         swim_timed N5 R1 N=5 U=2 L=2 sd=0 Wp=2 Ws=3                  timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[1031/1390]                         swim_timed N5 R1 N=5 U=2 L=2 sd=1 Wp=2 Ws=5                  timed= hold/1 viol=0 wall=0.0s cpu=0.0s
+[1032/1390]                        lease_timed N2 R3 C=2 U=1 L=0 sd=0 TTL=6 pause=3 fence=off baseline= FIRE/512 viol=292 wall=0.1s cpu=0.1s
+[1033/1390]                        lease_timed N2 R3 C=2 U=1 L=0 sd=0 TTL=6 pause=4 fence=on  baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[1034/1390]                        lease_timed N2 R3 C=2 U=1 L=0 sd=0 TTL=10 pause=7 fence=off baseline= FIRE/512 viol=292 wall=0.1s cpu=0.1s
+[1035/1390]                        lease_timed N2 R3 C=2 U=1 L=0 sd=0 TTL=10 pause=8 fence=on baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[1036/1390]                        lease_timed N2 R3 C=2 U=1 L=0 sd=1 TTL=6 pause=1 fence=off baseline= FIRE/512 viol=292 wall=0.1s cpu=0.1s
+[1037/1390]                        lease_timed N3 R2 C=3 U=2 L=2 sd=1 TTL=10 pause=7 fence=off    timed= hold/888 viol=0 wall=3.1s cpu=3.1s
+[1038/1390]                        lease_timed N2 R3 C=2 U=1 L=0 sd=1 TTL=10 pause=5 fence=off baseline= FIRE/512 viol=292 wall=0.1s cpu=0.1s
+[1039/1390]                        lease_timed N2 R3 C=2 U=1 L=0 sd=1 TTL=6 pause=2 fence=on  baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[1040/1390]                        lease_timed N2 R3 C=2 U=1 L=1 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/512 viol=292 wall=0.1s cpu=0.1s
+[1041/1390]                        lease_timed N2 R3 C=2 U=1 L=0 sd=1 TTL=10 pause=6 fence=on baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[1042/1390]                        lease_timed N2 R3 C=2 U=1 L=1 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/512 viol=292 wall=0.1s cpu=0.1s
+[1043/1390]                        lease_timed N2 R3 C=2 U=1 L=1 sd=0 TTL=6 pause=6 fence=on  baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[1044/1390]                        lease_timed N2 R3 C=2 U=1 L=1 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/512 viol=292 wall=0.1s cpu=0.1s
+[1045/1390]                        lease_timed N2 R3 C=2 U=1 L=1 sd=0 TTL=10 pause=10 fence=on baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[1046/1390]                        lease_timed N3 R2 C=3 U=2 L=0 sd=0 TTL=10 pause=5 fence=off    timed= hold/4352 viol=0 wall=8.5s cpu=8.5s
+[1047/1390]                        lease_timed N2 R3 C=2 U=1 L=1 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/512 viol=292 wall=0.1s cpu=0.1s
+[1048/1390]                        lease_timed N2 R3 C=2 U=1 L=1 sd=1 TTL=6 pause=4 fence=on  baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[1049/1390]                        lease_timed N2 R3 C=2 U=2 L=0 sd=0 TTL=6 pause=1 fence=off baseline= FIRE/512 viol=292 wall=0.1s cpu=0.1s
+[1050/1390]                        lease_timed N2 R3 C=2 U=1 L=1 sd=1 TTL=10 pause=8 fence=on baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[1051/1390]                        lease_timed N2 R3 C=2 U=2 L=0 sd=0 TTL=10 pause=5 fence=off baseline= FIRE/512 viol=292 wall=0.1s cpu=0.1s
+[1052/1390]                        lease_timed N2 R3 C=2 U=2 L=0 sd=0 TTL=6 pause=2 fence=on  baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[1053/1390]                        lease_timed N2 R3 C=2 U=2 L=0 sd=1 TTL=10 pause=3 fence=off baseline= FIRE/512 viol=292 wall=0.1s cpu=0.1s
+[1054/1390]                        lease_timed N2 R3 C=2 U=2 L=0 sd=0 TTL=10 pause=6 fence=on baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[1055/1390]                        lease_timed N2 R3 C=2 U=2 L=0 sd=1 TTL=10 pause=4 fence=on baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[1056/1390]                        lease_timed N2 R3 C=2 U=2 L=2 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/512 viol=292 wall=0.1s cpu=0.1s
+[1057/1390]                        lease_timed N2 R3 C=2 U=2 L=2 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/512 viol=292 wall=0.1s cpu=0.1s
+[1058/1390]                        lease_timed N2 R3 C=2 U=2 L=2 sd=0 TTL=6 pause=6 fence=on  baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[1059/1390]                        lease_timed N2 R3 C=2 U=2 L=2 sd=0 TTL=10 pause=10 fence=on baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[1060/1390]                        lease_timed N2 R3 C=2 U=2 L=2 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/512 viol=292 wall=0.1s cpu=0.1s
+[1061/1390]                        lease_timed N2 R3 C=2 U=2 L=2 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/512 viol=292 wall=0.1s cpu=0.1s
+[1062/1390]                        lease_timed N2 R3 C=2 U=2 L=2 sd=1 TTL=6 pause=4 fence=on  baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[1063/1390]                        lease_timed N2 R3 C=2 U=2 L=2 sd=1 TTL=10 pause=8 fence=on baseline= hold/1728 viol=0 wall=0.2s cpu=0.2s
+[1064/1390]                        lease_timed N3 R2 C=3 U=2 L=0 sd=1 TTL=10 pause=3 fence=off    timed= hold/4352 viol=0 wall=8.5s cpu=8.5s
+[1065/1390]                        lease_timed N2 R3 C=2 U=1 L=0 sd=0 TTL=6 pause=3 fence=off    timed= hold/512 viol=0 wall=0.7s cpu=0.7s
+[1066/1390]                        lease_timed N2 R3 C=2 U=1 L=0 sd=0 TTL=10 pause=7 fence=off    timed= hold/512 viol=0 wall=0.7s cpu=0.7s
+[1067/1390]                        lease_timed N2 R3 C=2 U=1 L=0 sd=1 TTL=6 pause=1 fence=off    timed= hold/512 viol=0 wall=0.7s cpu=0.6s
+[1068/1390]                        lease_timed N2 R3 C=2 U=1 L=0 sd=0 TTL=6 pause=4 fence=on     timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[1069/1390]                        lease_timed N2 R3 C=2 U=1 L=0 sd=0 TTL=10 pause=8 fence=on    timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[1070/1390]                        lease_timed N2 R3 C=2 U=1 L=1 sd=0 TTL=6 pause=5 fence=off    timed= hold/16 viol=0 wall=0.1s cpu=0.1s
+[1071/1390]                        lease_timed N2 R3 C=2 U=1 L=0 sd=1 TTL=10 pause=5 fence=off    timed= hold/512 viol=0 wall=0.7s cpu=0.7s
+[1072/1390]                        lease_timed N2 R3 C=2 U=1 L=1 sd=0 TTL=10 pause=9 fence=off    timed= hold/16 viol=0 wall=0.1s cpu=0.1s
+[1073/1390]                        lease_timed N2 R3 C=2 U=1 L=1 sd=0 TTL=6 pause=6 fence=on     timed= hold/96 viol=0 wall=0.2s cpu=0.2s
+[1074/1390]                        lease_timed N3 R2 C=3 U=2 L=2 sd=1 TTL=10 pause=8 fence=on    timed= hold/2248 viol=0 wall=5.4s cpu=5.4s
+[1075/1390]                        lease_timed N2 R3 C=2 U=1 L=1 sd=0 TTL=10 pause=10 fence=on    timed= hold/96 viol=0 wall=0.2s cpu=0.2s
+[1076/1390]                        lease_timed N2 R3 C=2 U=1 L=1 sd=1 TTL=6 pause=3 fence=off    timed= hold/76 viol=0 wall=0.2s cpu=0.2s
+[1077/1390]                        lease_timed N2 R3 C=2 U=1 L=0 sd=1 TTL=6 pause=2 fence=on     timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[1078/1390]                        lease_timed N2 R3 C=2 U=1 L=1 sd=1 TTL=10 pause=7 fence=off    timed= hold/76 viol=0 wall=0.2s cpu=0.2s
+[1079/1390]                        lease_timed N2 R3 C=2 U=1 L=1 sd=1 TTL=6 pause=4 fence=on     timed= hold/385 viol=0 wall=0.7s cpu=0.7s
+[1080/1390]                        lease_timed N2 R3 C=2 U=1 L=1 sd=1 TTL=10 pause=8 fence=on    timed= hold/385 viol=0 wall=0.7s cpu=0.7s
+[1081/1390]                        lease_timed N2 R3 C=2 U=2 L=0 sd=0 TTL=6 pause=1 fence=off    timed= hold/576 viol=0 wall=0.7s cpu=0.7s
+[1082/1390]                        lease_timed N2 R3 C=2 U=1 L=0 sd=1 TTL=10 pause=6 fence=on    timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[1083/1390]                        lease_timed N2 R3 C=2 U=2 L=0 sd=0 TTL=10 pause=5 fence=off    timed= hold/576 viol=0 wall=0.8s cpu=0.7s
+[1084/1390]                        lease_timed N2 R3 C=2 U=2 L=2 sd=0 TTL=6 pause=5 fence=off    timed= hold/2 viol=0 wall=0.0s cpu=0.0s
+[1085/1390]                        lease_timed N2 R3 C=2 U=2 L=2 sd=0 TTL=6 pause=6 fence=on     timed= hold/12 viol=0 wall=0.0s cpu=0.0s
+[1086/1390]                        lease_timed N2 R3 C=2 U=2 L=2 sd=0 TTL=10 pause=9 fence=off    timed= hold/16 viol=0 wall=0.1s cpu=0.1s
+[1087/1390]                        lease_timed N2 R3 C=2 U=2 L=0 sd=1 TTL=10 pause=3 fence=off    timed= hold/576 viol=0 wall=0.8s cpu=0.7s
+[1088/1390]                        lease_timed N2 R3 C=2 U=2 L=2 sd=0 TTL=10 pause=10 fence=on    timed= hold/96 viol=0 wall=0.2s cpu=0.2s
+[1089/1390]                        lease_timed N2 R3 C=2 U=2 L=2 sd=1 TTL=6 pause=3 fence=off    timed= hold/8 viol=0 wall=0.1s cpu=0.0s
+[1090/1390]                        lease_timed N2 R3 C=2 U=2 L=2 sd=1 TTL=6 pause=4 fence=on     timed= hold/12 viol=0 wall=0.1s cpu=0.0s
+[1091/1390]                        lease_timed N2 R3 C=2 U=2 L=0 sd=0 TTL=6 pause=2 fence=on     timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[1092/1390]                        lease_timed N2 R3 C=2 U=2 L=2 sd=1 TTL=10 pause=7 fence=off    timed= hold/76 viol=0 wall=0.2s cpu=0.2s
+[1093/1390]                        lease_timed N2 R3 C=2 U=2 L=2 sd=1 TTL=10 pause=8 fence=on    timed= hold/175 viol=0 wall=0.3s cpu=0.3s
+[1094/1390]                        lease_timed N3 R2 C=3 U=2 L=0 sd=0 TTL=6 pause=2 fence=on     timed= hold/9546 viol=0 wall=14.6s cpu=14.6s
+[1095/1390]                        lease_timed N2 R3 C=2 U=2 L=0 sd=0 TTL=10 pause=6 fence=on    timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[1096/1390]                        lease_timed N2 R3 C=2 U=2 L=0 sd=1 TTL=10 pause=4 fence=on    timed= hold/1485 viol=0 wall=1.6s cpu=1.6s
+[1097/1390]                        lease_timed N3 R2 C=3 U=2 L=0 sd=0 TTL=10 pause=6 fence=on    timed= hold/9546 viol=0 wall=14.7s cpu=14.7s
+[1098/1390]                        lease_timed N3 R2 C=3 U=2 L=0 sd=1 TTL=10 pause=4 fence=on    timed= hold/9546 viol=0 wall=14.8s cpu=14.8s
+[1099/1390]                        lease_timed N4 R2 C=4 U=1 L=0 sd=0 TTL=10 pause=7 fence=off baseline= FIRE/147456 viol=631968 wall=122.2s cpu=122.1s
+[1100/1390]                        lease_timed N4 R2 C=4 U=1 L=0 sd=0 TTL=6 pause=3 fence=off baseline= FIRE/147456 viol=631968 wall=122.5s cpu=122.5s
+[1101/1390]                        lease_timed N4 R2 C=4 U=1 L=0 sd=1 TTL=6 pause=1 fence=off baseline= FIRE/147456 viol=631968 wall=122.4s cpu=122.4s
+[1102/1390]                        lease_timed N4 R2 C=4 U=1 L=0 sd=1 TTL=10 pause=5 fence=off baseline= FIRE/147456 viol=631968 wall=123.5s cpu=123.5s
+[1103/1390]                        lease_timed N4 R2 C=4 U=1 L=1 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/147456 viol=631968 wall=121.8s cpu=121.8s
+[1104/1390]                        lease_timed N4 R2 C=4 U=1 L=1 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/147456 viol=631968 wall=123.4s cpu=123.4s
+[1105/1390]                        lease_timed N4 R2 C=4 U=1 L=1 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/147456 viol=631968 wall=122.6s cpu=122.6s
+[1106/1390]                        lease_timed N4 R2 C=4 U=1 L=1 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/147456 viol=631968 wall=131.0s cpu=130.9s
+[1107/1390]                        lease_timed N4 R2 C=4 U=1 L=0 sd=0 TTL=6 pause=4 fence=on  baseline= hold/8294400 viol=0 wall=1439.4s cpu=1439.2s
+[1108/1390]                        lease_timed N4 R2 C=4 U=1 L=0 sd=1 TTL=6 pause=2 fence=on  baseline= hold/8294400 viol=0 wall=1474.6s cpu=1474.6s
+[1109/1390]                        lease_timed N4 R2 C=4 U=1 L=0 sd=0 TTL=10 pause=8 fence=on baseline= hold/8294400 viol=0 wall=1486.9s cpu=1486.8s
+[1110/1390]                        lease_timed N4 R2 C=4 U=1 L=0 sd=1 TTL=10 pause=6 fence=on baseline= hold/8294400 viol=0 wall=1493.9s cpu=1493.8s
+[1111/1390]                        lease_timed N4 R2 C=4 U=1 L=1 sd=0 TTL=10 pause=10 fence=on baseline= hold/8294400 viol=0 wall=1444.7s cpu=1444.6s
+[1112/1390]                        lease_timed N4 R2 C=4 U=2 L=0 sd=0 TTL=6 pause=1 fence=off baseline= FIRE/147456 viol=631968 wall=133.6s cpu=133.5s
+[1113/1390]                        lease_timed N4 R2 C=4 U=1 L=1 sd=0 TTL=6 pause=6 fence=on  baseline= hold/8294400 viol=0 wall=1467.5s cpu=1467.4s
+[1114/1390]                        lease_timed N4 R2 C=4 U=2 L=0 sd=0 TTL=10 pause=5 fence=off baseline= FIRE/147456 viol=631968 wall=135.4s cpu=135.3s
+[1115/1390]                        lease_timed N4 R2 C=4 U=2 L=0 sd=1 TTL=10 pause=3 fence=off baseline= FIRE/147456 viol=631968 wall=132.8s cpu=132.8s
+[1116/1390]                        lease_timed N4 R2 C=4 U=2 L=2 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/147456 viol=631968 wall=133.4s cpu=133.4s
+[1117/1390]                        lease_timed N4 R2 C=4 U=1 L=1 sd=1 TTL=6 pause=4 fence=on  baseline= hold/8294400 viol=0 wall=1510.0s cpu=1509.9s
+[v6:lease_swim] 695 cells, 273 work items to run (1117 rows already present), jobs=8, workers=8, timeout=None
+[1/273]                        lease_timed N4 R2 C=4 U=2 L=2 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/147456 viol=631968 wall=32.5s cpu=242.8s
+[2/273]                        lease_timed N4 R2 C=4 U=2 L=2 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/147456 viol=631968 wall=34.0s cpu=255.2s
+[3/273]                        lease_timed N4 R2 C=4 U=2 L=2 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/147456 viol=631968 wall=30.3s cpu=226.3s
+[4/273]                        lease_timed N4 R2 C=4 U=2 L=0 sd=1 TTL=10 pause=4 fence=on baseline= hold/8294400 viol=0 wall=285.4s cpu=2124.7s
+[5/273]                        lease_timed N4 R2 C=4 U=2 L=0 sd=0 TTL=10 pause=6 fence=on baseline= hold/8294400 viol=0 wall=291.4s cpu=2173.1s
+[6/273]                        lease_timed N4 R2 C=4 U=2 L=0 sd=0 TTL=6 pause=2 fence=on  baseline= hold/8294400 viol=0 wall=294.1s cpu=2182.5s
+[7/273]                        lease_timed N4 R2 C=4 U=2 L=2 sd=0 TTL=10 pause=10 fence=on baseline= hold/8294400 viol=0 wall=294.4s cpu=2188.9s
+[8/273]                        lease_timed N4 R2 C=4 U=1 L=1 sd=1 TTL=10 pause=8 fence=on baseline= hold/8294400 viol=0 wall=317.4s cpu=2353.5s
+[9/273]                        lease_timed N4 R2 C=4 U=2 L=2 sd=1 TTL=6 pause=4 fence=on  baseline= hold/8294400 viol=0 wall=304.9s cpu=2269.8s
+[10/273]                        lease_timed N4 R2 C=4 U=2 L=2 sd=1 TTL=10 pause=8 fence=on baseline= hold/8294400 viol=0 wall=290.6s cpu=2165.1s
+[11/273]                        lease_timed N4 R2 C=4 U=2 L=2 sd=0 TTL=6 pause=6 fence=on  baseline= hold/8294400 viol=0 wall=359.7s cpu=2621.7s
+[12/273]                        lease_timed N4 R2 C=4 U=1 L=0 sd=0 TTL=6 pause=3 fence=off    timed= hold/676896 viol=0 wall=574.7s cpu=4571.1s
+[13/273]                        lease_timed N4 R2 C=4 U=1 L=0 sd=0 TTL=10 pause=7 fence=off    timed= hold/676896 viol=0 wall=582.4s cpu=4637.0s
+[14/273]                        lease_timed N4 R2 C=4 U=1 L=1 sd=0 TTL=6 pause=5 fence=off    timed= hold/27648 viol=0 wall=43.0s cpu=340.0s
+[15/273]                        lease_timed N4 R2 C=4 U=1 L=0 sd=1 TTL=6 pause=1 fence=off    timed= hold/676896 viol=0 wall=588.2s cpu=4678.0s
+[16/273]                        lease_timed N4 R2 C=4 U=1 L=0 sd=1 TTL=10 pause=5 fence=off    timed= hold/676896 viol=0 wall=571.4s cpu=4551.4s
+[17/273]                        lease_timed N4 R2 C=4 U=1 L=1 sd=0 TTL=10 pause=9 fence=off    timed= hold/27648 viol=0 wall=41.0s cpu=324.5s
+[18/273]                        lease_timed N4 R2 C=4 U=1 L=1 sd=0 TTL=6 pause=6 fence=on     timed= hold/96768 viol=0 wall=101.8s cpu=810.3s
+[19/273]                        lease_timed N4 R2 C=4 U=1 L=1 sd=0 TTL=10 pause=10 fence=on    timed= hold/96768 viol=0 wall=97.6s cpu=775.4s
+[20/273]                        lease_timed N4 R2 C=4 U=1 L=1 sd=1 TTL=6 pause=3 fence=off    timed= hold/144816 viol=0 wall=221.3s cpu=1762.9s
+[21/273]                        lease_timed N4 R2 C=4 U=1 L=1 sd=1 TTL=10 pause=7 fence=off    timed= hold/144816 viol=0 wall=221.8s cpu=1767.4s
+[22/273]                        lease_timed N4 R2 C=4 U=1 L=1 sd=1 TTL=6 pause=4 fence=on     timed= hold/449380 viol=0 wall=463.4s cpu=3694.5s
+[23/273]                        lease_timed N4 R2 C=4 U=1 L=1 sd=1 TTL=10 pause=8 fence=on    timed= hold/449380 viol=0 wall=501.9s cpu=3999.7s
+[24/273]                        lease_timed N4 R2 C=4 U=1 L=0 sd=0 TTL=10 pause=8 fence=on    timed= hold/1966503 viol=0 wall=1284.6s cpu=10232.7s
+[25/273]                        lease_timed N4 R2 C=4 U=1 L=0 sd=0 TTL=6 pause=4 fence=on     timed= hold/1966503 viol=0 wall=1297.1s cpu=10334.4s
+[26/273]                        lease_timed N4 R2 C=4 U=1 L=0 sd=1 TTL=6 pause=2 fence=on     timed= hold/1966503 viol=0 wall=1280.1s cpu=10201.0s
+[27/273]                        lease_timed N4 R2 C=4 U=2 L=2 sd=0 TTL=6 pause=5 fence=off    timed= hold/432 viol=0 wall=2.5s cpu=16.2s
+[28/273]                        lease_timed N4 R2 C=4 U=2 L=2 sd=0 TTL=6 pause=6 fence=on     timed= hold/1512 viol=0 wall=5.0s cpu=33.9s
+[29/273]                        lease_timed N4 R2 C=4 U=1 L=0 sd=1 TTL=10 pause=6 fence=on    timed= hold/1966503 viol=0 wall=1296.7s cpu=10328.7s
+[30/273]                        lease_timed N4 R2 C=4 U=2 L=2 sd=0 TTL=10 pause=9 fence=off    timed= hold/27648 viol=0 wall=48.0s cpu=380.5s
+[31/273]                        lease_timed N4 R2 C=4 U=2 L=2 sd=1 TTL=6 pause=3 fence=off    timed= hold/926 viol=0 wall=4.5s cpu=33.3s
+[32/273]                        lease_timed N4 R2 C=4 U=2 L=2 sd=1 TTL=6 pause=4 fence=on     timed= hold/2401 viol=0 wall=7.3s cpu=54.5s
+[33/273]                        lease_timed N4 R2 C=4 U=2 L=2 sd=0 TTL=10 pause=10 fence=on    timed= hold/96768 viol=0 wall=101.3s cpu=804.8s
+[34/273]                        lease_timed N4 R2 C=4 U=2 L=2 sd=1 TTL=10 pause=7 fence=off    timed= hold/138192 viol=0 wall=217.1s cpu=1731.1s
+[35/273]                         swim_timed N4 R2 N=4 U=1 L=0 sd=0 Wp=1 Ws=3               baseline= FIRE/18 viol=57 wall=0.3s cpu=0.0s
+[36/273]                         swim_timed N4 R2 N=4 U=1 L=0 sd=1 Wp=1 Ws=5               baseline= FIRE/18 viol=57 wall=0.3s cpu=0.0s
+[37/273]                         swim_timed N4 R2 N=4 U=1 L=1 sd=0 Wp=1 Ws=2               baseline= FIRE/18 viol=57 wall=0.3s cpu=0.0s
+[38/273]                         swim_timed N4 R2 N=4 U=1 L=1 sd=1 Wp=1 Ws=4               baseline= FIRE/18 viol=57 wall=0.3s cpu=0.0s
+[39/273]                         swim_timed N4 R2 N=4 U=2 L=0 sd=0 Wp=2 Ws=5               baseline= FIRE/18 viol=57 wall=0.3s cpu=0.0s
+[40/273]                         swim_timed N4 R2 N=4 U=2 L=0 sd=1 Wp=2 Ws=7               baseline= FIRE/18 viol=57 wall=0.3s cpu=0.0s
+[41/273]                         swim_timed N4 R2 N=4 U=2 L=2 sd=0 Wp=2 Ws=3               baseline= FIRE/18 viol=57 wall=0.3s cpu=0.0s
+[42/273]                         swim_timed N4 R2 N=4 U=2 L=2 sd=1 Wp=2 Ws=5               baseline= FIRE/18 viol=57 wall=0.3s cpu=0.0s
+[43/273]                         swim_timed N4 R2 N=4 U=1 L=0 sd=0 Wp=1 Ws=3                  timed= hold/4 viol=0 wall=0.3s cpu=0.1s
+[44/273]                         swim_timed N4 R2 N=4 U=1 L=0 sd=1 Wp=1 Ws=5                  timed= hold/4 viol=0 wall=0.3s cpu=0.0s
+[45/273]                         swim_timed N4 R2 N=4 U=1 L=1 sd=0 Wp=1 Ws=2                  timed= hold/1 viol=0 wall=0.3s cpu=0.0s
+[46/273]                         swim_timed N4 R2 N=4 U=1 L=1 sd=1 Wp=1 Ws=4                  timed= hold/1 viol=0 wall=0.3s cpu=0.0s
+[47/273]                         swim_timed N4 R2 N=4 U=2 L=0 sd=0 Wp=2 Ws=5                  timed= hold/4 viol=0 wall=0.3s cpu=0.1s
+[48/273]                         swim_timed N4 R2 N=4 U=2 L=0 sd=1 Wp=2 Ws=7                  timed= hold/4 viol=0 wall=0.3s cpu=0.1s
+[49/273]                         swim_timed N4 R2 N=4 U=2 L=2 sd=0 Wp=2 Ws=3                  timed= hold/1 viol=0 wall=0.3s cpu=0.0s
+[50/273]                         swim_timed N4 R2 N=4 U=2 L=2 sd=1 Wp=2 Ws=5                  timed= hold/1 viol=0 wall=0.3s cpu=0.0s
+[51/273]                         swim_timed N3 R3 N=3 U=1 L=0 sd=0 Wp=1 Ws=3               baseline= FIRE/20 viol=43 wall=0.3s cpu=0.0s
+[52/273]                         swim_timed N3 R3 N=3 U=1 L=0 sd=1 Wp=1 Ws=5               baseline= FIRE/20 viol=43 wall=0.3s cpu=0.0s
+[53/273]                         swim_timed N3 R3 N=3 U=1 L=1 sd=0 Wp=1 Ws=2               baseline= FIRE/20 viol=43 wall=0.3s cpu=0.0s
+[54/273]                         swim_timed N3 R3 N=3 U=1 L=1 sd=1 Wp=1 Ws=4               baseline= FIRE/20 viol=43 wall=0.3s cpu=0.0s
+[55/273]                         swim_timed N3 R3 N=3 U=2 L=0 sd=0 Wp=2 Ws=5               baseline= FIRE/20 viol=43 wall=0.3s cpu=0.0s
+[56/273]                         swim_timed N3 R3 N=3 U=2 L=0 sd=1 Wp=2 Ws=7               baseline= FIRE/20 viol=43 wall=0.3s cpu=0.0s
+[57/273]                         swim_timed N3 R3 N=3 U=2 L=2 sd=0 Wp=2 Ws=3               baseline= FIRE/20 viol=43 wall=0.3s cpu=0.0s
+[58/273]                         swim_timed N3 R3 N=3 U=2 L=2 sd=1 Wp=2 Ws=5               baseline= FIRE/20 viol=43 wall=0.3s cpu=0.0s
+[59/273]                         swim_timed N3 R3 N=3 U=1 L=0 sd=0 Wp=1 Ws=3                  timed= hold/8 viol=0 wall=0.3s cpu=0.0s
+[60/273]                         swim_timed N3 R3 N=3 U=1 L=0 sd=1 Wp=1 Ws=5                  timed= hold/8 viol=0 wall=0.3s cpu=0.0s
+[61/273]                         swim_timed N3 R3 N=3 U=1 L=1 sd=0 Wp=1 Ws=2                  timed= hold/1 viol=0 wall=0.3s cpu=0.0s
+[62/273]                         swim_timed N3 R3 N=3 U=1 L=1 sd=1 Wp=1 Ws=4                  timed= hold/1 viol=0 wall=0.3s cpu=0.0s
+[63/273]                         swim_timed N3 R3 N=3 U=2 L=0 sd=0 Wp=2 Ws=5                  timed= hold/8 viol=0 wall=0.3s cpu=0.1s
+[64/273]                         swim_timed N3 R3 N=3 U=2 L=0 sd=1 Wp=2 Ws=7                  timed= hold/8 viol=0 wall=0.3s cpu=0.0s
+[65/273]                         swim_timed N3 R3 N=3 U=2 L=2 sd=0 Wp=2 Ws=3                  timed= hold/1 viol=0 wall=0.3s cpu=0.0s
+[66/273]                         swim_timed N3 R3 N=3 U=2 L=2 sd=1 Wp=2 Ws=5                  timed= hold/1 viol=0 wall=0.3s cpu=0.0s
+[67/273]                         swim_timed N5 R2 N=5 U=1 L=0 sd=0 Wp=1 Ws=3               baseline= FIRE/44 viol=199 wall=0.3s cpu=0.0s
+[68/273]                         swim_timed N5 R2 N=5 U=1 L=0 sd=1 Wp=1 Ws=5               baseline= FIRE/44 viol=199 wall=0.3s cpu=0.0s
+[69/273]                         swim_timed N5 R2 N=5 U=1 L=1 sd=0 Wp=1 Ws=2               baseline= FIRE/44 viol=199 wall=0.3s cpu=0.0s
+[70/273]                         swim_timed N5 R2 N=5 U=1 L=1 sd=1 Wp=1 Ws=4               baseline= FIRE/44 viol=199 wall=0.3s cpu=0.0s
+[71/273]                         swim_timed N5 R2 N=5 U=2 L=0 sd=0 Wp=2 Ws=5               baseline= FIRE/44 viol=199 wall=0.3s cpu=0.0s
+[72/273]                         swim_timed N5 R2 N=5 U=2 L=0 sd=1 Wp=2 Ws=7               baseline= FIRE/44 viol=199 wall=0.3s cpu=0.0s
+[73/273]                         swim_timed N5 R2 N=5 U=2 L=2 sd=0 Wp=2 Ws=3               baseline= FIRE/44 viol=199 wall=0.3s cpu=0.0s
+[74/273]                         swim_timed N5 R2 N=5 U=2 L=2 sd=1 Wp=2 Ws=5               baseline= FIRE/44 viol=199 wall=0.3s cpu=0.0s
+[75/273]                         swim_timed N5 R2 N=5 U=1 L=0 sd=0 Wp=1 Ws=3                  timed= hold/4 viol=0 wall=0.3s cpu=0.2s
+[76/273]                         swim_timed N5 R2 N=5 U=1 L=0 sd=1 Wp=1 Ws=5                  timed= hold/4 viol=0 wall=0.3s cpu=0.1s
+[77/273]                         swim_timed N5 R2 N=5 U=1 L=1 sd=0 Wp=1 Ws=2                  timed= hold/1 viol=0 wall=0.3s cpu=0.1s
+[78/273]                         swim_timed N5 R2 N=5 U=1 L=1 sd=1 Wp=1 Ws=4                  timed= hold/1 viol=0 wall=0.3s cpu=0.1s
+[79/273]                         swim_timed N5 R2 N=5 U=2 L=0 sd=0 Wp=2 Ws=5                  timed= hold/4 viol=0 wall=0.3s cpu=0.2s
+[80/273]                         swim_timed N5 R2 N=5 U=2 L=0 sd=1 Wp=2 Ws=7                  timed= hold/4 viol=0 wall=0.3s cpu=0.1s
+[81/273]                         swim_timed N5 R2 N=5 U=2 L=2 sd=0 Wp=2 Ws=3                  timed= hold/1 viol=0 wall=0.3s cpu=0.1s
+[82/273]                         swim_timed N5 R2 N=5 U=2 L=2 sd=1 Wp=2 Ws=5                  timed= hold/1 viol=0 wall=0.3s cpu=0.1s
+[83/273]                        lease_timed N2 R4 C=2 U=1 L=0 sd=0 TTL=6 pause=3 fence=off baseline= FIRE/4096 viol=2340 wall=0.5s cpu=2.9s
+[84/273]                        lease_timed N2 R4 C=2 U=1 L=0 sd=0 TTL=6 pause=4 fence=on  baseline= hold/20736 viol=0 wall=1.3s cpu=8.1s
+[85/273]                        lease_timed N2 R4 C=2 U=1 L=0 sd=0 TTL=10 pause=7 fence=off baseline= FIRE/4096 viol=2340 wall=0.5s cpu=2.8s
+[86/273]                        lease_timed N2 R4 C=2 U=1 L=0 sd=0 TTL=10 pause=8 fence=on baseline= hold/20736 viol=0 wall=1.3s cpu=7.9s
+[87/273]                        lease_timed N2 R4 C=2 U=1 L=0 sd=1 TTL=6 pause=1 fence=off baseline= FIRE/4096 viol=2340 wall=0.5s cpu=3.0s
+[88/273]                        lease_timed N2 R4 C=2 U=1 L=0 sd=1 TTL=6 pause=2 fence=on  baseline= hold/20736 viol=0 wall=1.5s cpu=8.9s
+[89/273]                        lease_timed N2 R4 C=2 U=1 L=0 sd=1 TTL=10 pause=5 fence=off baseline= FIRE/4096 viol=2340 wall=0.8s cpu=3.4s
+[90/273]                        lease_timed N2 R4 C=2 U=1 L=0 sd=1 TTL=10 pause=6 fence=on baseline= hold/20736 viol=0 wall=1.3s cpu=8.5s
+[91/273]                        lease_timed N4 R2 C=4 U=2 L=0 sd=0 TTL=6 pause=1 fence=off    timed= hold/841632 viol=0 wall=775.8s cpu=6172.0s
+[92/273]                        lease_timed N2 R4 C=2 U=1 L=1 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/4096 viol=2340 wall=0.5s cpu=2.6s
+[93/273]                        lease_timed N2 R4 C=2 U=1 L=1 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/4096 viol=2340 wall=0.5s cpu=2.5s
+[94/273]                        lease_timed N2 R4 C=2 U=1 L=1 sd=0 TTL=6 pause=6 fence=on  baseline= hold/20736 viol=0 wall=1.3s cpu=7.1s
+[95/273]                        lease_timed N2 R4 C=2 U=1 L=1 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/4096 viol=2340 wall=0.5s cpu=2.1s
+[96/273]                        lease_timed N2 R4 C=2 U=1 L=1 sd=0 TTL=10 pause=10 fence=on baseline= hold/20736 viol=0 wall=1.3s cpu=8.0s
+[97/273]                        lease_timed N2 R4 C=2 U=1 L=1 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/4096 viol=2340 wall=0.5s cpu=2.5s
+[98/273]                        lease_timed N2 R4 C=2 U=1 L=1 sd=1 TTL=6 pause=4 fence=on  baseline= hold/20736 viol=0 wall=1.0s cpu=6.4s
+[99/273]                        lease_timed N2 R4 C=2 U=2 L=0 sd=0 TTL=6 pause=1 fence=off baseline= FIRE/4096 viol=2340 wall=0.5s cpu=2.8s
+[100/273]                        lease_timed N2 R4 C=2 U=1 L=1 sd=1 TTL=10 pause=8 fence=on baseline= hold/20736 viol=0 wall=1.3s cpu=7.5s
+[101/273]                        lease_timed N2 R4 C=2 U=2 L=0 sd=0 TTL=10 pause=5 fence=off baseline= FIRE/4096 viol=2340 wall=0.5s cpu=2.9s
+[102/273]                        lease_timed N2 R4 C=2 U=2 L=0 sd=0 TTL=6 pause=2 fence=on  baseline= hold/20736 viol=0 wall=1.3s cpu=7.5s
+[103/273]                        lease_timed N2 R4 C=2 U=2 L=0 sd=1 TTL=10 pause=3 fence=off baseline= FIRE/4096 viol=2340 wall=0.5s cpu=2.9s
+[104/273]                        lease_timed N2 R4 C=2 U=2 L=0 sd=0 TTL=10 pause=6 fence=on baseline= hold/20736 viol=0 wall=1.0s cpu=6.7s
+[105/273]                        lease_timed N2 R4 C=2 U=2 L=2 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/4096 viol=2340 wall=0.5s cpu=3.0s
+[106/273]                        lease_timed N2 R4 C=2 U=2 L=0 sd=1 TTL=10 pause=4 fence=on baseline= hold/20736 viol=0 wall=1.0s cpu=6.5s
+[107/273]                        lease_timed N2 R4 C=2 U=2 L=2 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/4096 viol=2340 wall=0.5s cpu=2.5s
+[108/273]                        lease_timed N2 R4 C=2 U=2 L=2 sd=0 TTL=6 pause=6 fence=on  baseline= hold/20736 viol=0 wall=1.3s cpu=7.0s
+[109/273]                        lease_timed N2 R4 C=2 U=2 L=2 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/4096 viol=2340 wall=0.5s cpu=2.4s
+[110/273]                        lease_timed N2 R4 C=2 U=2 L=2 sd=0 TTL=10 pause=10 fence=on baseline= hold/20736 viol=0 wall=1.0s cpu=6.4s
+[111/273]                        lease_timed N2 R4 C=2 U=2 L=2 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/4096 viol=2340 wall=0.5s cpu=2.6s
+[112/273]                        lease_timed N2 R4 C=2 U=2 L=2 sd=1 TTL=6 pause=4 fence=on  baseline= hold/20736 viol=0 wall=1.3s cpu=7.1s
+[113/273]                        lease_timed N2 R4 C=2 U=2 L=2 sd=1 TTL=10 pause=8 fence=on baseline= hold/20736 viol=0 wall=1.0s cpu=6.4s
+[114/273]                        lease_timed N2 R4 C=2 U=1 L=0 sd=0 TTL=6 pause=3 fence=off    timed= hold/4096 viol=0 wall=1.8s cpu=12.8s
+[115/273]                        lease_timed N2 R4 C=2 U=1 L=0 sd=0 TTL=10 pause=7 fence=off    timed= hold/4096 viol=0 wall=1.8s cpu=13.3s
+[116/273]                        lease_timed N2 R4 C=2 U=1 L=0 sd=0 TTL=6 pause=4 fence=on     timed= hold/18029 viol=0 wall=5.8s cpu=44.5s
+[117/273]                        lease_timed N2 R4 C=2 U=1 L=0 sd=1 TTL=6 pause=1 fence=off    timed= hold/4096 viol=0 wall=1.8s cpu=12.5s
+[118/273]                        lease_timed N2 R4 C=2 U=1 L=0 sd=0 TTL=10 pause=8 fence=on    timed= hold/18029 viol=0 wall=5.8s cpu=44.7s
+[119/273]                        lease_timed N2 R4 C=2 U=1 L=0 sd=1 TTL=10 pause=5 fence=off    timed= hold/4096 viol=0 wall=2.0s cpu=13.6s
+[120/273]                        lease_timed N2 R4 C=2 U=1 L=0 sd=1 TTL=6 pause=2 fence=on     timed= hold/18029 viol=0 wall=5.8s cpu=44.0s
+[121/273]                        lease_timed N2 R4 C=2 U=1 L=1 sd=0 TTL=6 pause=5 fence=off    timed= hold/32 viol=0 wall=0.3s cpu=0.3s
+[122/273]                        lease_timed N2 R4 C=2 U=1 L=1 sd=0 TTL=6 pause=6 fence=on     timed= hold/384 viol=0 wall=0.5s cpu=2.0s
+[123/273]                        lease_timed N2 R4 C=2 U=1 L=1 sd=0 TTL=10 pause=9 fence=off    timed= hold/32 viol=0 wall=0.3s cpu=0.3s
+[124/273]                        lease_timed N2 R4 C=2 U=1 L=1 sd=0 TTL=10 pause=10 fence=on    timed= hold/384 viol=0 wall=0.5s cpu=2.1s
+[125/273]                        lease_timed N2 R4 C=2 U=1 L=1 sd=1 TTL=6 pause=3 fence=off    timed= hold/352 viol=0 wall=0.5s cpu=2.8s
+[126/273]                        lease_timed N2 R4 C=2 U=1 L=0 sd=1 TTL=10 pause=6 fence=on    timed= hold/18029 viol=0 wall=5.8s cpu=44.9s
+[127/273]                        lease_timed N2 R4 C=2 U=1 L=1 sd=1 TTL=6 pause=4 fence=on     timed= hold/2989 viol=0 wall=1.8s cpu=12.0s
+[128/273]                        lease_timed N2 R4 C=2 U=1 L=1 sd=1 TTL=10 pause=7 fence=off    timed= hold/352 viol=0 wall=0.5s cpu=3.0s
+[129/273]                        lease_timed N2 R4 C=2 U=1 L=1 sd=1 TTL=10 pause=8 fence=on    timed= hold/2989 viol=0 wall=2.0s cpu=14.3s
+[130/273]                        lease_timed N2 R4 C=2 U=2 L=0 sd=0 TTL=6 pause=1 fence=off    timed= hold/5120 viol=0 wall=2.3s cpu=17.2s
+[131/273]                        lease_timed N2 R4 C=2 U=2 L=0 sd=0 TTL=10 pause=5 fence=off    timed= hold/5120 viol=0 wall=2.5s cpu=18.7s
+[132/273]                        lease_timed N2 R4 C=2 U=2 L=0 sd=0 TTL=6 pause=2 fence=on     timed= hold/18029 viol=0 wall=6.0s cpu=46.8s
+[133/273]                        lease_timed N2 R4 C=2 U=2 L=0 sd=1 TTL=10 pause=3 fence=off    timed= hold/5120 viol=0 wall=2.3s cpu=17.2s
+[134/273]                        lease_timed N2 R4 C=2 U=2 L=0 sd=0 TTL=10 pause=6 fence=on    timed= hold/18029 viol=0 wall=5.8s cpu=45.4s
+[135/273]                        lease_timed N2 R4 C=2 U=2 L=2 sd=0 TTL=6 pause=5 fence=off    timed= hold/2 viol=0 wall=0.3s cpu=0.0s
+[136/273]                        lease_timed N2 R4 C=2 U=2 L=2 sd=0 TTL=6 pause=6 fence=on     timed= hold/24 viol=0 wall=0.3s cpu=0.2s
+[137/273]                        lease_timed N2 R4 C=2 U=2 L=2 sd=0 TTL=10 pause=9 fence=off    timed= hold/32 viol=0 wall=0.3s cpu=0.4s
+[138/273]                        lease_timed N2 R4 C=2 U=2 L=2 sd=0 TTL=10 pause=10 fence=on    timed= hold/384 viol=0 wall=0.5s cpu=2.1s
+[139/273]                        lease_timed N2 R4 C=2 U=2 L=2 sd=1 TTL=6 pause=3 fence=off    timed= hold/16 viol=0 wall=0.3s cpu=0.2s
+[140/273]                        lease_timed N2 R4 C=2 U=2 L=2 sd=1 TTL=6 pause=4 fence=on     timed= hold/24 viol=0 wall=0.3s cpu=0.3s
+[141/273]                        lease_timed N2 R4 C=2 U=2 L=2 sd=1 TTL=10 pause=7 fence=off    timed= hold/352 viol=0 wall=0.5s cpu=2.7s
+[142/273]                        lease_timed N2 R4 C=2 U=2 L=2 sd=1 TTL=10 pause=8 fence=on    timed= hold/875 viol=0 wall=0.8s cpu=4.6s
+[143/273]                         swim_timed N4 R3 N=4 U=1 L=0 sd=0 Wp=1 Ws=3               baseline= FIRE/56 viol=199 wall=0.3s cpu=0.0s
+[144/273]                         swim_timed N4 R3 N=4 U=1 L=0 sd=1 Wp=1 Ws=5               baseline= FIRE/56 viol=199 wall=0.3s cpu=0.0s
+[145/273]                         swim_timed N4 R3 N=4 U=1 L=1 sd=0 Wp=1 Ws=2               baseline= FIRE/56 viol=199 wall=0.3s cpu=0.0s
+[146/273]                         swim_timed N4 R3 N=4 U=1 L=1 sd=1 Wp=1 Ws=4               baseline= FIRE/56 viol=199 wall=0.3s cpu=0.0s
+[147/273]                         swim_timed N4 R3 N=4 U=2 L=0 sd=0 Wp=2 Ws=5               baseline= FIRE/56 viol=199 wall=0.3s cpu=0.0s
+[148/273]                         swim_timed N4 R3 N=4 U=2 L=0 sd=1 Wp=2 Ws=7               baseline= FIRE/56 viol=199 wall=0.3s cpu=0.0s
+[149/273]                         swim_timed N4 R3 N=4 U=2 L=2 sd=0 Wp=2 Ws=3               baseline= FIRE/56 viol=199 wall=0.3s cpu=0.0s
+[150/273]                         swim_timed N4 R3 N=4 U=2 L=2 sd=1 Wp=2 Ws=5               baseline= FIRE/56 viol=199 wall=0.3s cpu=0.0s
+[151/273]                         swim_timed N4 R3 N=4 U=1 L=0 sd=0 Wp=1 Ws=3                  timed= hold/8 viol=0 wall=0.3s cpu=0.2s
+[152/273]                        lease_timed N2 R4 C=2 U=2 L=0 sd=1 TTL=10 pause=4 fence=on    timed= hold/18029 viol=0 wall=6.0s cpu=46.8s
+[153/273]                         swim_timed N4 R3 N=4 U=1 L=0 sd=1 Wp=1 Ws=5                  timed= hold/8 viol=0 wall=0.3s cpu=0.2s
+[154/273]                         swim_timed N4 R3 N=4 U=1 L=1 sd=0 Wp=1 Ws=2                  timed= hold/1 viol=0 wall=0.3s cpu=0.1s
+[155/273]                         swim_timed N4 R3 N=4 U=1 L=1 sd=1 Wp=1 Ws=4                  timed= hold/1 viol=0 wall=0.3s cpu=0.1s
+[156/273]                         swim_timed N4 R3 N=4 U=2 L=0 sd=0 Wp=2 Ws=5                  timed= hold/8 viol=0 wall=0.3s cpu=0.2s
+[157/273]                         swim_timed N4 R3 N=4 U=2 L=0 sd=1 Wp=2 Ws=7                  timed= hold/8 viol=0 wall=0.3s cpu=0.2s
+[158/273]                         swim_timed N4 R3 N=4 U=2 L=2 sd=0 Wp=2 Ws=3                  timed= hold/1 viol=0 wall=0.3s cpu=0.1s
+[159/273]                         swim_timed N4 R3 N=4 U=2 L=2 sd=1 Wp=2 Ws=5                  timed= hold/1 viol=0 wall=0.3s cpu=0.1s
+[160/273]                         swim_timed N3 R4 N=3 U=1 L=0 sd=0 Wp=1 Ws=3               baseline= FIRE/48 viol=111 wall=0.3s cpu=0.0s
+[161/273]                         swim_timed N3 R4 N=3 U=1 L=0 sd=1 Wp=1 Ws=5               baseline= FIRE/48 viol=111 wall=0.3s cpu=0.0s
+[162/273]                         swim_timed N3 R4 N=3 U=1 L=1 sd=0 Wp=1 Ws=2               baseline= FIRE/48 viol=111 wall=0.3s cpu=0.0s
+[163/273]                         swim_timed N3 R4 N=3 U=1 L=1 sd=1 Wp=1 Ws=4               baseline= FIRE/48 viol=111 wall=0.3s cpu=0.0s
+[164/273]                         swim_timed N3 R4 N=3 U=2 L=0 sd=0 Wp=2 Ws=5               baseline= FIRE/48 viol=111 wall=0.3s cpu=0.0s
+[165/273]                         swim_timed N3 R4 N=3 U=2 L=0 sd=1 Wp=2 Ws=7               baseline= FIRE/48 viol=111 wall=0.3s cpu=0.0s
+[166/273]                         swim_timed N3 R4 N=3 U=2 L=2 sd=0 Wp=2 Ws=3               baseline= FIRE/48 viol=111 wall=0.3s cpu=0.0s
+[167/273]                         swim_timed N3 R4 N=3 U=2 L=2 sd=1 Wp=2 Ws=5               baseline= FIRE/48 viol=111 wall=0.3s cpu=0.0s
+[168/273]                         swim_timed N3 R4 N=3 U=1 L=0 sd=0 Wp=1 Ws=3                  timed= hold/16 viol=0 wall=0.3s cpu=0.1s
+[169/273]                         swim_timed N3 R4 N=3 U=1 L=0 sd=1 Wp=1 Ws=5                  timed= hold/16 viol=0 wall=0.3s cpu=0.1s
+[170/273]                         swim_timed N3 R4 N=3 U=1 L=1 sd=0 Wp=1 Ws=2                  timed= hold/1 viol=0 wall=0.3s cpu=0.0s
+[171/273]                         swim_timed N3 R4 N=3 U=1 L=1 sd=1 Wp=1 Ws=4                  timed= hold/1 viol=0 wall=0.3s cpu=0.0s
+[172/273]                         swim_timed N3 R4 N=3 U=2 L=0 sd=0 Wp=2 Ws=5                  timed= hold/16 viol=0 wall=0.3s cpu=0.1s
+[173/273]                         swim_timed N3 R4 N=3 U=2 L=0 sd=1 Wp=2 Ws=7                  timed= hold/16 viol=0 wall=0.3s cpu=0.1s
+[174/273]                         swim_timed N3 R4 N=3 U=2 L=2 sd=0 Wp=2 Ws=3                  timed= hold/1 viol=0 wall=0.3s cpu=0.0s
+[175/273]                         swim_timed N3 R4 N=3 U=2 L=2 sd=1 Wp=2 Ws=5                  timed= hold/1 viol=0 wall=0.3s cpu=0.0s
+[176/273]                         swim_timed N5 R3 N=5 U=1 L=0 sd=0 Wp=1 Ws=3               baseline= FIRE/170 viol=853 wall=0.3s cpu=0.1s
+[177/273]                         swim_timed N5 R3 N=5 U=1 L=0 sd=1 Wp=1 Ws=5               baseline= FIRE/170 viol=853 wall=0.3s cpu=0.1s
+[178/273]                         swim_timed N5 R3 N=5 U=1 L=1 sd=0 Wp=1 Ws=2               baseline= FIRE/170 viol=853 wall=0.3s cpu=0.1s
+[179/273]                         swim_timed N5 R3 N=5 U=1 L=1 sd=1 Wp=1 Ws=4               baseline= FIRE/170 viol=853 wall=0.3s cpu=0.1s
+[180/273]                         swim_timed N5 R3 N=5 U=2 L=0 sd=0 Wp=2 Ws=5               baseline= FIRE/170 viol=853 wall=0.3s cpu=0.1s
+[181/273]                         swim_timed N5 R3 N=5 U=2 L=0 sd=1 Wp=2 Ws=7               baseline= FIRE/170 viol=853 wall=0.3s cpu=0.1s
+[182/273]                         swim_timed N5 R3 N=5 U=2 L=2 sd=0 Wp=2 Ws=3               baseline= FIRE/170 viol=853 wall=0.3s cpu=0.1s
+[183/273]                         swim_timed N5 R3 N=5 U=2 L=2 sd=1 Wp=2 Ws=5               baseline= FIRE/170 viol=853 wall=0.3s cpu=0.1s
+[184/273]                         swim_timed N5 R3 N=5 U=1 L=0 sd=0 Wp=1 Ws=3                  timed= hold/8 viol=0 wall=0.3s cpu=0.7s
+[185/273]                         swim_timed N5 R3 N=5 U=1 L=0 sd=1 Wp=1 Ws=5                  timed= hold/8 viol=0 wall=0.3s cpu=0.6s
+[186/273]                         swim_timed N5 R3 N=5 U=1 L=1 sd=0 Wp=1 Ws=2                  timed= hold/1 viol=0 wall=0.3s cpu=0.2s
+[187/273]                         swim_timed N5 R3 N=5 U=1 L=1 sd=1 Wp=1 Ws=4                  timed= hold/1 viol=0 wall=0.3s cpu=0.2s
+[188/273]                         swim_timed N5 R3 N=5 U=2 L=0 sd=0 Wp=2 Ws=5                  timed= hold/8 viol=0 wall=0.3s cpu=0.7s
+[189/273]                         swim_timed N5 R3 N=5 U=2 L=0 sd=1 Wp=2 Ws=7                  timed= hold/8 viol=0 wall=0.3s cpu=0.7s
+[190/273]                         swim_timed N5 R3 N=5 U=2 L=2 sd=0 Wp=2 Ws=3                  timed= hold/1 viol=0 wall=0.3s cpu=0.2s
+[191/273]                         swim_timed N5 R3 N=5 U=2 L=2 sd=1 Wp=2 Ws=5                  timed= hold/1 viol=0 wall=0.3s cpu=0.2s
+[192/273]                        lease_timed N2 R5 C=2 U=1 L=0 sd=0 TTL=6 pause=3 fence=off baseline= FIRE/32768 viol=18724 wall=2.8s cpu=19.1s
+[193/273]                        lease_timed N2 R5 C=2 U=1 L=0 sd=0 TTL=10 pause=7 fence=off baseline= FIRE/32768 viol=18724 wall=3.5s cpu=23.7s
+[194/273]                        lease_timed N2 R5 C=2 U=1 L=0 sd=0 TTL=6 pause=4 fence=on  baseline= hold/248832 viol=0 wall=11.5s cpu=85.7s
+[195/273]                        lease_timed N2 R5 C=2 U=1 L=0 sd=1 TTL=6 pause=1 fence=off baseline= FIRE/32768 viol=18724 wall=2.8s cpu=19.6s
+[196/273]                        lease_timed N2 R5 C=2 U=1 L=0 sd=0 TTL=10 pause=8 fence=on baseline= hold/248832 viol=0 wall=13.0s cpu=96.2s
+[197/273]                        lease_timed N2 R5 C=2 U=1 L=0 sd=1 TTL=10 pause=5 fence=off baseline= FIRE/32768 viol=18724 wall=3.0s cpu=20.5s
+[198/273]                        lease_timed N2 R5 C=2 U=1 L=0 sd=1 TTL=6 pause=2 fence=on  baseline= hold/248832 viol=0 wall=13.0s cpu=94.2s
+[199/273]                        lease_timed N2 R5 C=2 U=1 L=1 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/32768 viol=18724 wall=3.3s cpu=21.6s
+[200/273]                        lease_timed N2 R5 C=2 U=1 L=0 sd=1 TTL=10 pause=6 fence=on baseline= hold/248832 viol=0 wall=11.3s cpu=82.7s
+[201/273]                        lease_timed N2 R5 C=2 U=1 L=1 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/32768 viol=18724 wall=2.5s cpu=18.2s
+[202/273]                        lease_timed N2 R5 C=2 U=1 L=1 sd=0 TTL=6 pause=6 fence=on  baseline= hold/248832 viol=0 wall=12.8s cpu=93.2s
+[203/273]                        lease_timed N2 R5 C=2 U=1 L=1 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/32768 viol=18724 wall=3.3s cpu=21.8s
+[204/273]                        lease_timed N2 R5 C=2 U=1 L=1 sd=0 TTL=10 pause=10 fence=on baseline= hold/248832 viol=0 wall=11.0s cpu=80.8s
+[205/273]                        lease_timed N2 R5 C=2 U=1 L=1 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/32768 viol=18724 wall=2.8s cpu=18.9s
+[206/273]                        lease_timed N2 R5 C=2 U=1 L=1 sd=1 TTL=10 pause=8 fence=on baseline= hold/248832 viol=0 wall=11.3s cpu=82.9s
+[207/273]                        lease_timed N2 R5 C=2 U=1 L=1 sd=1 TTL=6 pause=4 fence=on  baseline= hold/248832 viol=0 wall=14.5s cpu=103.7s
+[208/273]                        lease_timed N2 R5 C=2 U=2 L=0 sd=0 TTL=6 pause=1 fence=off baseline= FIRE/32768 viol=18724 wall=2.5s cpu=18.4s
+[209/273]                        lease_timed N2 R5 C=2 U=2 L=0 sd=0 TTL=10 pause=5 fence=off baseline= FIRE/32768 viol=18724 wall=3.0s cpu=21.3s
+[210/273]                        lease_timed N2 R5 C=2 U=2 L=0 sd=0 TTL=6 pause=2 fence=on  baseline= hold/248832 viol=0 wall=11.8s cpu=87.3s
+[211/273]                        lease_timed N2 R5 C=2 U=2 L=0 sd=1 TTL=10 pause=3 fence=off baseline= FIRE/32768 viol=18724 wall=2.8s cpu=19.9s
+[212/273]                        lease_timed N2 R5 C=2 U=2 L=0 sd=0 TTL=10 pause=6 fence=on baseline= hold/248832 viol=0 wall=13.0s cpu=94.1s
+[213/273]                        lease_timed N2 R5 C=2 U=2 L=2 sd=0 TTL=6 pause=5 fence=off baseline= FIRE/32768 viol=18724 wall=2.8s cpu=19.5s
+[214/273]                        lease_timed N2 R5 C=2 U=2 L=0 sd=1 TTL=10 pause=4 fence=on baseline= hold/248832 viol=0 wall=12.5s cpu=91.8s
+[215/273]                        lease_timed N2 R5 C=2 U=2 L=2 sd=0 TTL=10 pause=9 fence=off baseline= FIRE/32768 viol=18724 wall=3.0s cpu=21.7s
+[216/273]                        lease_timed N2 R5 C=2 U=2 L=2 sd=0 TTL=6 pause=6 fence=on  baseline= hold/248832 viol=0 wall=11.0s cpu=82.6s
+[217/273]                        lease_timed N2 R5 C=2 U=2 L=2 sd=1 TTL=6 pause=3 fence=off baseline= FIRE/32768 viol=18724 wall=2.8s cpu=18.7s
+[218/273]                        lease_timed N2 R5 C=2 U=2 L=2 sd=0 TTL=10 pause=10 fence=on baseline= hold/248832 viol=0 wall=12.8s cpu=93.8s
+[219/273]                        lease_timed N2 R5 C=2 U=2 L=2 sd=1 TTL=10 pause=7 fence=off baseline= FIRE/32768 viol=18724 wall=2.8s cpu=19.2s
+[220/273]                        lease_timed N2 R5 C=2 U=2 L=2 sd=1 TTL=6 pause=4 fence=on  baseline= hold/248832 viol=0 wall=11.3s cpu=82.4s
+[221/273]                        lease_timed N2 R5 C=2 U=2 L=2 sd=1 TTL=10 pause=8 fence=on baseline= hold/248832 viol=0 wall=12.8s cpu=92.8s
+[222/273]                        lease_timed N2 R5 C=2 U=1 L=0 sd=0 TTL=6 pause=3 fence=off    timed= hold/32768 viol=0 wall=17.3s cpu=137.1s
+[223/273]                        lease_timed N2 R5 C=2 U=1 L=0 sd=0 TTL=10 pause=7 fence=off    timed= hold/32768 viol=0 wall=17.3s cpu=136.6s
+[224/273]                        lease_timed N4 R2 C=4 U=2 L=0 sd=0 TTL=10 pause=5 fence=off    timed= hold/841632 viol=0 wall=718.7s cpu=5722.1s
+[225/273]                        lease_timed N4 R2 C=4 U=2 L=2 sd=1 TTL=10 pause=8 fence=on    timed= hold/354272 viol=0 wall=382.1s cpu=3046.6s
+[226/273]                        lease_timed N2 R5 C=2 U=1 L=0 sd=1 TTL=6 pause=1 fence=off    timed= hold/32768 viol=0 wall=16.3s cpu=127.6s
+[227/273]                        lease_timed N2 R5 C=2 U=1 L=0 sd=1 TTL=10 pause=5 fence=off    timed= hold/32768 viol=0 wall=16.3s cpu=127.4s
+[228/273]                        lease_timed N2 R5 C=2 U=1 L=0 sd=0 TTL=6 pause=4 fence=on     timed= hold/219109 viol=0 wall=97.8s cpu=777.6s
+[229/273]                        lease_timed N2 R5 C=2 U=1 L=1 sd=0 TTL=6 pause=5 fence=off    timed= hold/64 viol=0 wall=0.5s cpu=1.1s
+[230/273]                        lease_timed N2 R5 C=2 U=1 L=1 sd=0 TTL=6 pause=6 fence=on     timed= hold/1536 viol=0 wall=1.5s cpu=11.1s
+[231/273]                        lease_timed N2 R5 C=2 U=1 L=1 sd=0 TTL=10 pause=9 fence=off    timed= hold/64 viol=0 wall=0.5s cpu=1.1s
+[232/273]                        lease_timed N2 R5 C=2 U=1 L=1 sd=0 TTL=10 pause=10 fence=on    timed= hold/1536 viol=0 wall=1.8s cpu=11.5s
+[233/273]                        lease_timed N2 R5 C=2 U=1 L=1 sd=1 TTL=6 pause=3 fence=off    timed= hold/1636 viol=0 wall=2.5s cpu=17.6s
+[234/273]                        lease_timed N2 R5 C=2 U=1 L=0 sd=0 TTL=10 pause=8 fence=on    timed= hold/219109 viol=0 wall=92.6s cpu=736.7s
+[235/273]                        lease_timed N2 R5 C=2 U=1 L=1 sd=1 TTL=10 pause=7 fence=off    timed= hold/1636 viol=0 wall=2.3s cpu=15.8s
+[236/273]                        lease_timed N2 R5 C=2 U=1 L=1 sd=1 TTL=6 pause=4 fence=on     timed= hold/23233 viol=0 wall=18.5s cpu=144.9s
+[237/273]                        lease_timed N2 R5 C=2 U=1 L=1 sd=1 TTL=10 pause=8 fence=on    timed= hold/23233 viol=0 wall=17.3s cpu=135.5s
+[238/273]                        lease_timed N2 R5 C=2 U=1 L=0 sd=1 TTL=6 pause=2 fence=on     timed= hold/219109 viol=0 wall=91.8s cpu=729.9s
+[239/273]                        lease_timed N2 R5 C=2 U=2 L=0 sd=0 TTL=6 pause=1 fence=off    timed= hold/45568 viol=0 wall=22.5s cpu=177.3s
+[240/273]                        lease_timed N2 R5 C=2 U=1 L=0 sd=1 TTL=10 pause=6 fence=on    timed= hold/219109 viol=0 wall=93.8s cpu=748.0s
+[241/273]                        lease_timed N2 R5 C=2 U=2 L=0 sd=0 TTL=10 pause=5 fence=off    timed= hold/45568 viol=0 wall=26.0s cpu=206.2s
+[242/273]                        lease_timed N2 R5 C=2 U=2 L=0 sd=1 TTL=10 pause=3 fence=off    timed= hold/45568 viol=0 wall=23.8s cpu=187.1s
+[243/273]                        lease_timed N2 R5 C=2 U=2 L=2 sd=0 TTL=6 pause=5 fence=off    timed= hold/2 viol=0 wall=0.3s cpu=0.1s
+[244/273]                        lease_timed N2 R5 C=2 U=2 L=2 sd=0 TTL=6 pause=6 fence=on     timed= hold/48 viol=0 wall=0.3s cpu=0.6s
+[245/273]                        lease_timed N2 R5 C=2 U=2 L=2 sd=0 TTL=10 pause=9 fence=off    timed= hold/64 viol=0 wall=0.5s cpu=1.0s
+[246/273]                        lease_timed N2 R5 C=2 U=2 L=2 sd=0 TTL=10 pause=10 fence=on    timed= hold/1536 viol=0 wall=1.5s cpu=9.7s
+[247/273]                        lease_timed N2 R5 C=2 U=2 L=2 sd=1 TTL=6 pause=3 fence=off    timed= hold/32 viol=0 wall=0.5s cpu=0.6s
+[248/273]                        lease_timed N2 R5 C=2 U=2 L=2 sd=1 TTL=6 pause=4 fence=on     timed= hold/48 viol=0 wall=0.3s cpu=0.8s
+[249/273]                        lease_timed N2 R5 C=2 U=2 L=2 sd=1 TTL=10 pause=7 fence=off    timed= hold/1636 viol=0 wall=2.3s cpu=16.2s
+[250/273]                        lease_timed N2 R5 C=2 U=2 L=2 sd=1 TTL=10 pause=8 fence=on    timed= hold/4375 viol=0 wall=3.8s cpu=29.2s
+[251/273]                         swim_timed N3 R5 N=3 U=1 L=0 sd=0 Wp=1 Ws=3               baseline= FIRE/112 viol=271 wall=0.3s cpu=0.1s
+[252/273]                         swim_timed N3 R5 N=3 U=1 L=0 sd=1 Wp=1 Ws=5               baseline= FIRE/112 viol=271 wall=0.3s cpu=0.1s
+[253/273]                         swim_timed N3 R5 N=3 U=1 L=1 sd=0 Wp=1 Ws=2               baseline= FIRE/112 viol=271 wall=0.3s cpu=0.1s
+[254/273]                         swim_timed N3 R5 N=3 U=1 L=1 sd=1 Wp=1 Ws=4               baseline= FIRE/112 viol=271 wall=0.3s cpu=0.1s
+[255/273]                         swim_timed N3 R5 N=3 U=2 L=0 sd=0 Wp=2 Ws=5               baseline= FIRE/112 viol=271 wall=0.3s cpu=0.1s
+[256/273]                         swim_timed N3 R5 N=3 U=2 L=0 sd=1 Wp=2 Ws=7               baseline= FIRE/112 viol=271 wall=0.3s cpu=0.1s
+[257/273]                         swim_timed N3 R5 N=3 U=2 L=2 sd=0 Wp=2 Ws=3               baseline= FIRE/112 viol=271 wall=0.3s cpu=0.1s
+[258/273]                         swim_timed N3 R5 N=3 U=2 L=2 sd=1 Wp=2 Ws=5               baseline= FIRE/112 viol=271 wall=0.3s cpu=0.1s
+[259/273]                         swim_timed N3 R5 N=3 U=1 L=0 sd=0 Wp=1 Ws=3                  timed= hold/32 viol=0 wall=0.3s cpu=0.4s
+[260/273]                         swim_timed N3 R5 N=3 U=1 L=0 sd=1 Wp=1 Ws=5                  timed= hold/32 viol=0 wall=0.3s cpu=0.4s
+[261/273]                         swim_timed N3 R5 N=3 U=1 L=1 sd=0 Wp=1 Ws=2                  timed= hold/1 viol=0 wall=0.3s cpu=0.1s
+[262/273]                         swim_timed N3 R5 N=3 U=1 L=1 sd=1 Wp=1 Ws=4                  timed= hold/1 viol=0 wall=0.3s cpu=0.1s
+[263/273]                         swim_timed N3 R5 N=3 U=2 L=0 sd=0 Wp=2 Ws=5                  timed= hold/32 viol=0 wall=0.3s cpu=0.4s
+[264/273]                         swim_timed N3 R5 N=3 U=2 L=0 sd=1 Wp=2 Ws=7                  timed= hold/32 viol=0 wall=0.3s cpu=0.4s
+[265/273]                         swim_timed N3 R5 N=3 U=2 L=2 sd=0 Wp=2 Ws=3                  timed= hold/1 viol=0 wall=0.3s cpu=0.1s
+[266/273]                         swim_timed N3 R5 N=3 U=2 L=2 sd=1 Wp=2 Ws=5                  timed= hold/1 viol=0 wall=0.3s cpu=0.1s
+[267/273]                        lease_timed N2 R5 C=2 U=2 L=0 sd=0 TTL=6 pause=2 fence=on     timed= hold/219109 viol=0 wall=88.6s cpu=705.3s
+[268/273]                        lease_timed N2 R5 C=2 U=2 L=0 sd=0 TTL=10 pause=6 fence=on    timed= hold/219109 viol=0 wall=92.6s cpu=736.2s
+[269/273]                        lease_timed N4 R2 C=4 U=2 L=0 sd=1 TTL=10 pause=3 fence=off    timed= hold/841632 viol=0 wall=759.0s cpu=6043.1s
+[270/273]                        lease_timed N2 R5 C=2 U=2 L=0 sd=1 TTL=10 pause=4 fence=on    timed= hold/219109 viol=0 wall=89.3s cpu=710.9s
+[271/273]                        lease_timed N4 R2 C=4 U=2 L=0 sd=0 TTL=6 pause=2 fence=on     timed= hold/1966503 viol=0 wall=1293.4s cpu=10301.2s
+[272/273]                        lease_timed N4 R2 C=4 U=2 L=0 sd=0 TTL=10 pause=6 fence=on    timed= hold/1966503 viol=0 wall=1254.9s cpu=9989.9s
+[273/273]                        lease_timed N4 R2 C=4 U=2 L=0 sd=1 TTL=10 pause=4 fence=on    timed= hold/1966503 viol=0 wall=1231.1s cpu=9802.4s
+[v6:lease_swim] wrote 273 rows -> results_v6_lease_swim.csv
+LS-DONE

@@ -1347,8 +1347,12 @@ pub(crate) enum BlockType {
     // replaced by this Block. The `usize` is the minimum number of
     // matching sends required to unblock (1 for a plain recv, ≥1 for
     // an inbox via inbox_with_bounds). The `CommunicationModel` is there
-    // so that the unblock check can apply the same
-    // sb-minimal candidate restriction as the real rf assignment. The
+    // so that the unblock check can apply the same candidate rule as
+    // the real rf assignment: the sb-minimal restriction for a
+    // recv-shaped block, and for an inbox-shaped block the pool of
+    // every available matching send (a closed `min`-subset exists iff
+    // `min` are available), plus the GC eviction and the timed skip
+    // disjunctions, which both key off the model. The
     // final `bool` is true when the overwritten read was an INBOX.
     Value(RecvLoc, Option<WaitTime>, usize, CommunicationModel, bool),
     Join(ThreadId),

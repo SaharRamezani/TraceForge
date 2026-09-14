@@ -1253,6 +1253,26 @@ impl Must {
                 return false;
             }
             if let BlockType::Value(loc, wait, min, comm, from_inbox) = blab.btype() {
+                // Offer-path parity for an UNTIMED block in a timed
+                // configuration: filter_timed_consistent_rfs prunes every
+                // candidate of a wait = None receive when the committed
+                // graph admits no timeline (a real verdict under FIFO
+                // arrival coupling, e.g. contradictory per-send transit
+                // windows on one channel). Waking such a block would
+                // re-execute a receive that finds nothing and blocks
+                // again, for ever (found by the receive-only scheduler
+                // fuzz, 2026-09-14). It stays blocked; the blocked ending
+                // is then discarded by the completion gate, so the
+                // program counts as nothing, as its semantics says.
+                // Replay is exempt exactly as the offer path is.
+                if wait.is_none() && !self.replay_info.replay_mode() {
+                    if let Some(cfg) = &self.config.timed {
+                        let d = crate::timed_dcs::TimedDcs::build(g, cfg, None, Some(blab.pos()));
+                        if !d.base_feasible() {
+                            return false;
+                        }
+                    }
+                }
                 // Count sends that could actually be OFFERED to the woken
                 // receive by the real rf assignment. Divergence between
                 // this predicate and the offer path was the root cause of
@@ -1261,9 +1281,11 @@ impl Must {
                 // recv-shaped blocks mirror `coherent_rfs_in_view`
                 // (monitor reads allowed, porf-minimality for monitors),
                 // inbox-shaped blocks mirror `coherent_inbox_rfs_in_view`
-                // (NO monitor branch, sb-minimals hardcoded): structural
-                // match, unread-ness, sb-minimality, then timed
-                // feasibility. Unblocks once `min` such sends exist.
+                // (NO monitor branch, no sb-minimality: the pool is every
+                // available matching send): structural match,
+                // unread-ness, then timed feasibility. Unblocks once
+                // `min` such sends exist (a closed `min`-subset exists
+                // iff `min` are available, see below).
                 let structurally: Vec<&SendMsg> = g
                     .matching_stores(loc)
                     .filter(|send| {
@@ -1345,13 +1367,22 @@ impl Must {
                         .into_iter()
                         .filter(|send| {
                             if *from_inbox {
-                                d.probe_unblock_inbox_subset(
-                                    blab.pos(),
-                                    &[send.pos()],
-                                    loc,
-                                    *comm,
-                                    inbox_block_at_capacity(wait, *min, 1),
-                                )
+                                if *min >= 2 {
+                                    // Window-only member eligibility
+                                    // (parity with the offer path); the
+                                    // joint min-subset probe below is
+                                    // the exact batch test.
+                                    d.probe_unblock_inbox_member(blab.pos(), send.pos())
+                                } else {
+                                    d.probe_unblock_inbox_subset(
+                                        blab.pos(),
+                                        &[send.pos()],
+                                        loc,
+                                        *comm,
+                                        *min,
+                                        inbox_block_at_capacity(wait, *min, 1),
+                                    )
+                                }
                             } else {
                                 d.probe_block_unblock(blab.pos(), send.pos())
                             }
@@ -1365,15 +1396,25 @@ impl Must {
                 // inbox-shaped blocks must too, even at min == 1.
                 let porf_override = !from_inbox && self.is_monitor(&blab.pos());
                 let candidates: Vec<&SendMsg> =
-                    if *comm != crate::loc::CommunicationModel::NoOrder {
+                    if *from_inbox {
+                        // An inbox collects a set: every available matching
+                        // send counts towards `min` (parity with the offer
+                        // path's pool). No structural closure test is
+                        // needed here: a prefix of any linear extension of
+                        // the delivery order is closed, so a closed
+                        // `min`-subset exists iff `min` sends are available;
+                        // the timed joint-subset probe below carries the
+                        // skip disjunctions.
+                        structurally
+                    } else if *comm != crate::loc::CommunicationModel::NoOrder {
                         let minimals = Consistency::retain_sb_minimals(
                             structurally.iter().copied(),
                             porf_override,
                         );
                         // Dead-front unsealing parity with the offer
                         // path (2026-08-28), recv-shaped GC wakes only
-                        // (the inbox member pool keeps its documented
-                        // antichain semantics): a deeper eligible send
+                        // (an inbox-shaped block takes every available
+                        // matching send above): a deeper eligible send
                         // wakes the block when some timeline dodges
                         // all its earlier fronts jointly with the read.
                         if gc_order && !*from_inbox {
@@ -1410,13 +1451,22 @@ impl Must {
                         .into_iter()
                         .filter(|send| {
                             if *from_inbox {
-                                d.probe_unblock_inbox_subset(
-                                    blab.pos(),
-                                    &[send.pos()],
-                                    loc,
-                                    *comm,
-                                    inbox_block_at_capacity(wait, *min, 1),
-                                )
+                                if *min >= 2 {
+                                    // Window-only member eligibility
+                                    // (parity with the offer path); the
+                                    // joint min-subset probe below is
+                                    // the exact batch test.
+                                    d.probe_unblock_inbox_member(blab.pos(), send.pos())
+                                } else {
+                                    d.probe_unblock_inbox_subset(
+                                        blab.pos(),
+                                        &[send.pos()],
+                                        loc,
+                                        *comm,
+                                        *min,
+                                        inbox_block_at_capacity(wait, *min, 1),
+                                    )
+                                }
                             } else {
                                 d.probe_block_unblock(blab.pos(), send.pos())
                             }
@@ -1716,6 +1766,21 @@ impl Must {
                             None,
                         )
                 });
+            // The vouching above (a feasible full-graph oracle build at
+            // an inbox visit clears the gate) is sound only while every
+            // offer probe is at least as strict as the committed
+            // encoding. Debug builds re-check the vouched completions,
+            // so a probe that turns looser shows up in the test suite
+            // instead of as a counted graph with no timeline.
+            #[cfg(debug_assertions)]
+            if !self.current.timed_completion_check && !self.replay_info.replay_mode() {
+                if let Some(tcfg) = self.config.timed.as_ref() {
+                    debug_assert!(
+                        crate::timed_dcs::TimedDcs::graph_feasible(&self.current.graph, tcfg, None),
+                        "vouched completion has no timeline: an offer probe was looser than the committed encoding"
+                    );
+                }
+            }
             if timed_impossible {
                 // No timeline satisfies the graph (routine under FIFO
                 // arrival coupling: e.g. same-channel transit overrides
@@ -2057,6 +2122,21 @@ impl Must {
         let mut combinations =
             compute_inbox_possible_subsets_from_rfs(&rfs, min.max(1), max, None);
 
+        // Delivery-order closure (Definition A.4(b) of the source
+        // algorithm), structural when no timed GC arm applies: a batch
+        // holding a send also holds every pool member ordered before it
+        // (FIFO: a sender's later message only together with its earlier
+        // unread ones). Under the timed GC arm the probes below carry the
+        // equivalent skip disjunctions instead (an older sibling may be
+        // left behind only when dead before the wait began), where a
+        // structural filter would wrongly refuse such batches. Gated on
+        // the configuration, not on replay mode, so a replayed timed run
+        // is never filtered structurally.
+        if Consistency::inbox_structural_order(self.config.timed.as_ref(), &ilab) {
+            combinations
+                .retain(|s| Consistency::inbox_set_order_closed(&self.current.graph, &rfs, s));
+        }
+
         // Drop non-empty subsets that no consistent timeline admits.
         // Pure no-op when `config.timed` is `None` or when this inbox
         // was constructed without a wait time. The read is the last
@@ -2283,6 +2363,12 @@ impl Must {
         }
 
         let send_porf = slab.porf();
+        // With inbox targets in the list, a non-canonical target must be
+        // skipped rather than stop the scan (see below); without them the
+        // classic Must early exit is sound and cheaper.
+        let any_inbox = g
+            .rev_matching_recvs(slab)
+            .any(|rl| matches!(rl, RecvLike::Inbox(_)));
 
         let mut revs: Vec<RevisitEnum> = Vec::new();
 
@@ -2295,7 +2381,16 @@ impl Must {
             match rl {
                 RecvLike::RecvMsg(r) => {
                     let rev = Revisit::new(r.pos(), pos);
+                    // A non-canonical target is skipped, not a stopper:
+                    // under an inbox revisit installed at an OLDER
+                    // target the same receive is ranked without the
+                    // members of that set and may well be canonical,
+                    // so the classic Must early exit is unsound once
+                    // inbox targets follow.
                     if !self.is_maximal_recv(r, &rev) {
+                        if any_inbox {
+                            continue;
+                        }
                         break;
                     }
                     if self
@@ -2314,8 +2409,13 @@ impl Must {
                 }
                 RecvLike::Inbox(i) => {
                     let seed_rev = Revisit::new_inbox(i.pos(), Some(vec![pos]));
-                    // Backward revisits are generated only from maximal inbox events.
+                    // Backward revisits are generated only from maximal
+                    // inbox events; a non-canonical one is skipped (see
+                    // the receive case above).
                     if !self.is_maximal_inbox(i, &seed_rev) {
+                        if any_inbox {
+                            continue;
+                        }
                         break;
                     }
 
@@ -2323,7 +2423,13 @@ impl Must {
                     let mut cands: Vec<Event> = g
                         .matching_stores(i.recv_loc())
                         .map(|s| s.pos())
-                        .filter(|&e| !g.send_label(e).unwrap().is_dropped())
+                        .filter(|&e| {
+                            let sl = g.send_label(e).unwrap();
+                            // Members must be undropped and causally
+                            // independent of the inbox (a send after the
+                            // inbox can never be read by it).
+                            !sl.is_dropped() && !sl.porf().contains(i.pos())
+                        })
                         .collect();
                     if !cands.contains(&pos) {
                         cands.push(pos);
@@ -2349,8 +2455,12 @@ impl Must {
                         let rev_inbox = Revisit::new_inbox(i.pos(), Some(subset.clone()));
                         // Paper-style inbox revisit condition:
                         // keep only subsets that are consistent and preserve maximality.
-                        if self.checker.is_revisit_consistent_inbox(g, i, &subset)
-                            && self.is_maximal_inbox(i, &rev_inbox)
+                        if self.checker.is_revisit_consistent_inbox(
+                            g,
+                            i,
+                            &subset,
+                            self.config.timed.as_ref(),
+                        ) && self.is_maximal_inbox(i, &rev_inbox)
                             && self.is_maximal_extension(&rev_inbox)
                         {
                             revs.push(RevisitEnum::BackwardRevisit(rev_inbox));
@@ -2616,6 +2726,17 @@ impl Must {
             LabelEnum::ConstraintEval(c) => self.is_maximal_constraint(c, rev),
             #[cfg(feature = "symbolic")]
             LabelEnum::SymbolicVar(_) => true,
+            // A GC refusal ending is a second outcome of its receive or
+            // inbox (the sibling of its canonical read, pushed as a
+            // forward revisit), never the canonical one: a revisit that
+            // deletes the refused event is launched from the world in
+            // which that event holds its canonical read, which exists
+            // whenever the refusal does (the refusal is only offered
+            // beside a non-empty candidate list). Treating the refusal
+            // as canonical too gave every such revisit two launch points
+            // and installed the same graph twice (receive-only fuzz,
+            // program 108, 2026-09-14).
+            LabelEnum::Block(b) if b.refuses_matching() => false,
             _ => true,
         }
     }
@@ -2968,10 +3089,12 @@ impl Must {
                 let Some(inbox) = prefix.inbox_label(pos) else {
                     return false;
                 };
-                if !self
-                    .checker
-                    .is_revisit_consistent_inbox(&prefix, inbox, sends_slice)
-                {
+                if !self.checker.is_revisit_consistent_inbox(
+                    &prefix,
+                    inbox,
+                    sends_slice,
+                    self.config.timed.as_ref(),
+                ) {
                     info!(
                         "  [revisit] skip inbox {} due to inconsistent subset {}",
                         pos,
@@ -3639,7 +3762,7 @@ fn any_jointly_feasible_subset(
         subset.extend(idx.iter().map(|&i| sends[i]));
         let feasible = match inbox {
             Some((loc, comm)) => {
-                dcs.probe_unblock_inbox_subset(block_pos, &subset, loc, comm, inbox_at_capacity)
+                dcs.probe_unblock_inbox_subset(block_pos, &subset, loc, comm, k, inbox_at_capacity)
             }
             None => dcs.probe_unblock_subset(block_pos, &subset),
         };
@@ -3708,7 +3831,7 @@ fn pop_worklist(worklist: &mut RQueue, is_arbitrary: bool, rng: &mut Pcg64Mcg) -
     rev
 }
 
-fn compute_inbox_possible_subsets_from_rfs(
+pub(crate) fn compute_inbox_possible_subsets_from_rfs(
     events: &[Event],
     min: usize,
     max: Option<usize>,
