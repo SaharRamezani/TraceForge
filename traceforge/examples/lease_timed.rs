@@ -592,9 +592,17 @@ fn print_compare(
     println!("{:<10} {:>10} {:>10} {:>14?}", "baseline", b_stats.execs, b_stats.block, b_dur);
     println!("{:<10} {:>10} {:>10} {:>14?}", "timed", t_stats.execs, t_stats.block, t_dur);
     println!();
-    let exec_ratio = b_stats.execs as f64 / t_stats.execs.max(1) as f64;
+    // Executions EXPLORED is execs + block: a violating execution is aborted
+    // by its assertion and an evicted one blocks, so both are filed under
+    // `block`. Dividing complete executions alone overstates the reduction
+    // (sensor network defaults: 7702x that way, 215x explored).
+    let b_explored = b_stats.execs + b_stats.block;
+    let t_explored = t_stats.execs + t_stats.block;
+    let exec_ratio = b_explored as f64 / t_explored.max(1) as f64;
     let time_ratio = b_dur.as_secs_f64() / t_dur.as_secs_f64().max(f64::MIN_POSITIVE);
-    println!("execs reduction: {exec_ratio:.2}x");
+    println!(
+        "explored reduction: {exec_ratio:.2}x  ({b_explored} vs {t_explored} executions explored, execs+blocked)"
+    );
     println!("time  speedup  : {time_ratio:.2}x");
     println!(
         "grants/released/expired: baseline {}/{}/{}   timed {}/{}/{}",
@@ -610,12 +618,15 @@ fn print_compare(
 /// zero executions and verified NOTHING; its exit 0 must not be read
 /// as a hold (see the multi-round pauser re-entry note in the doc
 /// header for the known way to hit this).
-fn warn_if_vacuous(label: &str, execs: usize, blocked: usize) {
-    if execs == 0 {
+fn warn_if_vacuous(label: &str, execs: usize, blocked: usize, violations: usize) {
+    // A violating execution is aborted by the assertion, so the checker
+    // files it under `blocked`, not `execs`. Warning on execs == 0 alone
+    // would tell the reader to discard a run that found counterexamples.
+    if execs == 0 && violations == 0 {
         println!(
-            "WARNING ({label}): 0 complete executions (blocked={blocked}): every interleaving \
-             blocked, this run verified nothing; treat it as no data, not as a hold. \
-             See the multi-round pauser re-entry note in the doc header."
+            "WARNING ({label}): 0 complete executions (blocked={blocked}) and no violation: \
+             every interleaving blocked, this run verified nothing; treat it as no data, not \
+             as a hold. See the multi-round pauser re-entry note in the doc header."
         );
     }
 }
@@ -725,13 +736,15 @@ fn main() {
     match a.mode.as_str() {
         "baseline" => {
             let (s, d) = run(Mode::Baseline, a.clients, b, a.fencing, a.rounds, a.keep_going);
-            print_one("baseline", a.clients, b, a.fencing, a.rounds, &s, d, read_counts());
-            warn_if_vacuous("baseline", s.execs, s.block);
+            let c = read_counts();
+            print_one("baseline", a.clients, b, a.fencing, a.rounds, &s, d, c);
+            warn_if_vacuous("baseline", s.execs, s.block, c.violations);
         }
         "timed" => {
             let (s, d) = run(Mode::Timed, a.clients, b, a.fencing, a.rounds, a.keep_going);
-            print_one("timed", a.clients, b, a.fencing, a.rounds, &s, d, read_counts());
-            warn_if_vacuous("timed", s.execs, s.block);
+            let c = read_counts();
+            print_one("timed", a.clients, b, a.fencing, a.rounds, &s, d, c);
+            warn_if_vacuous("timed", s.execs, s.block, c.violations);
         }
         "compare" => {
             let baseline = run(Mode::Baseline, a.clients, b, a.fencing, a.rounds, a.keep_going);
@@ -743,8 +756,8 @@ fn main() {
                 (timed.0.execs, timed.0.block),
             );
             print_compare(a.clients, b, a.fencing, a.rounds, baseline, timed, bc, tc);
-            warn_if_vacuous("baseline", b_vac.0, b_vac.1);
-            warn_if_vacuous("timed", t_vac.0, t_vac.1);
+            warn_if_vacuous("baseline", b_vac.0, b_vac.1, bc.violations);
+            warn_if_vacuous("timed", t_vac.0, t_vac.1, tc.violations);
         }
         other => cli_bail(&format!("invalid --mode: {other} (expected baseline|timed|compare)")),
     }
