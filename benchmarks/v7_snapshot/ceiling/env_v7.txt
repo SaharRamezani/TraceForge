@@ -1,0 +1,5 @@
+ea531333185635c97636c91809d66aae  /local/sramezani/target-v7/release/examples/lease_timed
+5ff5ea9b969d241f406ae8382f7ef653  /local/sramezani/target-v7/release/examples/swim_timed
+source: local working tree of TraceForge at HEAD 697fc36 (branch inbox_new_fix) plus uncommitted exec_pool.rs shared-pool hang fix; built 2026-09-20 18:07 with cargo 1.97.1
+launch 2026-09-20 19:23:32
+relaunch (scheduler v2: small pool 4-27, big pool 28-243) 2026-09-20 20:05:51

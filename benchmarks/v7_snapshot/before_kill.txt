@@ -1,0 +1,68 @@
+2026-09-20 18:08:29
+== driver+child procs
+ 344626       1 Ss    804905 Fri Sep 11 10:33:22 2026  0.0  5300 tmux new-session -d -s v6grid cd ~/traceforge-v6/benchmarks && export CARGO_TARGET_DIR=/local/sramezani/target-v6 && python3 sweep_v6.py --tier grid --jobs 4 --workers 64 --mem-gb 500 --out results_v6_grid.csv --append 2>&1 | tee -a grid.out; echo GRID-DONE >> grid.out; sleep 100000000
+ 344627  344626 Ss+   804905 Fri Sep 11 10:33:22 2026  0.0  3280 bash -c cd ~/traceforge-v6/benchmarks && export CARGO_TARGET_DIR=/local/sramezani/target-v6 && python3 sweep_v6.py --tier grid --jobs 4 --workers 64 --mem-gb 500 --out results_v6_grid.csv --append 2>&1 | tee -a grid.out; echo GRID-DONE >> grid.out; sleep 100000000
+ 344628  344627 Sl+   804905 Fri Sep 11 10:33:22 2026  0.0 16200 python3 sweep_v6.py --tier grid --jobs 4 --workers 64 --mem-gb 500 --out results_v6_grid.csv --append
+ 344637  344628 S+    804905 Fri Sep 11 10:33:22 2026  0.0  1528 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/comm_closed_leader_election_inbox --nodes 6 --ballots 1 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode timed
+ 344640  344637 Sl+   804905 Fri Sep 11 10:33:22 2026 6398 173048 /local/sramezani/target-v6/release/examples/comm_closed_leader_election_inbox --nodes 6 --ballots 1 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode timed
+1335787  344626 Ss+   533147 Mon Sep 14 14:02:40 2026  0.0  3320 bash /home/sramezani/traceforge-v6/benchmarks/guard_dups.sh
+1335791  344626 Ss+   533147 Mon Sep 14 14:02:40 2026  0.0  3264 bash /home/sramezani/traceforge-v6/benchmarks/run_rest.sh
+1335792 1335791 Sl+   533147 Mon Sep 14 14:02:40 2026  0.0 25596 python3 run_rest.py
+1335805 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1416 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/three_pc_timed --participants 3 --rounds 4 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode baseline
+1335833 1335805 Sl+   533147 Mon Sep 14 14:02:40 2026  598 19460 /local/sramezani/target-v6/release/examples/three_pc_timed --participants 3 --rounds 4 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode baseline
+1335847 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1428 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/three_pc_timed --participants 5 --rounds 2 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode baseline
+1335857 1335847 Sl+   533147 Mon Sep 14 14:02:40 2026  592 18656 /local/sramezani/target-v6/release/examples/three_pc_timed --participants 5 --rounds 2 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode baseline
+1335865 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1516 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/three_pc_timed --participants 5 --rounds 2 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed
+1335872 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1436 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/comm_closed_leader_election --nodes 5 --ballots 1 --u 20 --w 40 --l 0 --sd 10 --parallel shared --mode baseline
+1335873 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1448 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/comm_closed_leader_election --nodes 5 --ballots 1 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode baseline
+1335874 1335865 Sl+   533147 Mon Sep 14 14:02:40 2026  598 28564 /local/sramezani/target-v6/release/examples/three_pc_timed --participants 5 --rounds 2 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed
+1335876 1335872 Sl+   533147 Mon Sep 14 14:02:40 2026  299  9908 /local/sramezani/target-v6/release/examples/comm_closed_leader_election --nodes 5 --ballots 1 --u 20 --w 40 --l 0 --sd 10 --parallel shared --mode baseline
+1335880 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1520 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/comm_closed_leader_election --nodes 5 --ballots 1 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode timed
+1335884 1335873 Sl+   533147 Mon Sep 14 14:02:40 2026  299 10264 /local/sramezani/target-v6/release/examples/comm_closed_leader_election --nodes 5 --ballots 1 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode baseline
+1335886 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1460 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/comm_closed_leader_election --nodes 5 --ballots 1 --u 20 --w 40 --l 0 --sd 10 --parallel shared --mode timed
+1335887 1335880 Sl+   533147 Mon Sep 14 14:02:40 2026  299  9964 /local/sramezani/target-v6/release/examples/comm_closed_leader_election --nodes 5 --ballots 1 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode timed
+1335898 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1416 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/three_pc_timed --participants 4 --rounds 3 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode baseline
+1335900 1335886 Sl+   533147 Mon Sep 14 14:02:40 2026  299 17752 /local/sramezani/target-v6/release/examples/comm_closed_leader_election --nodes 5 --ballots 1 --u 20 --w 40 --l 0 --sd 10 --parallel shared --mode timed
+1335906 1335898 Sl+   533147 Mon Sep 14 14:02:40 2026  299 10044 /local/sramezani/target-v6/release/examples/three_pc_timed --participants 4 --rounds 3 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode baseline
+1335911 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1416 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/three_pc_timed --participants 8 --rounds 1 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode baseline
+1335913 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1460 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/three_pc_timed --participants 4 --rounds 3 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed
+1335914 1335911 Sl+   533147 Mon Sep 14 14:02:40 2026  294 15340 /local/sramezani/target-v6/release/examples/three_pc_timed --participants 8 --rounds 1 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode baseline
+1335915 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1528 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/comm_closed_leader_election_inbox --nodes 7 --ballots 1 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode baseline
+1335919 1335913 Sl+   533147 Mon Sep 14 14:02:40 2026  299 21836 /local/sramezani/target-v6/release/examples/three_pc_timed --participants 4 --rounds 3 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed
+1335920 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1392 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/three_pc_timed --participants 8 --rounds 1 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed
+1335923 1335915 Sl+   533147 Mon Sep 14 14:02:40 2026  199 11196 /local/sramezani/target-v6/release/examples/comm_closed_leader_election_inbox --nodes 7 --ballots 1 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode baseline
+1335928 1335920 Sl+   533147 Mon Sep 14 14:02:40 2026  299 25512 /local/sramezani/target-v6/release/examples/three_pc_timed --participants 8 --rounds 1 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed
+1335929 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1464 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/comm_closed_leader_election --nodes 4 --ballots 2 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode baseline
+1335930 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1428 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/comm_closed_leader_election_inbox --nodes 7 --ballots 1 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode timed
+1335933 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1524 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/comm_closed_leader_election --nodes 4 --ballots 2 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode timed
+1335935 1335929 Sl+   533147 Mon Sep 14 14:02:40 2026  199  9028 /local/sramezani/target-v6/release/examples/comm_closed_leader_election --nodes 4 --ballots 2 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode baseline
+1335937 1335930 Sl+   533147 Mon Sep 14 14:02:40 2026  199 17964 /local/sramezani/target-v6/release/examples/comm_closed_leader_election_inbox --nodes 7 --ballots 1 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode timed
+1335943 1335933 Sl+   533147 Mon Sep 14 14:02:40 2026  199  9056 /local/sramezani/target-v6/release/examples/comm_closed_leader_election --nodes 4 --ballots 2 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode timed
+1335944 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1392 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/comm_closed_leader_election_inbox --nodes 5 --ballots 2 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode baseline
+1335946 1335792 S+    533147 Mon Sep 14 14:02:40 2026  0.0  1444 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/comm_closed_leader_election_inbox --nodes 5 --ballots 2 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode timed
+1335948 1335944 Sl+   533147 Mon Sep 14 14:02:40 2026 99.9  8584 /local/sramezani/target-v6/release/examples/comm_closed_leader_election_inbox --nodes 5 --ballots 2 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode baseline
+1335949 1335946 Sl+   533147 Mon Sep 14 14:02:40 2026 99.9  8452 /local/sramezani/target-v6/release/examples/comm_closed_leader_election_inbox --nodes 5 --ballots 2 --u 20 --w 200 --l 18 --sd 2 --parallel shared --mode timed
+1399513  344628 T+    516135 Mon Sep 14 18:46:12 2026  0.0  1380 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/three_pc_timed --participants 7 --rounds 1 --u 20 --w-ratio 2 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed
+1399514 1399513 Tl+   516135 Mon Sep 14 18:46:12 2026  0.0 53516 /local/sramezani/target-v6/release/examples/three_pc_timed --participants 7 --rounds 1 --u 20 --w-ratio 2 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed
+1907907  344628 T+    381436 Wed Sep 16 08:11:11 2026  0.0  1416 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/three_pc_timed --participants 7 --rounds 1 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed
+1907908 1907907 Tl+   381436 Wed Sep 16 08:11:11 2026  0.0 54152 /local/sramezani/target-v6/release/examples/three_pc_timed --participants 7 --rounds 1 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed
+2626288  344628 T+    193181 Fri Sep 18 12:28:46 2026  0.0  1440 /usr/bin/time -f TFRUSAGE user=%U sys=%S maxrss_kb=%M /local/sramezani/target-v6/release/examples/three_pc_timed --participants 7 --rounds 1 --u 20 --w-ratio 10 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed
+2626289 2626288 Tl+   193181 Fri Sep 18 12:28:46 2026  0.1 51108 /local/sramezani/target-v6/release/examples/three_pc_timed --participants 7 --rounds 1 --u 20 --w-ratio 10 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed
+== tmux
+v6grid: 1 windows (created Fri Sep 11 10:33:23 2026)
+v6guard: 1 windows (created Mon Sep 14 14:02:41 2026)
+v6rest: 1 windows (created Mon Sep 14 14:02:41 2026)
+== tails
+[3/27]                     three_pc_timed N7 R1 W/U=7                                    baseline= hold/7141672528 viol= wall=189254.8s cpu=2038605.7s
+[4/27]                     three_pc_timed N7 R1 W/U=10                                   baseline= hold/7141672528 viol= wall=228680.9s cpu=2125089.0s
+[5/27]  comm_closed_leader_election_inbox N4 R2 B=2 regime C                                timed= hold/309999088 viol= wall=611724.3s cpu=38656329.6s
+[2/21]                     three_pc_timed N7 R1 W/U=10                      timed= hold/3439843137 wall=149594.7s cpu=1731855.6s
+[3/21]                     three_pc_timed N7 R1 W/U=2                       timed= hold/4294522431 wall=179864.4s cpu=2031749.8s
+[4/21]                     three_pc_timed N3 R4 R=4                         timed= hold/2100577929 wall=259526.1s cpu=1555752.0s
+2026-09-14 18:46:26 paused duplicate 1399513: three_pc_timed --participants 7 --rounds 1 --u 20 --w-ratio 2 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed 
+2026-09-16 08:11:33 paused duplicate 1907907: three_pc_timed --participants 7 --rounds 1 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed 
+2026-09-18 12:28:57 paused duplicate 2626288: three_pc_timed --participants 7 --rounds 1 --u 20 --w-ratio 10 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed 
+== csv
+  107 /home/sramezani/traceforge-v6/benchmarks/results_v6_grid.csv
+    5 /home/sramezani/traceforge-v6/benchmarks/results_v6_grid_rest.csv
+  112 total

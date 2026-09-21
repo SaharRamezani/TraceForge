@@ -1,0 +1,3 @@
+lease C6 R1 baseline wall=46.376857456 execs=46080 blocked=787680 violations=787680 cpu=164.34+5.51 
+lease C6 R1 timed wall=198.703858017 execs=46080 blocked=305076 violations=0 cpu=436.06+1.39 
+lease C7 R1 baseline wall=614.241584064 execs=645120 blocked=20210400 violations=20210400 cpu=4398.30+117.62 

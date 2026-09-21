@@ -1,0 +1,8 @@
+timed N5R8 shared16 cores=101-116 wall=29.036793670 execs=256 blocked=143607 violations=0 cpu=372.02+0.24 
+base N8R6 partition16 cores=200-215 wall=30.378249632 execs=725200 blocked=725199 violations=7811727 cpu=213.71+3.96 
+base N8R6 shared16 cores=181-196 wall=31.891480195 execs=725200 blocked=725199 violations=7811727 cpu=238.35+5.67 
+timed N8R4 partition16 cores=160-175 wall=33.029707673 execs=16 blocked=209911 violations=0 cpu=244.92+0.16 
+timed N5R8 partition16 cores=120-135 wall=33.392105421 execs=256 blocked=143607 violations=0 cpu=363.10+0.12 
+timed N8R4 shared16 cores=141-156 wall=46.548064728 execs=16 blocked=209911 violations=0 cpu=247.50+0.18 
+base N8R6 none cores=180-180 wall=184.886772061 execs=725200 blocked=725199 violations=7811727 cpu=182.80+2.01 
+timed N8R4 none cores=140-140 wall=223.593432377 execs=16 blocked=209911 violations=0 cpu=223.48+0.00 

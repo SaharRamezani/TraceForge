@@ -8,6 +8,8 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::env;
 use std::rc::Rc;
+use std::any::Any;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{sleep, JoinHandle};
 use std::time::{Duration, Instant};
@@ -61,6 +63,9 @@ struct ExecutionPoolWorker {
     /// otherwise we end up overshooting while draining the queue of
     /// revisits.
     exec_counter: Arc<Mutex<u64>>,
+    /// Set by the drainer when a worker died: every worker stops at its next
+    /// execution boundary instead of finishing its whole in-flight subtree.
+    abort: Arc<AtomicBool>,
 }
 
 impl ExecutionPoolWorker {
@@ -77,6 +82,7 @@ impl ExecutionPoolWorker {
         pool_exec_stats: Arc<Mutex<Stats>>,
         must_conf: &Config,
         exec_counter: Arc<Mutex<u64>>,
+        abort: Arc<AtomicBool>,
     ) -> Self {
         debug!("Created Worker [{}]", &thread_idx);
 
@@ -90,6 +96,7 @@ impl ExecutionPoolWorker {
             pool_exec_stats,
             must_conf: must_conf.clone(),
             exec_counter,
+            abort,
         }
     }
 
@@ -110,6 +117,7 @@ impl ExecutionPoolWorker {
         let pool_exec_stats = self.pool_exec_stats.clone();
         let must_conf = self.must_conf.clone();
         let exec_counter = self.exec_counter.clone();
+        let abort = self.abort.clone();
 
         let thread_handle = std::thread::Builder::new()
             .name(format!("exec-pool-{}", &self.thread_idx))
@@ -124,6 +132,7 @@ impl ExecutionPoolWorker {
                     exec_func,
                     must_conf,
                     exec_counter,
+                    abort,
                 )
             })
             .expect("Should spawn() ExecutionPool worker thread.");
@@ -162,6 +171,7 @@ fn worker_loop<F>(
     exec_func: Arc<F>,
     must_conf: Config,
     exec_counter: Arc<Mutex<u64>>,
+    abort: Arc<AtomicBool>,
 ) where
     F: Fn() + Send + Sync + 'static,
 {
@@ -180,6 +190,7 @@ fn worker_loop<F>(
     loop {
         if *worker_state.lock().expect("Lock worker_state mutex")
             == ExecutionPoolWorkerState::Shutdown
+            || abort.load(Ordering::Relaxed)
         {
             break;
         }
@@ -262,6 +273,11 @@ fn worker_loop<F>(
         // completes, mark can_drain as true.
         //
         CONTINUATION_POOL.set(&continuation_pool, || loop {
+            // Another worker died (e.g. a failed assertion without
+            // keep-going): the run is over, do not explore further.
+            if abort.load(Ordering::Relaxed) {
+                break;
+            }
             if let Some(limit) = max_iterations {
                 let exec_c = {
                     let mut exec_c = exec_counter.lock().expect("Couldn't unlock exec_counter");
@@ -327,6 +343,7 @@ pub struct ExecutionPool {
     can_drain: Arc<Mutex<bool>>,
     exec_stats: Arc<Mutex<Stats>>,
     is_shutdown: bool,
+    abort: Arc<AtomicBool>,
 }
 
 impl ExecutionPool {
@@ -357,6 +374,7 @@ impl ExecutionPool {
         let exec_stats = Arc::new(Mutex::new(Stats::default()));
         let can_drain = Arc::new(Mutex::new(false));
         let exec_counter = Arc::new(Mutex::new(0));
+        let abort = Arc::new(AtomicBool::new(false));
 
         let worker_count: usize = if let Some(rpw) = must_conf.parallel_workers {
             rpw
@@ -378,6 +396,7 @@ impl ExecutionPool {
                     exec_stats.clone(),
                     must_conf,
                     exec_counter.clone(),
+                    abort.clone(),
                 )
             })
             .collect();
@@ -389,6 +408,7 @@ impl ExecutionPool {
             exec_stats,
             can_drain,
             is_shutdown: false,
+            abort,
         }
     }
 
@@ -443,6 +463,25 @@ impl ExecutionPool {
         loop {
             // Add the delay once here rather than at every branch/continue.
             sleep(Duration::from_millis(250));
+
+            // A worker leaves worker_loop only after Shutdown, which has not
+            // been issued yet, so a worker thread that has already finished
+            // died: the model panicked, e.g. an assertion failed without
+            // keep-going. Its state is stuck at Busy, so "no worker Busy"
+            // below would never hold and this loop would spin forever with
+            // the violation unreported. Stop every worker and let
+            // shutdown_now() re-raise the panic. This must come before the
+            // can_drain gate: if the very first execution panicked, can_drain
+            // is never set.
+            if self
+                .worker_vec
+                .iter()
+                .any(|w| w.thread_handle.as_ref().is_some_and(|h| h.is_finished()))
+            {
+                debug!("A worker died; aborting the pool.");
+                self.abort.store(true, Ordering::Relaxed);
+                break;
+            }
 
             let can_drain = *self.can_drain.lock().expect("can_drain mutex lock");
 
@@ -504,17 +543,25 @@ impl ExecutionPool {
 
         // Not all the threads may be complete yet so join() the ones that are
         // ready and loop until all of the threads in the Vec have been set to
-        // Option::None via .take().
+        // Option::None via .take(). A worker that panicked is joined like the
+        // others; its payload is kept and re-raised below, so the run ends the
+        // way a sequential run does (the model's panic, exit code 101).
         //
+        let mut first_panic: Option<Box<dyn Any + Send>> = None;
         loop {
             self.worker_vec.iter_mut().for_each(|w| {
                 if let Some(busy_th) = &w.thread_handle {
                     if busy_th.is_finished() {
                         trace!("[{}] Joining ... ", &w.thread_idx);
                         let th = w.thread_handle.take().unwrap();
-                        th.join().expect("Didn't join worker thread");
+                        match th.join() {
+                            Ok(()) => threads_joined += 1,
+                            Err(payload) => {
+                                debug!("[{}] worker panicked.", &w.thread_idx);
+                                first_panic.get_or_insert(payload);
+                            }
+                        }
                         trace!("[{}] Joined. ", &w.thread_idx);
-                        threads_joined += 1;
                     } else {
                         debug!("[{}] Not finished yet.", &w.thread_idx);
                     }
@@ -534,6 +581,11 @@ impl ExecutionPool {
             }
         } // loop
 
+        if let Some(payload) = first_panic {
+            // The worker's panic hook already printed the message (and the
+            // witness); resume_unwind does not print it a second time.
+            std::panic::resume_unwind(payload);
+        }
         threads_joined == self.worker_vec.len()
     } // shutdown_now()
 }

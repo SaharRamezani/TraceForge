@@ -1,0 +1,11 @@
+fenced C3 R1 baseline wall=.021082531 execs=144 blocked=0 violations=0 cpu=0.01+0.00 
+fenced C3 R1 timed wall=.063204822 execs=68 blocked=73 violations=0 cpu=0.05+0.00 
+fenced C2 R3 baseline wall=.198649096 execs=1728 blocked=0 violations=0 cpu=0.18+0.00 
+fenced C4 R1 baseline wall=.269916806 execs=2880 blocked=0 violations=0 cpu=0.26+0.00 
+fenced C4 R1 timed wall=.997588155 execs=588 blocked=1072 violations=0 cpu=0.98+0.00 
+fenced C2 R3 timed wall=1.119136052 execs=1000 blocked=721 violations=0 cpu=1.10+0.00 
+fenced C3 R2 baseline wall=2.307403254 execs=20736 blocked=0 violations=0 cpu=2.29+0.00 
+fenced C3 R2 timed wall=7.565471394 execs=4624 blocked=5295 violations=0 cpu=7.55+0.00 
+fenced C2 R5 baseline wall=40.881641902 execs=248832 blocked=0 violations=0 cpu=40.87+0.00 
+fenced C4 R2 timed part16 wall=87.950049792 execs=345744 blocked=644830 violations=0 cpu=1319.30+0.32 
+fenced C4 R2 base part10 wall=130.263143734 execs=8294400 blocked=0 violations=0 cpu=1282.81+1.15 

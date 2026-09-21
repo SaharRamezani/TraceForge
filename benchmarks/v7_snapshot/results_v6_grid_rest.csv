@@ -1,0 +1,5 @@
+protocol,N,rounds,cell,side,variant,execs,block,extra,violations,verdict,expected,wall_s,cpu_s,rss_mb,workers,started,finished,cmd
+three_pc_timed,7,1,W/U=7,timed,,3439843137,0,3251404800,,hold,hold,149115.4,1730475.4,49,12,2026-09-14 14:02:41,2026-09-16 07:27:56,three_pc_timed --participants 7 --rounds 1 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed
+three_pc_timed,7,1,W/U=10,timed,,3439843137,0,3251404800,,hold,hold,149594.7,1731855.6,51,12,2026-09-14 14:02:41,2026-09-16 07:35:55,three_pc_timed --participants 7 --rounds 1 --u 20 --w-ratio 10 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed
+three_pc_timed,7,1,W/U=2,timed,,4294522431,0,3251404800,,hold,hold,179864.4,2031749.8,58,12,2026-09-14 14:02:41,2026-09-16 16:00:25,three_pc_timed --participants 7 --rounds 1 --u 20 --w-ratio 2 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed
+three_pc_timed,3,4,R=4,timed,,2100577929,0,2360871072,,hold,hold,259526.1,1555752.0,38,6,2026-09-14 14:02:41,2026-09-17 14:08:07,three_pc_timed --participants 3 --rounds 4 --u 20 --w-ratio 7 --l-ratio 0.0 --sd-ratio 0.25 --parallel shared --mode timed

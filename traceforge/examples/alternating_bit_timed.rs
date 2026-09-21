@@ -376,11 +376,14 @@
 //! W=1: 15500 vs 3176) because unread messages expire (side effect (a));
 //! with sd = 20 the same two cells give exactly the baseline counts (54,
 //! 3176). Scale: on the DT-Spin rows at W = 3U, both variants explore 29
-//! executions in about 20 ms at U = 3, 30 and 300, while DT-Spin's
-//! Table 2 grows 1318 / 7447 / 68737 states. The units differ (DT-Spin
-//! explores an unbounded looping model with one-place channels, this
-//! file a bounded K = 2 program), so only the flat versus growing shape
-//! carries over. Times are single-threaded wall clock.
+//! executions in about 20 ms at U = 3, 30 and 300. WITHDRAWN 2026-09-19:
+//! the comparison with Table 2's 1318 / 7447 / 68737 states, even as a
+//! shape. That growth is single-tick unfolding of the 1998 prototype;
+//! DT-Spin 4.1.1 on the same listing gives 641 states at all three rows
+//! in its default multiple-tick mode, and this file's UNTIMED mode is as
+//! flat as its timed mode. See the B02 section of the benchmark survey
+//! and par_timed.rs (the transliteration of the DT-Spin listing).
+//! Times are single-threaded wall clock.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};

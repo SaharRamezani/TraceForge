@@ -1,0 +1,66 @@
+swim timed N6 R1                 ok      execs=         2 blocked=        112 viol=         0 wall=    0.0s cpu=0.0s
+swim timed N7 R1                 ok      execs=         2 blocked=        306 viol=         0 wall=    0.1s cpu=0.1s
+swim timed N8 R1                 ok      execs=         2 blocked=        856 viol=         0 wall=    0.3s cpu=0.3s
+swim timed N9 R1                 ok      execs=         2 blocked=       2442 viol=         0 wall=    1.0s cpu=1.0s
+swim timed N10 R1                ok      execs=         2 blocked=       7072 viol=         0 wall=    3.3s cpu=3.3s
+swim timed N11 R1                ok      execs=         2 blocked=      20706 viol=         0 wall=   11.0s cpu=11.0s
+swim timed N13 R1                ok      execs=         2 blocked=     181242 viol=         0 wall=  117.2s cpu=117.2s
+swim timed N14 R1                ok      execs=         2 blocked=     539632 viol=         0 wall=  383.4s cpu=383.4s
+swim timed N15 R1                TIMEOUT execs=           blocked=            viol=           wall=  902.6s cpu=s
+swim timed N16 R1                TIMEOUT execs=           blocked=            viol=           wall=  902.4s cpu=s
+swim timed N3 R9                 ok      execs=       512 blocked=       8445 viol=         0 wall=   22.8s cpu=22.8s
+swim timed N3 R10                ok      execs=      1024 blocked=      18429 viol=         0 wall=   77.7s cpu=77.7s
+swim timed N3 R12                TIMEOUT execs=           blocked=            viol=           wall=  902.8s cpu=s
+swim timed N3 R14                TIMEOUT execs=           blocked=            viol=           wall=  902.1s cpu=s
+swim timed N4 R9                 ok      execs=       512 blocked=      55547 viol=         0 wall=  202.0s cpu=201.9s
+swim timed N4 R10                ok      execs=      1024 blocked=     130555 viol=         0 wall=  829.9s cpu=829.8s
+swim timed N4 R12                TIMEOUT execs=           blocked=            viol=           wall=  900.6s cpu=s
+swim timed N4 R14                TIMEOUT execs=           blocked=            viol=           wall=  902.3s cpu=s
+swim timed N5 R9                 TIMEOUT execs=           blocked=            viol=           wall=  902.8s cpu=s
+swim timed N5 R10                TIMEOUT execs=           blocked=            viol=           wall=  902.0s cpu=s
+swim timed N5 R12                TIMEOUT execs=           blocked=            viol=           wall=  903.2s cpu=s
+swim timed N6 R9                 TIMEOUT execs=           blocked=            viol=           wall=  902.8s cpu=s
+swim timed N6 R10                TIMEOUT execs=           blocked=            viol=           wall=  902.1s cpu=s
+swim timed N6 R12                TIMEOUT execs=           blocked=            viol=           wall=  902.3s cpu=s
+swim timed N6 R2                 ok      execs=         4 blocked=        641 viol=         0 wall=    0.3s cpu=0.3s
+swim timed N6 R3                 ok      execs=         8 blocked=       2723 viol=         0 wall=    1.5s cpu=1.5s
+swim timed N6 R4                 ok      execs=        16 blocked=      10039 viol=         0 wall=    7.5s cpu=7.5s
+swim timed N7 R2                 ok      execs=         4 blocked=       2121 viol=         0 wall=    1.1s cpu=1.1s
+swim timed N7 R3                 ok      execs=         8 blocked=      10617 viol=         0 wall=    7.1s cpu=7.1s
+swim timed N7 R4                 ok      execs=        16 blocked=      44991 viol=         0 wall=   40.0s cpu=40.0s
+swim timed N8 R2                 ok      execs=         4 blocked=       7265 viol=         0 wall=    4.2s cpu=4.2s
+swim timed N8 R3                 ok      execs=         8 blocked=      43043 viol=         0 wall=   34.5s cpu=34.5s
+swim timed N8 R4                 ok      execs=        16 blocked=     209911 viol=         0 wall=  221.2s cpu=221.2s
+swim timed N10 R2                ok      execs=         4 blocked=      92801 viol=         0 wall=   72.3s cpu=72.3s
+swim timed N10 R3                ok      execs=         8 blocked=     778883 viol=         0 wall=  855.4s cpu=855.4s
+swim timed N10 R4                TIMEOUT execs=           blocked=            viol=           wall=  900.6s cpu=s
+swim baseline N3 R1              ok      execs=         3 blocked=          2 viol=         4 wall=    0.0s cpu=0.0s
+swim baseline N3 R2              ok      execs=         8 blocked=          7 viol=        15 wall=    0.0s cpu=0.0s
+swim baseline N3 R3              ok      execs=        20 blocked=         19 viol=        43 wall=    0.0s cpu=0.0s
+swim baseline N3 R4              ok      execs=        48 blocked=         47 viol=       111 wall=    0.0s cpu=0.0s
+swim baseline N3 R6              ok      execs=       256 blocked=        255 viol=       639 wall=    0.0s cpu=0.0s
+swim baseline N3 R8              ok      execs=      1280 blocked=       1279 viol=      3327 wall=    0.3s cpu=0.2s
+swim baseline N5 R1              ok      execs=         9 blocked=          8 viol=        32 wall=    0.0s cpu=0.0s
+swim baseline N5 R2              ok      execs=        44 blocked=         43 viol=       199 wall=    0.0s cpu=0.0s
+swim baseline N5 R3              ok      execs=       170 blocked=        169 viol=       853 wall=    0.0s cpu=0.0s
+swim baseline N5 R4              ok      execs=       576 blocked=        575 viol=      3071 wall=    0.1s cpu=0.1s
+swim baseline N5 R6              ok      execs=      5248 blocked=       5247 viol=     30015 wall=    1.0s cpu=1.0s
+swim baseline N5 R8              ok      execs=     39680 blocked=      39679 viol=    236287 wall=    8.7s cpu=8.7s
+swim baseline N8 R1              ok      execs=        65 blocked=         64 viol=       448 wall=    0.0s cpu=0.0s
+swim baseline N8 R2              ok      execs=       858 blocked=        857 viol=      7457 wall=    0.2s cpu=0.1s
+swim baseline N8 R3              ok      execs=      6476 blocked=       6475 viol=     61987 wall=    1.3s cpu=1.2s
+swim baseline N8 R4              ok      execs=     36640 blocked=      36639 viol=    370623 wall=    7.9s cpu=7.9s
+swim baseline N8 R6              ok      execs=    725200 blocked=     725199 viol=   7811727 wall=  184.6s cpu=184.4s
+swim baseline N8 R8              TIMEOUT execs=           blocked=            viol=           wall=  903.2s cpu=s
+swim baseline N12 R1             ok      execs=      1025 blocked=       1024 viol=     11264 wall=    0.2s cpu=0.2s
+swim baseline N12 R2             ok      execs=     61098 blocked=      61097 viol=    868897 wall=   15.3s cpu=15.3s
+swim baseline N12 R3             ok      execs=   1228796 blocked=    1228795 viol=  19350115 wall=  344.7s cpu=344.2s
+swim baseline N12 R4             TIMEOUT execs=           blocked=            viol=           wall=  903.4s cpu=s
+swim baseline N12 R6             TIMEOUT execs=           blocked=            viol=           wall=  903.4s cpu=s
+swim baseline N12 R8             TIMEOUT execs=           blocked=            viol=           wall=  902.9s cpu=s
+lease timed C3 R2 SEQ            ok      execs=      2304 blocked=       3593 viol=         0 wall=    4.6s cpu=4.6s
+lease timed C3 R2 PART           ok      execs=      2304 blocked=       3593 viol=         0 wall=    1.6s cpu=6.1s
+lease baseline C3 R2 SEQ         ok      execs=      2304 blocked=       4164 viol=      4164 wall=    0.8s cpu=0.8s
+lease baseline C3 R2 PART        ok      execs=      2304 blocked=       4164 viol=      4164 wall=    0.4s cpu=2.0s
+lease timed C3 R3 SEQ            ok      execs=    110592 blocked=     172745 viol=         0 wall=  377.7s cpu=377.6s
+GROWTH-DONE

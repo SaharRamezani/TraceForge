@@ -99,8 +99,18 @@
 //!   rescueDeadline). This is the paper that introduces the case study.
 //! * SCP 2015 (Khamespanah et al.), Section 6: "The main property to be
 //!   checked is saving Scientist before the rescue deadline is missed."
-//! * The SCP 2014 journal version was not consulted (paywalled); the
-//!   open FOCLASA version was used instead.
+//! * SCP 2014 journal version (Reynisson et al., "Modelling and simulation
+//!   of asynchronous real-time systems using Timed Rebeca", Science of
+//!   Computer Programming 89 (2014) 41-68), consulted 2026-09-18 from a
+//!   local copy: Table 3 (p. 56) and Listing 6 (Appendix A). Listing 6 is
+//!   the model the `--table3-row` presets reproduce. It differs from the
+//!   rebeca-lang.org file in exactly the ways the presets follow: every
+//!   constant is an `env` parameter, there are two sensor periods
+//!   (sensor0period, sensor1period), and ONE rescueDeadline is shared by
+//!   the Rescue's message deadline and the Admin's checkRescue timer (the
+//!   file has 10 and 5). Table 3's verdicts are McErlang SIMULATIONS ("we
+//!   run a simulation for ten times", p. 52), so its "Mission success"
+//!   means ten runs saw no failure, not that none exists.
 //!
 //! No closed-form timing constraint is published. FOCLASA's property:
 //! "the scientist must acknowledge ... before scientistDeadline time
@@ -190,9 +200,11 @@
 //!   file's Admin constructor runs checkSensors() at time 0, before any
 //!   report can arrive, so sensorFailure is set in EVERY run of the
 //!   published model; the paper never checks sensorFailure, so this is
-//!   an artifact of the file, not a finding.
+//!   an artifact of the file, not a finding. For the rescue property the
+//!   two are exactly equivalent: at time 0 every sensorValue is still 0,
+//!   so Listing 6's check at 0 starts no mission.
 //! * Periodic alarms are pre-armed by main (see above).
-//! * Missions must not overlap: the CLI requires Ds + Dr + 3sd < C
+//! * With `--timers self` (the default), missions must not overlap: the CLI requires Ds + Dr + 3sd < C
 //!   (every mission, including a late pick-up of its last timer, ends
 //!   before the next alarm can be read), exit 2 otherwise. With
 //!   --allow-overlap only the channel-order condition Ds + 2sd < C and
@@ -203,20 +215,28 @@
 //!   own channel (derived from the timer read windows, not measured);
 //!   outside it, same-channel arrival order would delete genuine
 //!   timelines. FOCLASA Table 3 rows 3-4 (scientistDeadline 4 >= admin
-//!   period 1 or 4) are therefore refused.
-//! * FOCLASA's headline result is out of reach of this port. Its
-//!   discussion centres on Table 3 rows 3-4: "The admin node initiates
-//!   a new rescue mission while another is still ongoing", and
-//!   "increasing the value of admin sensor-read period above half the
-//!   rescue deadline eliminates the flaw". Both rows are refused (see
-//!   the previous bullet) because every mission timer is a self-message
-//!   on the one Admin-to-Admin channel, whose messages must arrive in
-//!   send order. Once missions of consecutive checks interleave, a timer
-//!   sent later can be due earlier (e.g. a CheckRescue followed by the
-//!   next check's CheckScientistAck), and exact timers would then make
-//!   genuine timelines impossible. So neither the flaw nor the proposed
-//!   fix is reproduced here. Rows 1-2 are only approximated (one sensor
-//!   with one period of 2, not two sensors with periods 2 and 3).
+//!   period 1 or 4) are therefore refused under `--timers self`.
+//!   Measured 2026-09-18: even inside that guard the self channel is not
+//!   quite Timed Rebeca at its boundary Dr + 2sd = C, where CheckRescue{j}
+//!   and CheckScientistAck{j+1} fall due at the SAME instant; FIFO forces
+//!   their send order, Timed Rebeca allows either. Within the guard that
+//!   is the only possible same-instant timer pair, and its two handlers
+//!   touch disjoint flags, so no verdict can change, but execution counts
+//!   at that boundary are too low (P 2, C 4, Ds 2, Dr 4, R 3: execs 47
+//!   self vs 87 separate; one step off the tie, C 5, both give 1836).
+//! * `--timers separate` removes the channel-order obstacle, and with it
+//!   the refusal: each timer kind has its own sender, so timers of one
+//!   kind (one shared delay, send order = due order) share a FIFO and
+//!   kinds are unordered, exactly Timed Rebeca's earliest-time-tag choice.
+//!   It needs sd = 0 (a timer thread must read its Arm the instant it
+//!   arrives, which is also Timed Rebeca's own no-slack scheduler) and
+//!   C >= OBST (so no Go can reach the Rescue during its obstacle delay,
+//!   where at sd = 0 it would be lost). Validated 2026-09-18: identical
+//!   verdicts to `--timers self` on a 180-cell grid of the death law
+//!   (non-overlapping) and on 6 overlapping cells where the self channel
+//!   is still valid. This is what makes SCP 2014 Table 3 reproducible
+//!   (`--table3-row`), including rows 3-4 and their "new rescue mission
+//!   while another is still ongoing"; see Expected verdicts.
 //! * The Rescue's `deadline(rescueDeadline - netDelay)` message expiry
 //!   (9 in the model file) is not modeled, and the Rescue's own
 //!   rescueDeadline = 10 is not a parameter. The Admin is always ready
@@ -235,6 +255,17 @@
 //!   time is purged unread, while here it is read late and sets
 //!   scientistReached, which can only suppress a later round's death
 //!   verdict, never create one.
+//!   For SCP 2014 Table 3 (Listing 6, one shared rescueDeadline R) the
+//!   expiry never binds. The reach is sent after the obstacle delta <= 1
+//!   and arrives 2 * netDelay + delta after the Go was sent, while the
+//!   message deadline is R - netDelay after go() starts, i.e. R after the
+//!   Go was sent. So it is late only if 2 * netDelay + delta > R, and every
+//!   row has 2 * netDelay + 1 <= R (row 1: 3 <= 3; row 2: 3 <= 4; row 3:
+//!   5 <= 5, 6, 7; row 4: 5 <= 7). This holds whether deadline() is read
+//!   as an absolute instant (as Listing 6's now() + ... suggests) or as a
+//!   duration from the send, which is later still. At equality (rows 1 and
+//!   3-5) the reach arrives exactly at the deadline, still in time, as a
+//!   same-instant tie with checkRescue, which this port explores both ways.
 //! * Sensors never fail and send a bounded number of readings,
 //!   N = floor((R*C + sd) / P) + 2, so the last one is sent strictly
 //!   after the last check could be read; Scientist and Rescue always
@@ -245,16 +276,39 @@
 //! * Readings default to always dangerous (--readings danger) so every
 //!   check that saw a report starts a mission; --readings random is
 //!   Rebeca's ?(2, 4) choice per reading, --readings safe disables
-//!   missions (fast sensor-only sweeps).
+//!   missions (fast sensor-only sweeps). An all-danger execution is one
+//!   legitimate outcome of ?(2, 4), so a danger FIRE is a genuine
+//!   counterexample of the random model; a danger HOLD is not a random HOLD.
+//! * --readings random-relevant is an exact, timed-only reduction of
+//!   random: it keeps ?(2, 4) on every reading whose value some check can
+//!   observe and fixes the rest (see `reading_matters`; needs L = U, sd = 0,
+//!   --mode timed). The Admin reads sensorValue only in checkSensors and
+//!   every report overwrites it, so an unobserved reading's value changes
+//!   no reachable state. Validated 2026-09-18 against full random on every
+//!   cell where full random finished (8 cells: Table 3 rows 1 and 2 at
+//!   R = 1, rows 3-5, 3-6 and 3-7 at R = 2, and three S = 2 death cells):
+//!   identical verdicts and identical zero/nonzero outcome patterns, with
+//!   execution counts smaller by exactly 2^k (16x or 64x), k being the
+//!   number of fixed readings, i.e. each reduced execution stands for
+//!   exactly 2^k full ones. Refused in baseline mode: untimed, a reading
+//!   it fixes CAN be the last one a check sees.
 //! * The obstacle is a two-valued choice {0, OBST}, generalizing
 //!   Rebeca's ?(0, 1) (a choice between listed values, not a range).
 //!   With OBST = 0 the choice is skipped.
-//! * At most 2 sensors (five-thread budget; SCP 2015 scaled 1..4), and
-//!   one common sensor period (FOCLASA Table 3 uses separate periods).
+//! * At most 2 sensors (SCP 2015 scaled 1..4; SCP 2014 Table 3 uses 2).
+//!   Each sensor may have its own period (--sensor0-period-ratio,
+//!   --sensor1-period-ratio), as Table 3's rows 1-2 need (2 and 3).
 //! * Round numbers travel in payloads for debugging only; the Admin
 //!   keeps Rebeca's round-agnostic flags, so the model's behaviour
 //!   (including a stale late Ack suppressing the next mission's rescue,
-//!   a missed rescue that is not asserted) is preserved.
+//!   a missed rescue that is not asserted) is preserved. The stale Ack
+//!   matters for Table 3: when the Ack lands exactly on its own
+//!   checkScientistAck (Ds = 2 * netDelay, true in every row), a rescued
+//!   mission's Ack is read just after that check and leaves scientistAck
+//!   set, so the NEXT mission's check reads it as acknowledged and sends no
+//!   rescue. Only a checkScientistAck clears the flag, so safe (no-mission)
+//!   checks in between do not reset it. Rescues are therefore at least two
+//!   missions (2C) apart.
 //! * Messages arriving at the same instant may be handled in either
 //!   order (ties count), and Rebeca's queue capacities are ignored.
 //!
@@ -289,7 +343,11 @@
 //! execution could never finish the drain; cutting it early only saves
 //! work. Measured: exec counts and every outcome counter were identical
 //! with and without the cut on 7 hold cells, with about 3x fewer
-//! blocked executions and 4x less time.
+//! blocked executions and 4x less time. Re-checked 2026-09-18 with
+//! `--no-early-cut` on 10 cells including 4 FIRE cells (death and sensor
+//! laws, sd 0 and 1, S 1 and 2, danger and random readings, overlapping
+//! missions): execs and every outcome counter identical on all 10; only
+//! blocked grows (up to 26x: 6386 -> 167577 on the R = 3 overlap cell).
 //!
 //! Known costs: hold cells report blocked > 0 by design, and blocked
 //! counts grow quickly with R and S (R = 3 death cells at S = 1: 10446
@@ -331,6 +389,23 @@
 //!   --readings danger|random|safe   sensor values (default danger)
 //!   --property both|sensor|rescue   asserted verdicts (default both)
 //!   --allow-overlap                 relax the mission guard (see above)
+//!   --sensor0-period-ratio PR       sensor 0's own period (default: P)
+//!   --sensor1-period-ratio PR       sensor 1's own period (default: P)
+//!   --timers self|separate          how the two mission timers reach the
+//!                                   Admin (default self; separate needs
+//!                                   sd = 0 and C >= OBST, and needs no
+//!                                   overlap guard; see Deviations)
+//!   --table3-row 1|2|3|3-5|3-6|3-7|4
+//!                                   SCP 2014 Table 3 row, Listing 6
+//!                                   verbatim (sets U, L, sd, S, C, both
+//!                                   periods, Ds, Dr, OBST, readings
+//!                                   random, property rescue, timers
+//!                                   separate); flags AFTER it override it
+//!   --no-early-cut                  disable the early drain cut (it must
+//!                                   not change execs or any counter)
+//!   --parallel none|shared|partitioned
+//!                                   checker exploration strategy (Config
+//!                                   only; the verified program is the same)
 //!   --keep-going                    explore past violations and count them
 //!                                   (exit 0; see sensor_failures= and dead=)
 //!
@@ -449,10 +524,110 @@
 //!   paper's two sensors with periods 2 and 3): Dr = 3 FIRE ("Mission
 //!   failed" in the paper), Dr = 4 hold ("Mission success"), each at R in
 //!   {1, 2, 3}; the Dr = 4 hold at R = 3 has execs=47, rescues=62,
-//!   reached=62. Without --allow-overlap both cells exit 2. Rows 3-4 are
-//!   out of reach (see Deviations): a row-4-shaped cell, --u 2 --l-ratio
-//!   1 --check-ratio 2 --ack-deadline-ratio 2 --rescue-deadline-ratio 3.5
-//!   --allow-overlap, exits 2.
+//!   reached=62. Without --allow-overlap both cells exit 2. Under
+//!   `--timers self` rows 3-4 stay out of reach: a row-4-shaped cell, --u 2
+//!   --l-ratio 1 --check-ratio 2 --ack-deadline-ratio 2
+//!   --rescue-deadline-ratio 3.5 --allow-overlap, exits 2. The R = 3
+//!   execs=47 above is the self channel's count at its Dr = C tie boundary;
+//!   `--timers separate` explores the second tie order too (execs=87,
+//!   rescues=110), same verdict (see Deviations).
+//!
+//! SCP 2014 TABLE 3, REPRODUCED (`--table3-row`, runs of 2026-09-18). Listing 6
+//! verbatim: two sensors, fixed netDelay (L = U), sd = 0, ?(2, 4) readings,
+//! obstacle ?(0, 1), the mission-failure property, timers in due-time order.
+//! "FIRE" = scientistDead reachable = the paper's "Mission failed". HOLDs are
+//! exhaustive for the stated number of admin rounds R.
+//!
+//!   row  netDelay C  P0/P1 Ds  Dr       paper (10 McErlang runs)  here
+//!   1    1        4  2/3   2   3        Mission failed            FIRE, R = 1 and 2
+//!   2    1        4  2/3   2   4        Mission success           HOLD, R = 1 and 2
+//!   3    2        1  1/1   4   5        Mission failed            FIRE from R = 2
+//!   3    2        1  1/1   4   6        Mission failed            FIRE at R = 4 (HOLD at R <= 3)
+//!   3    2        1  1/1   4   7        Mission failed            FIRE at R = 4 (HOLD at R <= 3)
+//!   4    2        4  1/1   4   7        Mission success           HOLD, R = 1
+//!
+//! All six verdicts agree with the paper. R = 1 rows 1 and 2 were run with
+//! full `random` readings (FIRE 3328 execs / HOLD 2560 execs, 11 s each);
+//! everything else with `--readings random-relevant`, validated against full
+//! random (Deviations). Holds are non-vacuous: row 2 R = 1 rescues 1536 all
+//! reached; row 4 R = 1 execs=7680 rescues 4608 all reached (27 s; full
+//! random did not finish that cell in 20 min on 16 cores). Row 3 at R = 1 is
+//! VACUOUS (missions=0: with C = 1 the only check is at t = 1, before the
+//! first report arrives at t = 2) and must not be quoted.
+//!
+//! Two failure mechanisms, each with a certified witness (decoded by hand):
+//!   * Row 1 (single mission, two ties). CheckSensors at 4 sees the danger
+//!     reading; at 6 CheckScientistAck is handled before the Ack arriving at
+//!     the same instant (2 * netDelay = Ds), so a rescue is sent; at 9
+//!     CheckRescue is handled before the RescueReach arriving at the same
+//!     instant (obstacle 1: 2 * netDelay + 1 = Dr). Row 3-5 fails the same
+//!     way (2 * 2 + 1 = 5). A random simulation hits this only when both
+//!     ties happen to go against the scientist.
+//!   * Rows 3-6 and 3-7 ("a new rescue mission while another is still
+//!     ongoing", the paper's own explanation, now with an exact timeline).
+//!     Exact parameters, R = 4, S = 2: at 6 mission 2 is rescued and its
+//!     late Ack leaves scientistAck set; at 7 mission 3 is counted as
+//!     acknowledged; at 8 mission 4 is rescued while mission 2's rescue is
+//!     still under way; the two RescueReaches land at 10 and 12 on the ONE
+//!     boolean scientistReached, the second tying CheckRescue{2} at 12 and
+//!     going first; CheckRescue{2} consumes it; CheckRescue{4} at 14 finds
+//!     nothing: dead. Found in 202 s (3-6) and 171 s (3-7).
+//!   Why R >= 4 for 3-6 and 3-7: every Ack lands exactly on its own check
+//!   (Ds = 2 * netDelay), so a rescued mission's late Ack makes the next
+//!   check see "acknowledged" (Deviations, the stale-Ack bullet), and rescues
+//!   are at least two checks (2C) apart. Their windows can only overlap if
+//!   2C <= Dr - 2 * netDelay, and three missions (checks 2, 3, 4) are needed.
+//!   The paper ran 30-minute simulations; a bounded check at R <= 3 reports
+//!   HOLD for these two cells, correctly for that bound.
+//!
+//! THE PAPER'S FIX DOES NOT COVER Dr = 5. SCP 2014 p. 56: "increasing the
+//! value of admin sensor-read period above half the rescue deadline
+//! eliminates the flaw" (C > Dr/2, a SUFFICIENT condition; it does not claim
+//! the flaw persists below half). It targets the overlapping-mission flaw,
+//! which is indeed what fails rows 3-6 and 3-7. But whenever
+//! Dr <= 2 * netDelay + 1 there is a second, independent failure: the
+//! single-mission race of row 1 (the reply lands exactly on the deadline),
+//! which involves no overlap, so no admin period removes it. Row 3's Dr = 5
+//! is in that regime: `--table3-row 4 --rescue-deadline-ratio 2.5` (row 4's
+//! setting with Dr = 5) FIREs at C = 3, 4, 5 and 6, all above Dr/2 = 2.5
+//! (1-3 s each, R = 1). The C = 6 witness has one mission: danger report
+//! read at 6, CheckScientistAck before the Ack at 10, CheckRescue before the
+//! RescueReach at 15, dead. So the fix fails for Dr = 5, one of the three
+//! rescue deadlines the paper groups under it. Where it was checked
+//! otherwise it is consistent: Dr = 7, C = 4 is Table 3 row 4, HOLD.
+//! Where it applies it is also not tight, on SUPPORTING evidence only: the
+//! exact setting (two sensors, period 1) could not be exhausted at Dr = 7,
+//! C = 2 within 1 h (3 rounds), nor row 4 at R = 2 within 90 min, because
+//! the two sensors report at the same instants and every such pair of
+//! commuting reports is explored in both orders. In the reduced model (one
+//! sensor, one report at t = 0, danger readings; `--sensors 1
+//! --sensor0-period-ratio 50 --readings danger` after the preset), which is
+//! sound for a FIRE but only supporting for a HOLD: Dr = 7, C = 1 holds at
+//! R = 3 and FIREs at R = 4, 5, 6 (the same as the exact setting), while
+//! C = 2 holds at R = 3 and 4, C = 3 at R = 3, 4 and 5, and C = 4 at R = 3
+//! and 4 (the larger R did not finish in 10 min each). The
+//! derived condition for the overlap flaw, 2C <= Dr - 2 * netDelay, gives
+//! C = 1 only; four rounds already contain the first pair of rescues two
+//! checks apart at C = 2, and later pairs have the same spacing.
+//!
+//! UNTIMED CANNOT REPRODUCE TABLE 3. The same program in --mode baseline
+//! FIREs on EVERY row at R = 1, including rows 2 and 4, which the paper
+//! reports (and timed mode proves) as successes, with danger and with random
+//! readings (row 4 random: 10 s to the first false failure). An untimed
+//! checker cannot tell a working configuration from a broken one here.
+//! Same program, --readings danger, --keep-going, R = 1:
+//!
+//!   row  mode      execs    blocked  explored  dead    time
+//!   1    baseline  197015   0        197015    97020   34 s
+//!   1    timed     32       705      737       8       1 s    (FIRE)
+//!   2    baseline  197015   0        197015    97020   33 s
+//!   2    timed     24       713      737       0       <1 s   (HOLD)
+//!
+//! The two baseline lines are byte-identical, and must be: rows 1 and 2
+//! differ only in the rescue deadline (3 vs 4), a timing parameter the
+//! untimed model does not see. Timed mode separates them from the same 737
+//! explored executions, 267x fewer than untimed, and every one of row 2's
+//! 97020 untimed deaths is refuted.
 //!
 //! Witnesses: every timed FIRE above, including all 425 grid FIREs, was
 //! parsed from its graph and certified timeline by a script, and the
@@ -553,6 +728,54 @@ enum RescueMsg {
     Done,
 }
 
+/// Admin -> timer thread (`--timers separate` only). A timer thread is the
+/// Admin's own `self.m() after(d)` for one message kind, run on its own
+/// sender so that only same-kind timers share a FIFO channel.
+#[derive(Clone, Debug, PartialEq)]
+enum TimerMsg {
+    Arm { round: u32, admin: ThreadId },
+    /// Verification harness, not the protocol.
+    Done,
+}
+
+/// How the Admin's two mission timers reach it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Timers {
+    /// Self-messages on the Admin-to-Admin channel. TraceForge channels are
+    /// FIFO, so a timer sent later cannot overtake one sent earlier even when
+    /// it is due earlier; the CLI therefore refuses overlapping missions.
+    SelfChannel,
+    /// One sender thread per timer kind. Timers of one kind all carry the same
+    /// delay, so their send order IS their due order, and timers of different
+    /// kinds are unordered: exactly Timed Rebeca's earliest-time-tag choice
+    /// over the Admin's own messages. Needs sd = 0 (see resolve()).
+    Separate,
+}
+
+impl Timers {
+    fn name(self) -> &'static str {
+        match self {
+            Timers::SelfChannel => "self",
+            Timers::Separate => "separate",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TimerKind {
+    ScientistAck,
+    Rescue,
+}
+
+/// Checker exploration strategy: a Config option only, the verified
+/// program is the same.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Parallel {
+    None,
+    Shared,
+    Partitioned,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
     Baseline,
@@ -563,6 +786,9 @@ enum Mode {
 enum Readings {
     Danger,
     Random,
+    /// Rebeca's ?(2, 4) on every reading whose value can be observed, a fixed
+    /// value on the rest (see `reading_matters`). Needs L = U and sd = 0.
+    RandomRelevant,
     Safe,
 }
 
@@ -571,6 +797,7 @@ impl Readings {
         match self {
             Readings::Danger => "danger",
             Readings::Random => "random",
+            Readings::RandomRelevant => "random-relevant",
             Readings::Safe => "safe",
         }
     }
@@ -607,8 +834,8 @@ struct Params {
     u: u64,
     l: u64,
     sd: u64,
-    /// Sensor period.
-    period: u64,
+    /// Sensor periods (Listing 6: sensor0period, sensor1period).
+    period: [u64; 2],
     /// adminCheckDelay.
     check: u64,
     /// scientistDeadline.
@@ -619,14 +846,18 @@ struct Params {
     obstacle: u64,
     readings: Readings,
     property: Property,
+    timers: Timers,
+    /// Early drain cut on (harness optimisation; see the doc header).
+    early_cut: bool,
+    parallel: Parallel,
 }
 
 impl Params {
-    /// Readings per sensor: the last one is sent strictly after the
+    /// Readings sensor `i` sends: the last one is sent strictly after the
     /// last check can be read (R*C + sd), so a "no reading since the
     /// last check" verdict always has a later reading to validate it.
-    fn readings_per_sensor(&self) -> u32 {
-        ((self.rounds as u64 * self.check + self.sd) / self.period) as u32 + 2
+    fn readings_per_sensor(&self, i: usize) -> u32 {
+        ((self.rounds as u64 * self.check + self.sd) / self.period[i]) as u32 + 2
     }
 }
 
@@ -641,8 +872,31 @@ fn cli_bail(msg: &str) -> ! {
 // Sensor: periodic reporter, never fails (Rebeca doReport)
 // =====================================================================
 
+/// Can the value of sensor `s`'s reading `k` ever be observed? The Admin
+/// reads `sensorValue` only in checkSensors, and every report overwrites it,
+/// so a reading's value is observed only if it is the last report of that
+/// sensor read before some check. At L = U = n and sd = 0 reading k arrives
+/// at exactly k*P + n and is read at that instant (any other execution is
+/// discarded by the drain), and check j is read at exactly j*C. So the last
+/// reading before check j is a = max{k : k*P + n <= j*C}, and also a - 1
+/// when reading a ties the check instant (it may then be read after it).
+/// Every other reading is overwritten before any check reads it, so fixing
+/// its value changes no reachable Admin state.
+fn reading_matters(p: &Params, s: usize, k: u32) -> bool {
+    let (per, n, k) = (p.period[s], p.l, k as u64);
+    (1..=p.rounds as u64).any(|j| {
+        let t = j * p.check;
+        if t < n {
+            return false;
+        }
+        let a = (t - n) / per;
+        k == a || (a * per + n == t && a >= 1 && k == a - 1)
+    })
+}
+
 fn sensor(p: Params, index: u32, admin: ThreadId) {
-    let n = p.readings_per_sensor();
+    let n = p.readings_per_sensor(index as usize);
+    let period = p.period[index as usize];
     for seq in 0..n {
         let value = match p.readings {
             Readings::Danger => GAS_DANGER,
@@ -655,12 +909,19 @@ fn sensor(p: Params, index: u32, admin: ThreadId) {
                     GAS_SAFE
                 }
             }
+            Readings::RandomRelevant => {
+                if reading_matters(&p, index as usize, seq) && traceforge::nondet() {
+                    GAS_DANGER
+                } else {
+                    GAS_SAFE
+                }
+            }
         };
         // admin.report(value) after(netDelay): global transit [L, U].
         traceforge::send_msg(admin, AdminMsg::Report { sensor: index, seq, value });
         // self.doReport() after(period). Unconditional, both modes.
         if seq + 1 < n {
-            traceforge::sleep(p.period);
+            traceforge::sleep(period);
         }
     }
 }
@@ -703,6 +964,29 @@ fn rescue(obstacle: u64) {
 }
 
 // =====================================================================
+// Timer thread (--timers separate): the Admin's self.m() after(d) for
+// one message kind, forwarded with exact transit d
+// =====================================================================
+
+fn timer(kind: TimerKind, delay: u64) {
+    loop {
+        match traceforge::recv_msg_block_timed::<TimerMsg>() {
+            // The Arm arrives with exact transit 0 and, at sd = 0, is read at
+            // that very instant, so the timer lands exactly `delay` after the
+            // Admin armed it, as Rebeca's time tag now() + delay.
+            TimerMsg::Arm { round, admin } => {
+                let m = match kind {
+                    TimerKind::ScientistAck => AdminMsg::CheckScientistAck { round },
+                    TimerKind::Rescue => AdminMsg::CheckRescue { round },
+                };
+                traceforge::send_msg_timed(admin, m, delay, delay);
+            }
+            TimerMsg::Done => return,
+        }
+    }
+}
+
+// =====================================================================
 // Admin: one receive loop, Listing 5's handlers and flags
 // =====================================================================
 
@@ -736,7 +1020,7 @@ impl Tally {
 /// each channel's send order.
 struct Drain {
     sensors: usize,
-    readings_per_sensor: u32,
+    readings_per_sensor: [u32; 2],
     next_seq: [u32; 2],
     rounds: u32,
     next_check: u32,
@@ -756,7 +1040,7 @@ impl Drain {
     fn new(p: &Params) -> Self {
         Drain {
             sensors: p.sensors as usize,
-            readings_per_sensor: p.readings_per_sensor(),
+            readings_per_sensor: [p.readings_per_sensor(0), p.readings_per_sensor(1)],
             next_seq: [0; 2],
             rounds: p.rounds,
             next_check: 1,
@@ -770,7 +1054,7 @@ impl Drain {
     }
 
     fn complete(&self) -> bool {
-        self.next_seq[..self.sensors].iter().all(|&s| s == self.readings_per_sensor)
+        (0..self.sensors).all(|i| self.next_seq[i] == self.readings_per_sensor[i])
             && self.next_check > self.rounds
             && self.acks_read == self.missions.len()
             && self.ack_checks_read == self.missions.len()
@@ -785,13 +1069,38 @@ impl Drain {
 /// already gone when the read began). Such an execution can never
 /// finish the drain, so block it here instead of at the end. This only
 /// saves work: the set of completed executions is unchanged.
-fn expect_in_order(in_order: bool) {
-    if !in_order {
+/// `--no-early-cut` turns it off so that claim can be checked: such an
+/// execution then runs on and blocks at the drain instead.
+fn expect_in_order(cut: bool, in_order: bool) {
+    if cut && !in_order {
         traceforge::assume!(false);
     }
 }
 
-fn admin(p: Params, scientist: ThreadId, rescue: ThreadId) {
+/// Rebeca `self.m() after(delay)` for one of the Admin's two mission timers.
+/// Without timer threads it is a self-message on the Admin's own channel;
+/// with them it is an Arm (exact transit 0) that the kind's thread turns
+/// into the timer, due exactly `delay` later.
+fn arm(me: ThreadId, timers: Option<(ThreadId, ThreadId)>, kind: TimerKind, round: u32, delay: u64) {
+    match timers {
+        None => {
+            let m = match kind {
+                TimerKind::ScientistAck => AdminMsg::CheckScientistAck { round },
+                TimerKind::Rescue => AdminMsg::CheckRescue { round },
+            };
+            traceforge::send_msg_timed(me, m, delay, delay);
+        }
+        Some((ack_timer, rescue_timer)) => {
+            let to = match kind {
+                TimerKind::ScientistAck => ack_timer,
+                TimerKind::Rescue => rescue_timer,
+            };
+            traceforge::send_msg_timed(to, TimerMsg::Arm { round, admin: me }, 0, 0);
+        }
+    }
+}
+
+fn admin(p: Params, scientist: ThreadId, rescue: ThreadId, timers: Option<(ThreadId, ThreadId)>) {
     let me = thread::current().id();
     let n_sensors = p.sensors as usize;
 
@@ -810,19 +1119,19 @@ fn admin(p: Params, scientist: ThreadId, rescue: ThreadId) {
         match traceforge::recv_msg_block_timed::<AdminMsg>() {
             AdminMsg::Report { sensor, seq, value } => {
                 let s = sensor as usize;
-                expect_in_order(s < n_sensors && seq == d.next_seq[s]);
+                expect_in_order(p.early_cut, s < n_sensors && seq == d.next_seq[s]);
                 d.next_seq[s] += 1;
                 // Counter only: read after the last processed check k,
                 // but could it have been read before that check?
                 let k = d.next_check as u64 - 1;
-                if k >= 1 && (seq as u64) * p.period + p.l <= k * p.check + p.sd {
+                if k >= 1 && (seq as u64) * p.period[s] + p.l <= k * p.check + p.sd {
                     t.late_reports += 1;
                 }
                 reported[s] = true;
                 sensor_value[s] = value;
             }
             AdminMsg::CheckSensors { round } => {
-                expect_in_order(round == d.next_check);
+                expect_in_order(p.early_cut, round == d.next_check);
                 d.next_check += 1;
                 for s in 0..n_sensors {
                     if reported[s] {
@@ -839,12 +1148,7 @@ fn admin(p: Params, scientist: ThreadId, rescue: ThreadId) {
                     // scientist.abortPlan() after(netDelay);
                     traceforge::send_msg(scientist, SciMsg::AbortPlan { round, admin: me });
                     // self.checkScientistAck() after(scientistDeadline);
-                    traceforge::send_msg_timed(
-                        me,
-                        AdminMsg::CheckScientistAck { round },
-                        p.ack_deadline,
-                        p.ack_deadline,
-                    );
+                    arm(me, timers, TimerKind::ScientistAck, round, p.ack_deadline);
                     t.missions += 1;
                     d.missions.push(round);
                 }
@@ -852,23 +1156,18 @@ fn admin(p: Params, scientist: ThreadId, rescue: ThreadId) {
                 // by main (doc header).
             }
             AdminMsg::Ack { round } => {
-                expect_in_order(d.missions.get(d.acks_read) == Some(&round));
+                expect_in_order(p.early_cut, d.missions.get(d.acks_read) == Some(&round));
                 d.acks_read += 1;
                 scientist_ack = true;
             }
             AdminMsg::CheckScientistAck { round } => {
-                expect_in_order(d.missions.get(d.ack_checks_read) == Some(&round));
+                expect_in_order(p.early_cut, d.missions.get(d.ack_checks_read) == Some(&round));
                 d.ack_checks_read += 1;
                 if !scientist_ack {
                     // rescue.go() after(netDelay);
                     traceforge::send_msg(rescue, RescueMsg::Go { round, admin: me });
                     // self.checkRescue() after(rescueDeadline);
-                    traceforge::send_msg_timed(
-                        me,
-                        AdminMsg::CheckRescue { round },
-                        p.rescue_deadline,
-                        p.rescue_deadline,
-                    );
+                    arm(me, timers, TimerKind::Rescue, round, p.rescue_deadline);
                     t.rescues_sent += 1;
                     d.rescues.push(round);
                 } else {
@@ -877,12 +1176,12 @@ fn admin(p: Params, scientist: ThreadId, rescue: ThreadId) {
                 scientist_ack = false;
             }
             AdminMsg::RescueReach { round } => {
-                expect_in_order(d.rescues.get(d.reaches_read) == Some(&round));
+                expect_in_order(p.early_cut, d.rescues.get(d.reaches_read) == Some(&round));
                 d.reaches_read += 1;
                 scientist_reached = true;
             }
             AdminMsg::CheckRescue { round } => {
-                expect_in_order(d.rescues.get(d.rescue_checks_read) == Some(&round));
+                expect_in_order(p.early_cut, d.rescues.get(d.rescue_checks_read) == Some(&round));
                 d.rescue_checks_read += 1;
                 if !scientist_reached {
                     // Recorded now, asserted after the drain.
@@ -901,6 +1200,10 @@ fn admin(p: Params, scientist: ThreadId, rescue: ThreadId) {
     // the reactive threads (harness), publish the tallies, then assert.
     traceforge::send_msg(scientist, SciMsg::Done);
     traceforge::send_msg(rescue, RescueMsg::Done);
+    if let Some((ack_timer, rescue_timer)) = timers {
+        traceforge::send_msg(ack_timer, TimerMsg::Done);
+        traceforge::send_msg(rescue_timer, TimerMsg::Done);
+    }
     t.publish();
     if p.property.sensor() {
         // No false sensor failure: sensors never break here.
@@ -918,6 +1221,11 @@ fn admin(p: Params, scientist: ThreadId, rescue: ThreadId) {
 
 fn build_config(mode: Mode, p: Params, keep_going: bool) -> Config {
     let mut builder = Config::builder().with_progress_report(usize::MAX);
+    builder = match p.parallel {
+        Parallel::None => builder,
+        Parallel::Shared => builder.with_parallel(true),
+        Parallel::Partitioned => builder.with_partitioned_parallelization(true),
+    };
     if keep_going {
         // Explore the whole state space after a violation; the number
         // of false alarms is then in sensor_failures= and dead=.
@@ -955,7 +1263,17 @@ fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
         let res = thread::spawn(move || rescue(p.obstacle));
         let sci_id = sci.thread().id();
         let res_id = res.thread().id();
-        let adm = thread::spawn(move || admin(p, sci_id, res_id));
+        let timer_threads = match p.timers {
+            Timers::SelfChannel => None,
+            Timers::Separate => Some((
+                thread::spawn(move || timer(TimerKind::ScientistAck, p.ack_deadline)),
+                thread::spawn(move || timer(TimerKind::Rescue, p.rescue_deadline)),
+            )),
+        };
+        let timer_ids = timer_threads
+            .as_ref()
+            .map(|(a, r)| (a.thread().id(), r.thread().id()));
+        let adm = thread::spawn(move || admin(p, sci_id, res_id, timer_ids));
         let adm_id = adm.thread().id();
         let mut sensors = Vec::new();
         for i in 0..p.sensors {
@@ -973,6 +1291,10 @@ fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
         let _ = adm.join();
         let _ = sci.join();
         let _ = res.join();
+        if let Some((a, r)) = timer_threads {
+            let _ = a.join();
+            let _ = r.join();
+        }
     });
     (stats, start.elapsed())
 }
@@ -1057,14 +1379,25 @@ fn warn_if_vacuous(label: &str, p: Params, execs: usize, blocked: usize, c: Coun
 // Reporting
 // =====================================================================
 
+/// "10" when every sensor shares one period, "2/3" otherwise.
+fn periods(p: &Params) -> String {
+    if p.sensors == 1 || p.period[0] == p.period[1] {
+        p.period[0].to_string()
+    } else {
+        format!("{}/{}", p.period[0], p.period[1])
+    }
+}
+
 fn print_one(label: &str, p: Params, stats: &Stats, dur: Duration, c: Counts) {
     println!(
-        "{label:<9} S={s} R={r} readings={rd} property={pr}  L={l} U={u} sd={sd} P={per} C={chk} \
+        "{label:<9} S={s} R={r} readings={rd} property={pr} timers={tm} cut={cut}  L={l} U={u} \
+         sd={sd} P={per} C={chk} \
          Ds={ds} Dr={dr} OBST={ob}  execs={execs:<6} blocked={block:<6} checks_ok={cok} \
          late_reports={lr} sensor_failures={sf} missions={mi} acked={ak} rescues={rs} reached={re} dead={de} \
          time={dur:?}",
         s = p.sensors, r = p.rounds, rd = p.readings.name(), pr = p.property.name(),
-        l = p.l, u = p.u, sd = p.sd, per = p.period, chk = p.check,
+        tm = p.timers.name(), cut = if p.early_cut { "on" } else { "off" },
+        l = p.l, u = p.u, sd = p.sd, per = periods(&p), chk = p.check,
         ds = p.ack_deadline, dr = p.rescue_deadline, ob = p.obstacle,
         execs = stats.execs, block = stats.block,
         cok = c.checks_ok, lr = c.late_reports, sf = c.sensor_failures, mi = c.missions, ak = c.acked,
@@ -1079,9 +1412,10 @@ fn print_compare(p: Params, baseline: (Stats, Duration), timed: (Stats, Duration
     println!("Sensor network with rescue escalation: MUST vs MUST-timed");
     println!("=========================================================");
     println!(
-        "S = {}  R = {}  L = {}  U = {}  sd = {}  P = {}  C = {}  Ds = {}  Dr = {}  OBST = {}",
-        p.sensors, p.rounds, p.l, p.u, p.sd, p.period, p.check, p.ack_deadline,
-        p.rescue_deadline, p.obstacle
+        "S = {}  R = {}  L = {}  U = {}  sd = {}  P = {}  C = {}  Ds = {}  Dr = {}  OBST = {}  \
+         timers = {}",
+        p.sensors, p.rounds, p.l, p.u, p.sd, periods(&p), p.check, p.ack_deadline,
+        p.rescue_deadline, p.obstacle, p.timers.name()
     );
     println!();
     println!("{:<10} {:>10} {:>10} {:>14}", "mode", "execs", "blocked", "time");
@@ -1123,10 +1457,31 @@ struct Args {
     ack_deadline_ratio: f64,
     rescue_deadline_ratio: f64,
     obstacle_ratio: f64,
+    /// Per-sensor period overrides (Listing 6 sensor0period, sensor1period).
+    sensor_period_ratio: [Option<f64>; 2],
     readings: Readings,
     property: Property,
     allow_overlap: bool,
+    timers: Timers,
+    early_cut: bool,
+    parallel: Parallel,
     keep_going: bool,
+}
+
+/// SCP 2014 Table 3 (Reynisson et al., Science of Computer Programming 89,
+/// p. 56), in absolute units: (netDelay, admin period, sensor0 period,
+/// sensor1 period, scientist deadline, rescue deadline). Row 3 lists three
+/// rescue deadlines, so it is split into 3-5, 3-6 and 3-7.
+fn table3_row(row: &str) -> Option<(u64, u64, u64, u64, u64, u64)> {
+    match row {
+        "1" => Some((1, 4, 2, 3, 2, 3)),
+        "2" => Some((1, 4, 2, 3, 2, 4)),
+        "3" | "3-5" => Some((2, 1, 1, 1, 4, 5)),
+        "3-6" => Some((2, 1, 1, 1, 4, 6)),
+        "3-7" => Some((2, 1, 1, 1, 4, 7)),
+        "4" => Some((2, 4, 1, 1, 4, 7)),
+        _ => None,
+    }
 }
 
 fn next_val(args: &mut std::env::Args, flag: &str) -> String {
@@ -1150,9 +1505,13 @@ fn parse_args() -> Args {
         ack_deadline_ratio: DEFAULT_ACK_DEADLINE_RATIO,
         rescue_deadline_ratio: DEFAULT_RESCUE_DEADLINE_RATIO,
         obstacle_ratio: DEFAULT_OBSTACLE_RATIO,
+        sensor_period_ratio: [None, None],
         readings: Readings::Danger,
         property: Property::Both,
         allow_overlap: false,
+        timers: Timers::SelfChannel,
+        early_cut: true,
+        parallel: Parallel::None,
         keep_going: false,
     };
     let mut args = std::env::args();
@@ -1190,9 +1549,10 @@ fn parse_args() -> Args {
                 a.readings = match v.as_str() {
                     "danger" => Readings::Danger,
                     "random" => Readings::Random,
+                    "random-relevant" => Readings::RandomRelevant,
                     "safe" => Readings::Safe,
                     other => cli_bail(&format!(
-                        "invalid --readings: {other} (expected danger|random|safe)"
+                        "invalid --readings: {other} (expected danger|random|random-relevant|safe)"
                     )),
                 };
             }
@@ -1207,6 +1567,64 @@ fn parse_args() -> Args {
                     )),
                 };
             }
+            "--sensor0-period-ratio" => {
+                a.sensor_period_ratio[0] = Some(parse_num(
+                    next_val(&mut args, "--sensor0-period-ratio"),
+                    "--sensor0-period-ratio",
+                ))
+            }
+            "--sensor1-period-ratio" => {
+                a.sensor_period_ratio[1] = Some(parse_num(
+                    next_val(&mut args, "--sensor1-period-ratio"),
+                    "--sensor1-period-ratio",
+                ))
+            }
+            "--timers" => {
+                let v = next_val(&mut args, "--timers");
+                a.timers = match v.as_str() {
+                    "self" => Timers::SelfChannel,
+                    "separate" => Timers::Separate,
+                    other => cli_bail(&format!("invalid --timers: {other} (expected self|separate)")),
+                };
+            }
+            "--no-early-cut" => a.early_cut = false,
+            "--parallel" => {
+                let v = next_val(&mut args, "--parallel");
+                a.parallel = match v.as_str() {
+                    "none" => Parallel::None,
+                    "shared" => Parallel::Shared,
+                    "partitioned" => Parallel::Partitioned,
+                    other => cli_bail(&format!(
+                        "invalid --parallel: {other} (expected none|shared|partitioned)"
+                    )),
+                };
+            }
+            "--table3-row" => {
+                let v = next_val(&mut args, "--table3-row");
+                let (n, c, p0, p1, ds, r) = table3_row(&v).unwrap_or_else(|| {
+                    cli_bail(&format!(
+                        "invalid --table3-row: {v} (expected 1, 2, 3, 3-5, 3-6, 3-7 or 4)"
+                    ))
+                });
+                // Listing 6 verbatim: fixed netDelay (L = U = n), no scheduler
+                // slack, two sensors, ?(2, 4) readings, obstacle ?(0, 1), the
+                // mission-failure property, and due-time-ordered timers.
+                // Ratios are over U = n; flags given AFTER this one override it.
+                let f = n as f64;
+                a.u = n;
+                a.l_ratio = 1.0;
+                a.sd_ratio = 0.0;
+                a.sensors = 2;
+                a.check_ratio = c as f64 / f;
+                a.period_ratio = p0 as f64 / f;
+                a.sensor_period_ratio = [Some(p0 as f64 / f), Some(p1 as f64 / f)];
+                a.ack_deadline_ratio = ds as f64 / f;
+                a.rescue_deadline_ratio = r as f64 / f;
+                a.obstacle_ratio = 1.0 / f;
+                a.readings = Readings::Random;
+                a.property = Property::Rescue;
+                a.timers = Timers::Separate;
+            }
             "--allow-overlap" => a.allow_overlap = true,
             "--keep-going" => a.keep_going = true,
             "--help" | "-h" => {
@@ -1215,12 +1633,17 @@ fn parse_args() -> Args {
                      [--rounds R] [--u U] [--l-ratio LR] [--sd-ratio SR] [--period-ratio PR] \
                      [--check-ratio CR] [--ack-deadline-ratio AR] [--rescue-deadline-ratio RR] \
                      [--obstacle-ratio OR] [--readings danger|random|safe] \
-                     [--property both|sensor|rescue] [--allow-overlap] [--keep-going]\n\
+                     [--property both|sensor|rescue] [--allow-overlap] \
+                     [--sensor0-period-ratio PR] [--sensor1-period-ratio PR] \
+                     [--timers self|separate] [--table3-row 1|2|3|3-5|3-6|3-7|4] \
+                     [--no-early-cut] [--parallel none|shared|partitioned] [--keep-going]\n\
                      All ratios are over U and rounded. Defaults: S=2, R=1, U=1, L/U=1, sd/U=0, \
                      P/U=10, C/U=15, Ds/U=5, Dr/U=5, OBST/U=1, readings=danger, property=both \
                      (the published model with fixed netDelay 1).\n\
-                     Missions must not overlap: Ds + Dr + 3sd < C, unless --allow-overlap, which \
-                     still requires Ds + 2sd < C and Dr + 2sd <= C.\n\
+                     With --timers self, missions must not overlap: Ds + Dr + 3sd < C, unless \
+                     --allow-overlap, which still requires Ds + 2sd < C and Dr + 2sd <= C. \
+                     --timers separate lifts both but needs sd = 0 and C >= OBST.\n\
+                     --table3-row reproduces SCP 2014 Table 3 (Listing 6); later flags override it.\n\
                      --keep-going explores past violations and counts them (sensor_failures=, dead=).\n\
                      Exit 0 = no false alarm over the explored state space; exit 101 = a false \
                      sensor failure or a false death; exit 2 = CLI misuse."
@@ -1249,25 +1672,30 @@ fn resolve(a: &Args) -> Params {
         }
         (r * a.u as f64).round() as u64
     };
+    let common = scale(a.period_ratio, "--period-ratio");
+    let per = |i: usize, flag: &str| a.sensor_period_ratio[i].map_or(common, |r| scale(r, flag));
     let p = Params {
         sensors: a.sensors,
         rounds: a.rounds,
         u: a.u,
         l: scale(a.l_ratio, "--l-ratio"),
         sd: scale(a.sd_ratio, "--sd-ratio"),
-        period: scale(a.period_ratio, "--period-ratio"),
+        period: [per(0, "--sensor0-period-ratio"), per(1, "--sensor1-period-ratio")],
         check: scale(a.check_ratio, "--check-ratio"),
         ack_deadline: scale(a.ack_deadline_ratio, "--ack-deadline-ratio"),
         rescue_deadline: scale(a.rescue_deadline_ratio, "--rescue-deadline-ratio"),
         obstacle: scale(a.obstacle_ratio, "--obstacle-ratio"),
         readings: a.readings,
         property: a.property,
+        timers: a.timers,
+        early_cut: a.early_cut,
+        parallel: a.parallel,
     };
     if p.l > p.u {
         cli_bail("transit lower bound L must be <= U (check --l-ratio)");
     }
-    if p.period < 1 {
-        cli_bail("sensor period P must round to >= 1 (check --period-ratio)");
+    if p.period[..p.sensors as usize].iter().any(|&x| x < 1) {
+        cli_bail("every sensor period must round to >= 1 (check the --*period-ratio flags)");
     }
     if p.check < 1 {
         cli_bail("check period C must round to >= 1 (check --check-ratio)");
@@ -1278,7 +1706,32 @@ fn resolve(a: &Args) -> Params {
     if p.rescue_deadline < 1 {
         cli_bail("rescue deadline Dr must round to >= 1 (check --rescue-deadline-ratio)");
     }
-    if p.readings != Readings::Safe {
+    if p.readings == Readings::RandomRelevant && (p.l != p.u || p.sd != 0) {
+        // reading_matters relies on every arrival instant being exact.
+        cli_bail("--readings random-relevant needs L = U and sd = 0");
+    }
+    if p.readings != Readings::Safe && p.timers == Timers::Separate {
+        // A timer thread reads its Arm and re-sends it at once only if it
+        // reads the Arm the instant it arrives, i.e. with no pick-up slack.
+        // sd = 0 is also Timed Rebeca's own scheduler (no slack at all).
+        if p.sd != 0 {
+            cli_bail("--timers separate needs sd = 0 (check --sd-ratio)");
+        }
+        // Rebeca's `delay(?(0, 1))` blocks the Rescue, and a Go that arrives
+        // meanwhile waits in its bag. Here, at sd = 0, it would be readable
+        // only at its arrival instant and would be lost unread (the drain
+        // then discards the execution, hiding it). Go messages are at least
+        // C apart, so C >= OBST rules that out.
+        if p.check < p.obstacle {
+            cli_bail(
+                "a Go could reach the Rescue during its obstacle delay: need C >= OBST \
+                 with --timers separate",
+            );
+        }
+        // No overlap guard: timers of one kind share one delay, so their
+        // send order is their due order, and kinds do not share a channel.
+    }
+    if p.readings != Readings::Safe && p.timers == Timers::SelfChannel {
         // Channel-order faithfulness (never relaxed): mission timers
         // on the Admin's own channel must always arrive in send order,
         // otherwise genuine timelines would be deleted.
@@ -1301,6 +1754,12 @@ fn resolve(a: &Args) -> Params {
 fn main() {
     let a = parse_args();
     let p = resolve(&a);
+    if p.readings == Readings::RandomRelevant && a.mode != "timed" {
+        // reading_matters is justified by exact timed arrival instants. Untimed,
+        // a reading it fixes CAN be the last one a check sees, so baseline would
+        // lose behaviours and look more precise than it is.
+        cli_bail("--readings random-relevant is a timed-mode reduction; use --mode timed");
+    }
     match a.mode.as_str() {
         "baseline" => {
             let (s, d) = run(Mode::Baseline, p, a.keep_going);

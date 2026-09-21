@@ -1,0 +1,21 @@
+   9580 /local/sramezani/target-v7/release/examples/swim_timed --nodes 3 --rounds 24 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --w-probe-ratio 1.0 --w-suspect-ratio 3.5 --keep-going --mode baseline --parallel partitioned
+   9580 /local/sramezani/target-v7/release/examples/lease_timed --clients 2 --rounds 7 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --ttl-ratio 5.0 --pause-ratio 1.5 --fencing off --keep-going --mode timed
+   9580 /local/sramezani/target-v7/release/examples/lease_timed --clients 2 --rounds 8 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --ttl-ratio 5.0 --pause-ratio 1.5 --fencing off --keep-going --mode baseline
+   9580 /local/sramezani/target-v7/release/examples/swim_timed --nodes 16 --rounds 2 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --w-probe-ratio 1.0 --w-suspect-ratio 3.5 --keep-going --mode timed
+   9580 /local/sramezani/target-v7/release/examples/swim_timed --nodes 18 --rounds 3 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --w-probe-ratio 1.0 --w-suspect-ratio 3.5 --keep-going --mode baseline --parallel partitioned
+   9580 /local/sramezani/target-v7/release/examples/swim_timed --nodes 20 --rounds 2 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --w-probe-ratio 1.0 --w-suspect-ratio 3.5 --keep-going --mode baseline
+   9580 /local/sramezani/target-v7/release/examples/lease_timed --clients 2 --rounds 10 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --ttl-ratio 5.0 --pause-ratio 1.5 --fencing off --keep-going --mode timed --parallel partitioned
+   9580 /local/sramezani/target-v7/release/examples/swim_timed --nodes 5 --rounds 12 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --w-probe-ratio 1.0 --w-suspect-ratio 3.5 --keep-going --mode timed --parallel partitioned
+   9580 /local/sramezani/target-v7/release/examples/swim_timed --nodes 12 --rounds 6 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --w-probe-ratio 1.0 --w-suspect-ratio 3.5 --keep-going --mode baseline --parallel partitioned
+   9580 /local/sramezani/target-v7/release/examples/lease_timed --clients 2 --rounds 11 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --ttl-ratio 5.0 --pause-ratio 1.5 --fencing off --keep-going --mode baseline --parallel partitioned
+   9580 /local/sramezani/target-v7/release/examples/swim_timed --nodes 7 --rounds 12 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --w-probe-ratio 1.0 --w-suspect-ratio 3.5 --keep-going --mode baseline --parallel partitioned
+   9580 /local/sramezani/target-v7/release/examples/swim_timed --nodes 6 --rounds 10 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --w-probe-ratio 1.0 --w-suspect-ratio 3.5 --keep-going --mode timed --parallel partitioned
+   9580 /local/sramezani/target-v7/release/examples/swim_timed --nodes 14 --rounds 3 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --w-probe-ratio 1.0 --w-suspect-ratio 3.5 --keep-going --mode timed --parallel partitioned
+   9580 /local/sramezani/target-v7/release/examples/swim_timed --nodes 12 --rounds 4 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --w-probe-ratio 1.0 --w-suspect-ratio 3.5 --keep-going --mode timed --parallel partitioned
+   4228 /local/sramezani/target-v7/release/examples/lease_timed --clients 2 --rounds 7 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --ttl-ratio 5.0 --pause-ratio 2.0 --fencing on --keep-going --mode baseline
+   4226 /local/sramezani/target-v7/release/examples/lease_timed --clients 8 --rounds 1 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --ttl-ratio 5.0 --pause-ratio 2.0 --fencing on --keep-going --mode timed
+   4226 /local/sramezani/target-v7/release/examples/swim_timed --nodes 22 --rounds 1 --u 2 --l-ratio 0.5 --sd-ratio 0.5 --w-probe-ratio 1.0 --w-suspect-ratio 3.5 --keep-going --mode timed
+   3259 /local/sramezani/target-v7/release/examples/lease_timed --clients 7 --rounds 1 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --ttl-ratio 5.0 --pause-ratio 2.0 --fencing on --keep-going --mode baseline
+    709 /local/sramezani/target-v7/release/examples/swim_timed --nodes 16 --rounds 2 --u 2 --l-ratio 0.5 --sd-ratio 0.5 --w-probe-ratio 1.0 --w-suspect-ratio 3.5 --keep-going --mode timed
+    346 /local/sramezani/target-v7/release/examples/lease_timed --clients 2 --rounds 5 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --ttl-ratio 5.0 --pause-ratio 2.0 --fencing on --keep-going --mode timed
+    200 /local/sramezani/target-v7/release/examples/swim_timed --nodes 12 --rounds 3 --u 2 --l-ratio 0.0 --sd-ratio 0.5 --w-probe-ratio 1.0 --w-suspect-ratio 3.5 --keep-going --mode timed --parallel partitioned
