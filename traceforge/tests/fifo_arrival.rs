@@ -17,8 +17,13 @@
 //! Operational rules the derivations below also rely on (established
 //! semantics on this branch, see timed_exact.rs and the inbox_timed
 //! docs in src/lib.rs):
-//!   - a timeout branch (rf = None) is ALWAYS explorable by design and
-//!     adds exactly W to the clock, constraining no arrivals;
+//!   - a timeout branch (rf = None) adds exactly W to the clock and,
+//!     since (C6') landed on 2026-09-21, is realizable only in
+//!     timelines where every message the receive could have consumed
+//!     misses the whole wait: each such message either arrives at or
+//!     after the deadline, or is already dead when the wait begins.
+//!     (It used to be explorable unconditionally, which is why two
+//!     counts in this file changed; the derivations below say where.)
 //!   - a waiting receive takes the channel front the moment it becomes
 //!     readable, so reading past an sb-earlier matching message is
 //!     legal only in timelines where that message was never readable
@@ -188,7 +193,12 @@ fn possibly_dead_front_skip_world_is_lost_by_offer_sealing() {
 //
 // Branches:
 //   (m1, m2): t_r1 = a1, t_r2 = a2 >= a1.                  FEASIBLE
-//   (m1, TO): timeout by design.                           FEASIBLE
+//   (m1, TO): r2 waits [a1, a1 + 20] and m2 is readable at a2, with
+//             a1 <= a2 <= 10 <= a1 + 20 in EVERY timeline, so the
+//             wait cannot miss it: neither (C6') alternative holds
+//             (a2 >= a1 + 20 is out of the window, and m2 dead before
+//             the wait began needs a2 + sd < a1, i.e. a2 < a1).
+//                                                        IMPOSSIBLE
 //   (m2, _):  r1 taking m2 past the unread m1 needs m1 never
 //             readable during r1's wait [0, 20]. m1's arrival a1 is
 //             in [0, 10], inside the wait, in EVERY timeline (a skip
@@ -198,15 +208,19 @@ fn possibly_dead_front_skip_world_is_lost_by_offer_sealing() {
 //                                                        IMPOSSIBLE
 //   (TO, m1) and (TO, m2): r1's timeout advances the clock to 20;
 //             both readable instants are <= 10 < 20.     IMPOSSIBLE
-//   (TO, TO): by design.                                   FEASIBLE
+//   (TO, TO): r1's timeout is the same infeasible one.   IMPOSSIBLE
 //
-// 3 executions, 0 blocked.
-// Pre-FIFO value: also 3. The skip already required death before the
-// wait began (impossible at t0 = 0 with or without coupling);
-// (m1, m2) already forced a2 >= a1 through read program order
-// (t_r2 >= t_r1 = a1 and t_r2 = a2); the TO windows are unchanged.
-// The coupling is invisible on overlapping uniform windows, as it
-// should be.
+// 1 execution, 0 blocked.
+// This count changed from 3 to 1 with (C6') (2026-09-21): a
+// finite-wait receive may return bot only where every message it
+// could have consumed misses the whole wait, and here m1 (for r1) and
+// m2 (for r2) are readable inside it in every timeline. The two
+// dropped worlds were the "timeout by design" ones this file used to
+// pin; they are the false timeouts (C6') exists to remove.
+// The FIFO coupling itself is still invisible on overlapping uniform
+// windows, which is what this test is for: (m1, m2) forces a2 >= a1
+// through read program order (t_r2 >= t_r1 = a1 and t_r2 = a2) with
+// or without coupling.
 // ---------------------------------------------------------------------
 
 #[test]
@@ -223,7 +237,7 @@ fn same_sender_uniform_windows_match_prefifo_count() {
             traceforge::send_msg(r, 2u32); // m2
         },
     );
-    assert_eq!((stats.execs, stats.block), (3, 0));
+    assert_eq!((stats.execs, stats.block), (1, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -332,20 +346,27 @@ fn lossy_drop_exempts_fifo_coupling() {
 // same-sender FIFO restricts delivery order):
 //   (y, x):  t_r1 = 0, t_r2 = 5. y overtakes x: legal, the pair is
 //            uncoupled.                                    FEASIBLE
-//   (y, TO): timeout by design.                            FEASIBLE
+//   (y, TO): t_r1 = 0, so r2 waits [0, 10] and x is readable at 5,
+//            inside it. Under (C6') the timeout has no timeline.
+//                                                        IMPOSSIBLE
 //   (x, TO): t_r1 = 5; passing over the readable y is allowed
 //            (cross-sender, no order to honor) and y is NOT evicted,
 //            but r2 = y would need t_r2 = 0 >= t_r1 = 5, so only the
-//            timeout continues.                            FEASIBLE
+//            timeout continues. It survives (C6') because y is dead
+//            before that wait begins: a_y + sd = 0 < 5.    FEASIBLE
 //   (x, y):  t_r2 = a_y = 0 < t_r1 = 5.                  IMPOSSIBLE
 //   (TO, x) and (TO, y): r1's timeout moves the clock to 10; both
 //            readable instants (0 and 5) are past.       IMPOSSIBLE
-//   (TO, TO): by design.                                   FEASIBLE
+//   (TO, TO): r1's timeout would have to miss both x and y, but each
+//            is readable inside [0, 10].                 IMPOSSIBLE
 //
-// Expected: (4, 0). (A wrongly channel-global coupling would force
-// a_x <= a_y, 5 <= 0, and collapse this to (0, 0); losing only the
-// overtaking would drop the (y, _) branches to (2, 0). The pin
-// distinguishes these.)
+// Expected: (2, 0), changed from (4, 0) by (C6') on 2026-09-21: the
+// two dropped worlds are timeouts taken while a message was readable
+// during the wait. What this test pins is unaffected: a wrongly
+// channel-global coupling would force a_x <= a_y, 5 <= 0, and
+// collapse this to (0, 0), and losing the cross-sender overtaking
+// would drop (y, x) too, leaving (1, 0). The surviving pair still
+// separates all three.
 // ---------------------------------------------------------------------
 
 #[test]
@@ -366,7 +387,7 @@ fn cross_sender_sends_not_coupled_under_local_order() {
             });
         },
     );
-    assert_eq!((stats.execs, stats.block), (4, 0));
+    assert_eq!((stats.execs, stats.block), (2, 0));
 }
 
 // ---------------------------------------------------------------------

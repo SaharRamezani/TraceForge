@@ -24,8 +24,14 @@
 //!   prefixes would drop a realizable execution.
 //!
 //! Scope notes:
-//! * The `rf = None` timeout branch stays always-explorable; a timeout
-//!   is an exact clock advance here, exactly as in the walker.
+//! * The `rf = None` timeout branch stays always-explorable during
+//!   EXPLORATION (it is the canonical launch point of backward
+//!   revisits, so pruning it would lose executions); a timeout is an
+//!   exact clock advance there, exactly as in the walker. The
+//!   certification and completion oracles (`graph_feasible`,
+//!   `graph_witness`) additionally enforce (C6'): the timeout must
+//!   have missed every message it could have consumed, see
+//!   `push_timeout_cases`.
 //! * Arrivals are EXPLICIT variables (2026-08-28): every non-dropped
 //!   send s carries `a_s` in `[t_s + L, t_s + U]`, a message has ONE
 //!   arrival consistent across every constraint that mentions it, and
@@ -776,6 +782,31 @@ impl<'g> TimedDcs<'g> {
         view: Option<&VectorClock>,
         floating: Option<Event>,
     ) -> Self {
+        Self::build_opts(g, cfg, view, floating, false)
+    }
+
+    /// `build` plus (C6'), the timeout-feasibility condition: a
+    /// finite-wait receive may return `bot` only in timelines where
+    /// every matching message it could have consumed missed the whole
+    /// wait window (see `push_timeout_cases`).
+    ///
+    /// Only the completion/certification oracles (`graph_feasible`,
+    /// `graph_witness`) pass `strict_timeouts = true`. Pruning paths
+    /// must not: the timeout is the canonical launch point of backward
+    /// revisits, so removing it from the exploration tree would lose
+    /// executions whose reads are only reachable through it (design
+    /// note 2026-09-16, option A). The exploration tree is therefore
+    /// unchanged and soundness, completeness and duplicate-freedom
+    /// carry over; what is given up is exact-prefix pruning, i.e. a
+    /// timeline-impossible timeout is still explored and then dropped
+    /// at the end instead of being cut at the read.
+    pub(crate) fn build_opts(
+        g: &'g ExecutionGraph,
+        cfg: &'g TimedConfig,
+        view: Option<&VectorClock>,
+        floating: Option<Event>,
+        strict_timeouts: bool,
+    ) -> Self {
         let full;
         let view = match view {
             Some(v) => v,
@@ -921,6 +952,21 @@ impl<'g> TimedDcs<'g> {
                                 let w = i128::from(w);
                                 edges.push((p, e, w));
                                 edges.push((e, p, -w));
+                                if strict_timeouts {
+                                    push_timeout_cases(
+                                        &mut case_sets,
+                                        &vars,
+                                        g,
+                                        cfg,
+                                        view,
+                                        e,
+                                        p,
+                                        pos,
+                                        rlab.recv_loc(),
+                                        rlab.as_event_label(),
+                                        floating,
+                                    );
+                                }
                             }
                             // Blocking recv with no rf: walker parity
                             // (empty window; the graph is dropped).
@@ -1046,6 +1092,31 @@ impl<'g> TimedDcs<'g> {
                                 let w = i128::from(w);
                                 edges.push((p, e, w));
                                 edges.push((e, p, -w));
+                                // (C6') for a collector of one: a single
+                                // readable message already completes the
+                                // batch, so the recv condition applies
+                                // verbatim. For min >= 2 the honest
+                                // condition is "fewer than min members
+                                // are collectable in the window", a
+                                // cardinality constraint this difference
+                                // system cannot express; those timeouts
+                                // stay unconstrained (looser, never a
+                                // lost execution).
+                                if strict_timeouts && ilab.min() <= 1 {
+                                    push_timeout_cases(
+                                        &mut case_sets,
+                                        &vars,
+                                        g,
+                                        cfg,
+                                        view,
+                                        e,
+                                        p,
+                                        pos,
+                                        ilab.recv_loc(),
+                                        ilab.as_event_label(),
+                                        floating,
+                                    );
+                                }
                             }
                             WaitTime::Infinite => infeasible_label = true,
                         },
@@ -1927,7 +1998,7 @@ impl<'g> TimedDcs<'g> {
         cfg: &TimedConfig,
         view: Option<&VectorClock>,
     ) -> bool {
-        TimedDcs::build(g, cfg, view, None).base_feasible()
+        TimedDcs::build_opts(g, cfg, view, None, true).base_feasible()
     }
 
     /// One-shot witness timeline for the committed graph (or view).
@@ -1936,7 +2007,7 @@ impl<'g> TimedDcs<'g> {
         cfg: &TimedConfig,
         view: Option<&VectorClock>,
     ) -> Option<Vec<(Event, u64)>> {
-        let mut dcs = TimedDcs::build(g, cfg, view, None);
+        let mut dcs = TimedDcs::build_opts(g, cfg, view, None, true);
         if !dcs.feasible {
             return None;
         }
@@ -2340,6 +2411,114 @@ fn exclusion_options(
 /// plain reads); omitting a monitor-order skip only loosens, never
 /// tightens.
 #[allow(clippy::too_many_arguments)]
+/// (C6') Timeout feasibility, the finite-wait sibling of the (C8)
+/// refusal conjunction `push_refusal_edges`.
+///
+/// A receive that returns `bot` waited out its whole window, so in the
+/// witness timeline no message it could have consumed was ever
+/// readable during `[t_p, t_e]` (`t_e = t_p + W` by (C6)). A message
+/// `b` is stored over `[a_b, a_b + sd]`, and that interval misses the
+/// window exactly when
+///
+/// ```text
+///   a_b >= t_e            (b is not there before the deadline)
+///   a_b + sd < t_p        (b was already discarded when the wait began)
+/// ```
+///
+/// which is one two-option group per candidate message, the same shape
+/// `push_recv_skip_cases` uses for a dodged front.
+///
+/// The first alternative is HALF-OPEN on purpose: a message arriving
+/// exactly at the deadline may lose the race to the timer. The strict
+/// form `a_b > t_e` would report false holds on every tie cell
+/// `To = dK + dL + dR` of the PAR benchmark, where Spin and DT-Spin
+/// reach the violation only through that timeout.
+///
+/// Every guard below excuses `b` from constraining the timeout, and
+/// each one only keeps executions: over-constraining here would cut a
+/// legitimate timeout, which is the one error this must not make.
+#[allow(clippy::too_many_arguments)]
+fn push_timeout_cases(
+    case_sets: &mut Vec<Vec<Vec<Edge>>>,
+    vars: &ScopeVars,
+    g: &ExecutionGraph,
+    cfg: &TimedConfig,
+    view: &VectorClock,
+    e: u32,
+    p: u32,
+    pos: Event,
+    loc: &crate::loc::RecvLoc,
+    anchor: &crate::event_label::EventLabel,
+    floating: Option<Event>,
+) {
+    let sd = i128::from(cfg.sd_for(pos.thread));
+    for b in g.matching_stores(loc) {
+        let bpos = b.pos();
+        if !view.contains(bpos) || b.is_cancelled_wrt(anchor) {
+            continue;
+        }
+        // Consumed elsewhere: another thread's receive took it, or one
+        // of ours took it before the wait began. A LATER receive of our
+        // own thread is not an excuse: under the reception discipline a
+        // waiting receive takes a readable message the instant it
+        // appears, so the timeout still has to explain why it did not.
+        // (That is exactly the timeout-validation idiom, now enforced
+        // by the constraint rather than by hand.) The floating event's
+        // reads are hypothetical, as in `push_recv_skip_cases`.
+        if b.reader().is_some_and(|r| {
+            Some(r) != floating
+                && view.contains(r)
+                && (r.thread != pos.thread || r.index < pos.index)
+        }) {
+            continue;
+        }
+        if b
+            .monitor_readers()
+            .iter()
+            .any(|&mr| mr.thread == pos.thread && view.contains(mr))
+        {
+            continue;
+        }
+        // Evicted for this thread: an earlier receive of ours passed
+        // over b to read a message ordered behind it, so b can no
+        // longer be read here (the GC skip rule) and imposes nothing.
+        let evicted = g.get_thr(&pos.thread).labels[..pos.index as usize]
+            .iter()
+            .any(|lab| match lab {
+                LabelEnum::RecvMsg(rl) => {
+                    rl.matches(b)
+                        && rl.rf().is_some_and(|s| {
+                            g.send_label(s).is_some_and(|sl| sl.sb().contains(bpos))
+                        })
+                }
+                LabelEnum::Inbox(il) => {
+                    il.matches(b)
+                        && il.rfs().is_some_and(|subset| {
+                            subset.iter().any(|&s| {
+                                g.send_label(s).is_some_and(|sl| sl.sb().contains(bpos))
+                            })
+                        })
+                }
+                _ => false,
+            });
+        if evicted {
+            continue;
+        }
+        // Causally behind the timeout: the graph already forces its
+        // arrival to t_e or later, so the group would be vacuous.
+        if g.in_porf(pos, bpos) {
+            continue;
+        }
+        let Some(&av) = vars.arr.get(&bpos) else {
+            continue; // dropped (lossy) or out of scope: no arrival
+        };
+        case_sets.push(vec![
+            vec![(av, e, 0)],         // a_b >= t_e
+            vec![(p, av, -(sd + 1))], // a_b + sd < t_p
+        ]);
+    }
+}
+
 fn push_recv_skip_cases(
     case_sets: &mut Vec<Vec<Vec<Edge>>>,
     vars: &ScopeVars,

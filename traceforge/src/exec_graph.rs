@@ -8,6 +8,7 @@ use crate::event::Event;
 use crate::indexed_map::IndexedMap;
 use crate::loc::{Loc, RecvLoc};
 use crate::revisit::{Revisit, RevisitPlacement};
+use crate::timed_cons::WaitTime;
 use crate::runtime::task::TaskId;
 use crate::thread::{construct_thread_id, main_thread_id};
 use crate::vector_clock::VectorClock;
@@ -775,6 +776,24 @@ impl ExecutionGraph {
                 }
             }
         }
+    }
+
+    /// Does the graph hold a finite-wait receive or inbox that timed
+    /// out? Such a label carries the (C6') obligation, which only the
+    /// certification oracle enforces, so a probe oracle must not vouch
+    /// for the completion of a graph containing one.
+    pub(crate) fn has_timed_out_recv(&self) -> bool {
+        self.threads.iter().flat_map(|t| t.labels.iter()).any(|lab| {
+            match lab {
+                LabelEnum::RecvMsg(r) => {
+                    r.rf().is_none() && matches!(r.wait(), Some(WaitTime::Finite(_)))
+                }
+                LabelEnum::Inbox(i) => {
+                    i.rfs().is_none() && matches!(i.wait(), Some(WaitTime::Finite(_)))
+                }
+                _ => false,
+            }
+        })
     }
 
     /// For all sends whose reader is `recv`, pop the last cancelled_recv_reader

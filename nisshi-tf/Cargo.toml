@@ -1,0 +1,24 @@
+# Harness crate: runs nisshi's REAL storage and service code inside TraceForge.
+#
+# Its own workspace on purpose, so the TraceForge workspace keeps its light
+# dependency tree. nisshi is cloned by tools/fetch-nisshi.sh into
+# ../.nisshi-src/nisshi (gitignored), pinned to the commit recorded there.
+[package]
+name = "nisshi-tf"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+traceforge = { path = "../traceforge" }
+nisshi-storage = { path = "../.nisshi-src/nisshi/nisshi-storage", default-features = false, features = ["dynostore"] }
+nisshi-sans-io = { path = "../.nisshi-src/nisshi/nisshi-sans-io" }
+bytes = { version = "1", features = ["serde"] }
+url = { version = "2.5.4", features = ["serde"] }
+uuid = { version = "1.20.0", features = ["serde", "v4", "v5", "v7"] }
+object_store = "0.13.1"
+async-trait = "0.1"
+futures = "0.3"
+tokio = { version = "1", features = ["rt", "macros"] }

@@ -127,6 +127,12 @@ fn timed_inbox_min2_infinite_one_sender_blocks() {
 // ---------------------------------------------------------------------
 // Two sequential timed inboxes explore every reachable outcome.
 // ---------------------------------------------------------------------
+//
+// "Reachable" here means EXPLORED, not counted: since (C6') the three
+// outcomes with a timeout are dropped when the execution is judged
+// whole, but the program has already run and recorded them, so the sink
+// still shows all five. What this test pins is unchanged and is what it
+// was always for: the inbox and the recv oracle explore the same set.
 
 // min=max=1 -> the inbox is empty (timeout) or holds exactly one message.
 fn one_u32(v: &[Option<Val>]) -> Option<u32> {
@@ -206,16 +212,33 @@ fn two_sequential_timed_inboxes_explore_all_outcomes() {
 
 #[test]
 fn two_sequential_timed_inboxes_have_no_duplicate_executions() {
+    // Since (C6') (2026-09-21) `execs` and the sink no longer count the
+    // same thing, so this compares the sink against itself. A timeout
+    // whose messages were readable all along is dropped when the
+    // execution is judged whole, which is AFTER the program has run and
+    // pushed its record: with L = U = sd = 0 both messages are readable
+    // only at 0, so the three outcomes containing a timeout are explored
+    // and then not counted, leaving execs = 2 while the sink holds 5.
+    // Duplicate-freedom is still exactly "no outcome recorded twice".
     let (inbox_execs, inbox) = two_sequential_run(true);
     assert_eq!(
-        inbox_execs,
+        inbox.len(),
         distinct(&inbox).len(),
-        "each execution should be explored exactly once (no duplicates)"
+        "each explored execution should be explored exactly once (no duplicates)"
+    );
+    assert_eq!(
+        inbox_execs, 2,
+        "only the two timeout-free outcomes survive the (C6') judgement"
     );
 
     // The recv oracle is duplicate-free by construction; the inbox should
     // explore the same number of executions, no more.
-    let (recv_execs, _) = two_sequential_run(false);
+    let (recv_execs, recv) = two_sequential_run(false);
+    assert_eq!(
+        recv.len(),
+        distinct(&recv).len(),
+        "the recv oracle should not duplicate either"
+    );
     assert_eq!(
         inbox_execs, recv_execs,
         "inbox exec count should match the duplicate-free recv oracle"

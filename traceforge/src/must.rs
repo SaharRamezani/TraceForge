@@ -2077,9 +2077,13 @@ impl Must {
                 None,
                 Some(pos),
             );
-            if d.base_feasible() {
+            if d.base_feasible() && !self.current.graph.has_timed_out_recv() {
                 // Full-graph feasible base: vouches for any pending
-                // poisoned exclusion pair (see field doc).
+                // poisoned exclusion pair (see field doc). A graph with
+                // a timed-out finite-wait receive is never vouched for:
+                // this oracle is the exploration one, which by design
+                // leaves (C6') out, so only the completion check can
+                // judge such a graph.
                 self.current.timed_completion_check = false;
             }
             Some(d)

@@ -150,16 +150,25 @@ fn chain_scenario_counts() {
 // waiting timed receive may also NEVER read (all matching messages
 // die before or while it waits); each such world is one more blocked
 // execution. Execs are unchanged by refusals.
+//
+// Since (C6') landed (2026-09-21) the blocked counts here are ZERO
+// (they were 2 and 6). Those blocked worlds were the timeout-validation
+// idiom at work: the prober took a spurious suspicion timeout and the
+// following blocking read then had nothing that could still arrive, so
+// the execution ended blocked. (C6') removes the spurious timeout
+// itself, one step earlier, so the world never starts. The execs are
+// unchanged, which is the point: the idiom was converting false
+// timeouts into blocked runs, and the constraint now prevents them.
 #[test]
 fn mini_swim_single_round_counts() {
     let stats = run_mini_swim(1, 4, false);
-    assert_eq!((stats.execs, stats.block), (2, 2));
+    assert_eq!((stats.execs, stats.block), (2, 0));
 }
 
 #[test]
 fn mini_swim_two_rounds_shared_ancestor_pruned() {
     let stats = run_mini_swim(2, 4, false);
-    assert_eq!((stats.execs, stats.block), (4, 6));
+    assert_eq!((stats.execs, stats.block), (4, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -171,7 +180,7 @@ fn mini_swim_two_rounds_shared_ancestor_pruned() {
 #[test]
 fn exact_never_reaches_spurious_assert() {
     let stats = run_mini_swim(2, 4, true);
-    assert_eq!((stats.execs, stats.block), (4, 6));
+    assert_eq!((stats.execs, stats.block), (4, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -214,8 +223,17 @@ fn expired_fifo_front_skipped_under_gc() {
         },
     );
     // Branch A: first recv reads m1 in time, second reads m2.
-    // Branch B: first recv times out, second skips dead m1, reads m2.
-    assert_eq!((stats.execs, stats.block), (2, 0));
+    // Branch B (first recv times out, second skips dead m1) is gone
+    // since (C6'), 2026-09-21: m1 arrives in [0, 1] and is readable
+    // inside the [0, 10] wait in EVERY timeline, so that timeout has no
+    // timeline. Sahar predicted this pin would move to (1, 0) when the
+    // constraint landed (memory note timeout_branch_never_pruned).
+    //
+    // NOTE: the skip-a-dead-front behaviour this test was written for is
+    // no longer reachable HERE, because the only way to reach it was
+    // through that false timeout. dead_front_skipped_after_sleep below
+    // keeps that coverage, with the front dying before the wait begins.
+    assert_eq!((stats.execs, stats.block), (1, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -248,6 +266,35 @@ fn live_front_still_mandatory_under_gc() {
 // A third read finds nothing in both branches and blocks.
 // ---------------------------------------------------------------------
 
+// ---------------------------------------------------------------------
+// Replacement coverage for what (C6') took out of
+// expired_fifo_front_skipped_under_gc: a front that dies BEFORE the
+// wait begins is still skipped rather than sealing its channel (the
+// 2026-08-08 GC decision), and reaching it no longer needs a timeout
+// at all. m1 is readable only in [0, 1]; the receiver wakes at 5, by
+// which time m1 is a corpse, and its blocking read must pass over the
+// corpse and take m2.
+// ---------------------------------------------------------------------
+
+#[test]
+fn dead_front_skipped_after_sleep() {
+    let stats = traceforge::verify(
+        Config::builder().with_timed(0, 1, 0).build(),
+        || {
+            let receiver = thread::spawn(|| {
+                traceforge::sleep(5);
+                let v: u32 = traceforge::recv_msg_block_timed();
+                traceforge::assert(v == 2);
+            });
+            let r = receiver.thread().id();
+            traceforge::send_msg(r, 1u32);
+            traceforge::sleep(100);
+            traceforge::send_msg(r, 2u32);
+        },
+    );
+    assert_eq!((stats.execs, stats.block), (1, 0));
+}
+
 #[test]
 fn skipped_message_is_evicted() {
     let stats = traceforge::verify(
@@ -256,9 +303,10 @@ fn skipped_message_is_evicted() {
             let receiver = thread::spawn(|| {
                 let _: Option<u32> = traceforge::recv_msg_timed(WaitTime::Finite(10));
                 let _: u32 = traceforge::recv_msg_block_timed();
-                // Nothing left: m1 is either consumed (branch A) or
-                // skipped-and-evicted (branch B). Must block, not
-                // resurrect the corpse.
+                // Nothing left: m1 is consumed (branch A). Must block,
+                // not resurrect the corpse. Branch B (skip-and-evict
+                // after a timeout) went away with (C6'): see
+                // expired_fifo_front_skipped_under_gc.
                 let _: u32 = traceforge::recv_msg_block_timed();
             });
             let r = receiver.thread().id();
@@ -267,7 +315,7 @@ fn skipped_message_is_evicted() {
             traceforge::send_msg(r, 2u32);
         },
     );
-    assert_eq!((stats.execs, stats.block), (0, 2));
+    assert_eq!((stats.execs, stats.block), (0, 1));
 }
 
 // ---------------------------------------------------------------------
@@ -309,6 +357,14 @@ fn late_skipped_message_evicted() {
 // front does not seal its channel, so R reads sig). The old count
 // relied on the possibly-readable front b monopolizing the offer;
 // with the joint dodge probe those two worlds are found: 10 total.
+//
+// Halved to 5 by (C6') on 2026-09-21. The "x2" factor above was Q's
+// read-or-timeout pair, and Q's timeout is never realizable: E sends
+// tag 105 the moment its own receive settles, at clock 3 at the latest
+// (its wait is [0, 3]), so the message always lands inside Q's [0, 5]
+// window and a waiting Q cannot miss it. The five (R, E) classes are
+// untouched, including the three with E timing out, which stay
+// feasible because t_A ranges over [0, 10] and can exceed E's deadline.
 // ---------------------------------------------------------------------
 
 #[test]
@@ -381,7 +437,7 @@ fn context_coupled_eligibility_complete() {
             let _ = c_thr.join();
         },
     );
-    assert_eq!((stats.execs, stats.block), (10, 0));
+    assert_eq!((stats.execs, stats.block), (5, 0));
 }
 
 #[test]
@@ -518,11 +574,13 @@ fn committed_inbox_read_time_is_at_the_arrival() {
             let _ = collector.join();
         },
     );
-    // Subset branch (read at 1, pinch times out) + inbox-timeout
-    // branch (inbox at 10, guard skips the pinch): 2 executions; a
-    // third (the impostor) must never appear, and the assert must
-    // never fire.
-    assert_eq!((stats.execs, stats.block), (2, 0));
+    // Subset branch (read at 1, pinch times out). The inbox-timeout
+    // branch (inbox at 10, guard skips the pinch) is gone since (C6'),
+    // 2026-09-21: the sender's tag-1 message arrives at 1, inside the
+    // collector's wait, so a collector of one cannot miss it. The
+    // impostor timeline must still never appear and the assert must
+    // still never fire, which is what this test is really for.
+    assert_eq!((stats.execs, stats.block), (1, 0));
 }
 
 #[test]
@@ -718,10 +776,13 @@ fn inbox_backward_revisits_coexist_with_exact() {
         },
     );
     // With L = 0, U = 1, sd = 0 every read is knife-edge (a message is
-    // readable only exactly at its arrival) and the finite-wait timeout
-    // branch is explorable by design. Three classes: inbox {1} with the
-    // receive taking 2 or timing out, and the inbox timeout with the
-    // receive timing out. The inbox never reads the sender's second or
+    // readable only exactly at its arrival). Two classes since (C6'),
+    // 2026-09-21 (three before): inbox {1} with the receive taking 2,
+    // and inbox {1} with the receive timing out (the sender's later
+    // messages can miss that wait, so this timeout is honest). The
+    // third class, the INBOX timing out, is gone: the first message
+    // arrives by time 1, inside the collector's wait, and a collector
+    // of one cannot miss a message it could have taken. The inbox never reads the sender's second or
     // third message: the first arrives by time 1 and a waiting inbox
     // takes a stored front the instant it becomes readable, so a batch
     // holding the second message would need the first dead before the
@@ -732,7 +793,7 @@ fn inbox_backward_revisits_coexist_with_exact() {
     // batch the committed encoding refuses but the offer probe did not,
     // and the completion-time gate had been vouched off by the inbox
     // visit.
-    assert_eq!((stats.execs, stats.block), (3, 0));
+    assert_eq!((stats.execs, stats.block), (2, 0));
 }
 
 // ---------------------------------------------------------------------

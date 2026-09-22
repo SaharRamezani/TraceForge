@@ -4,3 +4,6 @@ viz_out/*/
 viz_out/index.html
 /.idea/
 docs/
+# nisshi source clone for the nisshi-tf harness (tools/fetch-nisshi.sh)
+.nisshi-src/
+nisshi-tf/target/

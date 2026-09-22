@@ -530,7 +530,11 @@ fn gap10_waited_batch_cannot_ignore_a_stored_message() {
 ///
 /// Arrivals: m1 at 1, x at 3, m2 at 5. The stored count first reaches
 /// two at 3, with {m1, x}, so that is the only batch; the receive then
-/// takes m2 (arrival 5) or times out: 2 executions.
+/// takes m2 (arrival 5): 1 execution. It cannot time out instead, since
+/// (C6') (2026-09-21): m2 is stored over [5, 105] (sd = 100) and the
+/// wait runs [3, 53], so no timeline lets that wait miss it. The gap
+/// this test guards against would still show up as an EXTRA execution
+/// (the {m1, m2} batch with x exempted), so the pin still detects it.
 ///
 /// The inbox visit runs while m1 and m2 exist and x does not, and
 /// commits {m1, m2} completing at 5. When x is added, the completion
@@ -566,7 +570,7 @@ fn gap11_consumer_after_the_inbox_leaves_the_message_stored() {
             traceforge::send_tagged_msg(h.thread().id(), CTRL, cid.clone());
         }
     });
-    assert_eq!((stats.execs, stats.block), (2, 0));
+    assert_eq!((stats.execs, stats.block), (1, 0));
 }
 
 /// Gap 12 (a batch of two or more may leave behind a sibling that

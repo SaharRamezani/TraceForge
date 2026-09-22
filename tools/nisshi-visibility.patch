@@ -1,0 +1,13 @@
+diff --git a/nisshi-storage/src/lib.rs b/nisshi-storage/src/lib.rs
+index bcf8d3a..90e2252 100644
+--- a/nisshi-storage/src/lib.rs
++++ b/nisshi-storage/src/lib.rs
+@@ -201,7 +201,7 @@ use uuid::Uuid;
+ use tracing::warn;
+ 
+ #[cfg(feature = "dynostore")]
+-mod dynostore;
++pub mod dynostore; // nisshi-tf: visibility only, so the harness can inject an object store
+ 
+ #[cfg(feature = "postgres")]
+ mod pg;

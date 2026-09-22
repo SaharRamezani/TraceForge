@@ -175,26 +175,35 @@ fn legacy_recv_inside_timed_is_transparent() {
 // rejected and only the timeout branch survives.
 //
 // With per-send L = U = 0 (via `send_msg_timed`), the send window
-// collapses to [0, 0], overlapping [0, 5], so both `rf = send` and
-// `rf = ⊥` branches become timed admissible.
+// collapses to [0, 0], inside [0, 5], so the receive must take it:
+// since (C6') a timeout needs every candidate to miss the whole wait,
+// and this one is readable at 0 in every timeline, `rf = ⊥` is gone
+// and exactly one execution remains.
+//
+// Both halves therefore explore ONE execution and the count alone no
+// longer separates them, so each half asserts WHICH branch survived:
+// the override reads the message, the fallback times out. That is the
+// property this test was always about.
 #[test]
 fn per_send_bounds_override_global() {
     let stats_override = traceforge::verify(
         Config::builder().with_timed(10, 10, 0).build(),
         || {
             let consumer = thread::spawn(|| {
-                let _v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(5));
+                let v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(5));
+                traceforge::assert(v.is_some());
             });
             traceforge::send_msg_timed(consumer.thread().id(), 42i32, 0, 0);
         },
     );
-    assert_eq!(stats_override.execs, 2);
+    assert_eq!(stats_override.execs, 1);
 
     let stats_no_override = traceforge::verify(
         Config::builder().with_timed(10, 10, 0).build(),
         || {
             let consumer = thread::spawn(|| {
-                let _v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(5));
+                let v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(5));
+                traceforge::assert(v.is_none());
             });
             traceforge::send_msg(consumer.thread().id(), 42i32);
         },
@@ -206,14 +215,20 @@ fn per_send_bounds_override_global() {
 // Two concurrent sends with disjoint per-send (L, U) windows.
 // ---------------------------------------------------------------------
 //
-// Admissible rf candidates: send_a, ⊥. The send_b candidate is pruned.
+// Admissible rf candidates: send_a only. send_b (window [20, 30])
+// cannot be read inside the [0, 10] wait, and since (C6') the timeout
+// cannot be taken either, because send_a arrives in [0, 5] and is
+// readable inside the wait in every timeline. The in-program assert
+// pins that the surviving execution is the send_a read, so the test
+// still separates "b was pruned" from "everything was pruned".
 #[test]
 fn per_send_distinct_windows_disjoint() {
     let stats = traceforge::verify(
         Config::builder().with_timed(0, 100, 0).build(),
         || {
             let consumer = thread::spawn(|| {
-                let _v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(10));
+                let v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(10));
+                traceforge::assert(v == Some(1));
             });
             let cid = consumer.thread().id();
             let _a = thread::spawn(move || {
@@ -224,12 +239,17 @@ fn per_send_distinct_windows_disjoint() {
             });
         },
     );
-    assert_eq!(stats.execs, 2);
+    assert_eq!(stats.execs, 1);
 }
 
 // ---------------------------------------------------------------------
 // Two concurrent sends with distinct but overlapping per-send windows.
 // ---------------------------------------------------------------------
+//
+// Both reads survive: a at a_a in [0, 5], and b at a_b in [3, 8] in the
+// timelines where a arrives after that read (a_a > a_b, e.g. 4 > 3).
+// The timeout does not: each send is readable inside the [0, 10] wait
+// in every timeline, so (C6') removes it. 3 became 2 on 2026-09-21.
 #[test]
 fn per_send_distinct_windows_overlap() {
     let stats = traceforge::verify(
@@ -247,12 +267,18 @@ fn per_send_distinct_windows_overlap() {
             });
         },
     );
-    assert_eq!(stats.execs, 3);
+    assert_eq!(stats.execs, 2);
 }
 
 // ---------------------------------------------------------------------
 // Per-node sd overrides the global storage delay.
 // ---------------------------------------------------------------------
+//
+// With main's sd = 10 the message (arrival in [0, 5]) is still stored
+// at t = 10, so the point read takes it; without the override it is a
+// corpse by then and only the timeout remains. Since (C6') each half
+// has exactly ONE execution, so, as in per_send_bounds_override_global,
+// each asserts which branch survived rather than counting branches.
 #[test]
 fn per_node_sd_overrides_global() {
     let stats = traceforge::verify(
@@ -266,10 +292,11 @@ fn per_node_sd_overrides_global() {
                 traceforge::send_msg(main_id, 42i32);
             });
             traceforge::sleep(10);
-            let _v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(0));
+            let v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(0));
+            traceforge::assert(v.is_some());
         },
     );
-    assert_eq!(stats.execs, 2);
+    assert_eq!(stats.execs, 1);
 
     // Same scenario without the per-node override: send is rejected,
     // only the timeout branch survives.
@@ -281,7 +308,8 @@ fn per_node_sd_overrides_global() {
                 traceforge::send_msg(main_id, 42i32);
             });
             traceforge::sleep(10);
-            let _v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(0));
+            let v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(0));
+            traceforge::assert(v.is_none());
         },
     );
     assert_eq!(stats_fallback.execs, 1);
@@ -297,10 +325,16 @@ fn sleep_is_per_thread() {
         Config::builder().with_timed(0, 0, 0).build(),
         || {
             let b = thread::spawn(|| {
-                // Short wait; if A's sleep leaked in, this would be
-                // timed infeasible.
+                // Short wait; if A's sleep leaked in, B's wait would
+                // start at 1_000_000, the message (arrival 0, sd = 0)
+                // would be long dead, and the ONLY surviving branch
+                // would be the timeout. Since (C6') the correct
+                // behaviour also has exactly one execution (the read,
+                // because a readable message forbids the timeout), so
+                // the count no longer separates the two: assert the
+                // value instead.
                 let v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(5));
-                let _ = v;
+                traceforge::assert(v.is_some());
             });
             let _a = thread::spawn(|| {
                 traceforge::sleep(1_000_000);
@@ -308,7 +342,7 @@ fn sleep_is_per_thread() {
             traceforge::send_msg(b.thread().id(), 99i32);
         },
     );
-    assert!(stats.execs == 2);
+    assert!(stats.execs == 1);
 }
 
 // ---------------------------------------------------------------------
@@ -455,6 +489,11 @@ fn four_thread_pipeline_timed_pruning() {
     // instant corpses) before the wait began, then reads the next
     // message; the old offer sealed those worlds behind the possibly
     // readable front. The loose > tight pruning relation still holds.
-    assert_eq!(loose, 48);
-    assert_eq!(tight, 23);
+    //
+    // Re-baselined again 2026-09-21 (was 48, 23; now 38, 21) for (C6'):
+    // a relay stage may time out only where the upstream message really
+    // can miss its whole wait, so the worlds where a stage timed out
+    // while its input sat readable are gone. Both sides drop and the
+    // loose > tight relation still holds, which is what this test pins.
+    assert_eq!((loose, tight), (38, 21));
 }
