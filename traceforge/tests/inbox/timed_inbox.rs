@@ -33,13 +33,14 @@ fn timed_inbox_min0_is_forbidden() {
 // Untimed `inbox()` inside a timed config is time-transparent.
 // ---------------------------------------------------------------------
 //
-// Mirrors `legacy_recv_inside_timed_is_transparent` from tests/timed.rs:
+// Mirrors `legacy_recv_inside_timed_is_rejected` from tests/timed.rs:
 // a `with_timed` config is set but the legacy `inbox()` primitive is
-// used. Its `wait` is `None` so the walker passes the inbox event
-// through unchanged. (This is the untimed inbox, where `min == 0` is the
-// legitimate non-blocking paper semantics, out of scope for the guard.)
+// used. A program is either timed or untimed, so the untimed inbox is
+// rejected at its first use (a timed program collects with
+// `inbox_timed`, whose `min >= 1`).
 #[test]
-fn legacy_inbox_inside_timed_is_transparent() {
+#[should_panic(expected = "TraceForge usage error")]
+fn legacy_inbox_inside_timed_is_rejected() {
     let stats = traceforge::verify(
         Config::builder().with_timed(0, 10, 0).build(),
         || {

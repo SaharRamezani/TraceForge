@@ -408,7 +408,7 @@ fn count(flag: bool, c: &AtomicUsize) {
 
 fn sender(p: Params, main_tid: ThreadId) {
     let me = thread::current().id();
-    let receiver = match traceforge::recv_tagged_msg_block::<_, Msg>(move |s, _| s == main_tid) {
+    let receiver = match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
         Msg::Init { peer } => peer,
         m => panic!("sender: expected Init, got {m:?}"),
     };
@@ -689,7 +689,7 @@ impl Receiver {
 
 fn receiver(p: Params, main_tid: ThreadId) {
     let me = thread::current().id();
-    let sender = match traceforge::recv_tagged_msg_block::<_, Msg>(move |s, _| s == main_tid) {
+    let sender = match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
         Msg::Init { peer } => peer,
         m => panic!("receiver: expected Init, got {m:?}"),
     };
@@ -750,8 +750,8 @@ fn receiver(p: Params, main_tid: ThreadId) {
 // DKRT searched it with Spin (bitstate) and verified an optimized form exhaustively.
 
 fn spin_sender(p: Params, main_tid: ThreadId) {
-    let (line_k, receiver) = match traceforge::recv_tagged_msg_block::<_, Msg>(move |s, _| s == main_tid) {
-        Msg::Init { peer } => match traceforge::recv_tagged_msg_block::<_, Msg>(move |s, _| s == main_tid) {
+    let (line_k, receiver) = match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
+        Msg::Init { peer } => match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
             Msg::Init { peer: r } => (peer, r),
             m => panic!("spin sender: expected Init, got {m:?}"),
         },
@@ -771,7 +771,7 @@ fn spin_sender(p: Params, main_tid: ThreadId) {
             let mut rc = 0u32;
             let acked = loop {
                 // wait_ack: B?ACK or ChunkTimeout?SHAKE.
-                match traceforge::recv_msg_block::<Msg>() {
+                match traceforge::recv_msg_block_timed::<Msg>() {
                     Msg::Ack { file: af, chunk: ac } => {
                         if (af, ac) != (file, i) {
                             obs.confused_acks += 1;
@@ -809,7 +809,7 @@ fn spin_sender(p: Params, main_tid: ThreadId) {
         if failed {
             // error: SyncWait!SHAKE; SyncWait?SHAKE; ab = 0.
             traceforge::send_msg(receiver, Msg::SyncWait);
-            match traceforge::recv_tagged_msg_block::<_, Msg>(move |s, _| s == receiver) {
+            match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == receiver) {
                 Msg::SyncWait => {}
                 m => panic!("spin sender: expected SyncWait, got {m:?}"),
             }
@@ -823,15 +823,15 @@ fn spin_sender(p: Params, main_tid: ThreadId) {
 
 /// Line_K (S -> R) or Line_L (R -> S): deliver, or lose and tell S.
 fn spin_line(main_tid: ThreadId) {
-    let (dest, sender) = match traceforge::recv_tagged_msg_block::<_, Msg>(move |s, _| s == main_tid) {
-        Msg::Init { peer } => match traceforge::recv_tagged_msg_block::<_, Msg>(move |s, _| s == main_tid) {
+    let (dest, sender) = match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
+        Msg::Init { peer } => match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
             Msg::Init { peer: s } => (peer, s),
             m => panic!("spin line: expected Init, got {m:?}"),
         },
         m => panic!("spin line: expected Init, got {m:?}"),
     };
     loop {
-        match traceforge::recv_tagged_msg_block::<_, Msg>(move |s, _| s != main_tid) {
+        match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s != main_tid) {
             Msg::Stop => {
                 traceforge::send_msg(dest, Msg::Stop);
                 return;
@@ -848,8 +848,8 @@ fn spin_line(main_tid: ThreadId) {
 }
 
 fn spin_receiver(main_tid: ThreadId) {
-    let (line_l, sender) = match traceforge::recv_tagged_msg_block::<_, Msg>(move |s, _| s == main_tid) {
-        Msg::Init { peer } => match traceforge::recv_tagged_msg_block::<_, Msg>(move |s, _| s == main_tid) {
+    let (line_l, sender) = match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
+        Msg::Init { peer } => match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
             Msg::Init { peer: s } => (peer, s),
             m => panic!("spin receiver: expected Init, got {m:?}"),
         },
@@ -857,7 +857,7 @@ fn spin_receiver(main_tid: ThreadId) {
     };
     let mut st = RState::new();
     loop {
-        match traceforge::recv_tagged_msg_block::<_, Msg>(move |s, _| s != main_tid) {
+        match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s != main_tid) {
             Msg::Frame { b1, bn, ab, file, chunk } => {
                 let (ack, _) = st.frame(b1, bn, ab, file, chunk);
                 if ack {
@@ -1000,7 +1000,7 @@ fn print_one(mode: Mode, p: &Params, stats: &Stats, dur: Duration) {
     };
     println!(
         "{:<8} model={:?} n={} MAX={} TD={} T1={} TR={} SYNC={} k={} F={} DC={} loss={} prop={:?}  \
-         execs={} blocked={} explored={} judged={j} p2_runs={v2} p2_tr_side={} p2_sync_side={} \
+         execs={} blocked={} impossible={} explored={} judged={j} p2_runs={v2} p2_tr_side={} p2_sync_side={} \
          p4_runs={v4} client_runs={vc} failed_file_runs={} timeout_runs={} restart_after_fail_runs={} \
          first_safe_after_timeout_runs={} probe_nontrivial_runs={} confused_ack_runs={} verdict={} time={dur:?}",
         if mode == Mode::Timed { "timed" } else { "baseline" },
@@ -1018,7 +1018,8 @@ fn print_one(mode: Mode, p: &Params, stats: &Stats, dur: Duration) {
         p.property,
         stats.execs,
         stats.block,
-        stats.execs + stats.block,
+        stats.timeline_impossible,
+        stats.execs + stats.block + stats.timeline_impossible,
         load(&P2_TR_RUNS),
         load(&P2_SYNC_RUNS),
         load(&FAILED_FILE_RUNS),
@@ -1032,15 +1033,31 @@ fn print_one(mode: Mode, p: &Params, stats: &Stats, dur: Duration) {
     if j == 0 {
         println!("WARNING: no execution reached the judgement: no data, not a hold.");
     }
-    // The verdict comes from these counters. Every judged run is either a
-    // complete execution or one whose assertion failed (filed as blocked);
-    // anything else would be a judged run the engine did not certify.
+    // The verdict comes from these counters, and the counters are raised by
+    // PROGRAM code, which runs on every ending the search enumerates. Since
+    // the (C6b) timeout-miss condition is judged only once the graph is whole,
+    // an ending that admits no timeline still executes, still reaches `judge`
+    // and still raises these counters before the engine discards it. So:
+    //   judged = complete + (feasible failures) + (impossible endings judged)
+    // and `viol > 0` is an UPPER bound on the violations. A counter-only hold
+    // is sound (no ending at all violated, feasible or not); a counter-only
+    // VIOLATED is not, and must be confirmed by the engine.
     let fails = load(&ASSERT_FAIL_RUNS);
-    if j != stats.execs + fails {
+    if j > stats.execs + fails + stats.timeline_impossible {
         println!(
-            "WARNING: {j} judged runs but {} complete + {fails} failing: the verdict may count a run the \
-             engine did not certify; confirm without --keep-going.",
-            stats.execs
+            "WARNING: {j} judged runs but {} complete + {fails} failing + {} with no timeline: the \
+             verdict counts a run the engine did not certify; confirm without --keep-going.",
+            stats.execs, stats.timeline_impossible
+        );
+    }
+    if viol > 0 && stats.timeline_impossible > 0 {
+        println!(
+            "NOTE: verdict=VIOLATED comes from program counters, and {} of the {} endings explored \
+             admit no timeline. Some or all of the {viol} violating endings may be among them. Re-run \
+             this cell WITHOUT --keep-going: exit 101 means the engine certified a counterexample, \
+             exit 0 means the violation existed only in impossible worlds.",
+            stats.timeline_impossible,
+            stats.execs + stats.block + stats.timeline_impossible
         );
     }
     if viol == 0 {

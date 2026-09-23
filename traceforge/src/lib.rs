@@ -88,6 +88,13 @@ pub struct Stats {
     pub execs: usize,
     /// Number of blocked executions explored
     pub block: usize,
+    /// Endings explored to completion and then judged to admit no
+    /// timeline (counted as neither exec nor block). Since the (C6b)
+    /// timeout-miss condition is judged only when the graph is whole, a
+    /// finite-wait timeout taken beside a message that was readable
+    /// during the wait is one of these: its program side effects happen,
+    /// then it is excluded from every count.
+    pub timeline_impossible: usize,
     // Aggregate coverage information
     pub coverage: CoverageInfo,
     /// Maximum number of events across all execution graphs (complete or blocked)
@@ -98,6 +105,7 @@ impl Stats {
     pub(crate) fn add(&mut self, rhs: &Stats) {
         self.execs += rhs.execs;
         self.block += rhs.block;
+        self.timeline_impossible += rhs.timeline_impossible;
         self.coverage.merge(&rhs.coverage);
         if rhs.max_graph_events > self.max_graph_events {
             self.max_graph_events = rhs.max_graph_events;
@@ -499,6 +507,18 @@ impl ConfigBuilder {
     ///
     /// When this is set, timed-receive primitives (`recv_msg_timed`,
     /// `recv_msg_block_timed`, …) and `sleep` become meaningful.
+    ///
+    /// A program is either timed or untimed, never both. Under a timed
+    /// configuration every receive and inbox must use a `*_timed`
+    /// variant (`recv_msg_block_timed`, `recv_msg_timed`, `inbox_timed`,
+    /// …); an untimed receive (`recv_msg`, `recv_msg_block`, `inbox`, …)
+    /// is rejected at its first use, because it has no timeout semantics
+    /// and is exempt from eviction, which the timed consistency argument
+    /// assumes never happens. The non-blocking form of a timed program is
+    /// `recv_msg_timed(WaitTime::Finite(0))`. Sends need no variant. The
+    /// converse holds: the timed API runs unchanged under an untimed
+    /// configuration, where its timing information is ignored, which is
+    /// how one program is verified in both modes.
     ///
     /// Requires `l <= u`.
     pub fn with_timed(mut self, l: u64, u: u64, sd: u64) -> Self {
@@ -1434,6 +1454,20 @@ pub fn sleep(duration: u64) {
 /// on timeout. `WaitTime::Infinite` is equivalent to a blocking receive
 /// ([`recv_msg_block_timed`]) and the `None` (timeout) branch is pruned
 /// from exploration, so only `Some` executions are reported.
+///
+/// Timeout contract (the (C6b) miss condition): `None` is reported only
+/// in executions where every message the receive could have taken
+/// missed the whole wait, i.e. each such message arrives no earlier
+/// than the deadline (an arrival exactly at the deadline counts as a
+/// miss: at a tie both the read and the timeout exist) or was already
+/// discarded when the wait began. That condition is judged when the
+/// execution is complete, not at the receive: a timeout no timeline
+/// realises is still EXECUTED (its side effects, later sends and any
+/// user-side counters happen) and is then excluded from
+/// `Stats::execs`, counted in `Stats::timeline_impossible`, and any
+/// assertion reached only through it is suppressed as spurious. Loss is
+/// not a timeout: a lossy channel drops a message in a branch of its
+/// own at the send, and a dropped message never constrains a timeout.
 pub fn recv_msg_timed<T: Message + 'static>(wait: WaitTime) -> Option<T> {
     match wait {
         WaitTime::Infinite => Some(recv_msg_block_timed::<T>()),
@@ -1749,7 +1783,13 @@ const TIMED_INBOX_MIN_MSG: &str =
 ///
 /// With a finite `wait` the inbox never blocks: if it cannot collect `k`
 /// messages in time it times out and returns `{}` (the timeout empty, at time
-/// `pred + wait`).
+/// `pred + wait`). For `k == 1` the timeout obeys the same (C6b) miss
+/// condition as [`recv_msg_timed`]: it is a real execution only where every
+/// message the collector could have taken missed the whole wait (judged when
+/// the execution is complete; a timeout no timeline realises is executed and
+/// then excluded from `Stats::execs`). For `k >= 2` the timeout is left
+/// unconstrained by decision (a documented relaxation in the looser
+/// direction): such a collector may time out beside `k` co-stored messages.
 ///
 /// `WaitTime::Infinite` is the blocking inbox: `k` is a hard requirement
 /// and the inbox blocks (can deadlock) rather than timing out.

@@ -45,6 +45,11 @@ const EXECS_EST: &str = "execs_est";
 /// (relaxation artifacts of the legacy interval walker), suppressed by
 /// the certification gate instead of being reported as counterexamples.
 const SUPPRESSED_SPURIOUS: &str = "suppressed_spurious";
+/// Endings (complete or blocked) that were explored to the end and then
+/// judged timeline-impossible by the completion system Csys, so they
+/// count as neither exec nor block. Under the explore-then-judge design
+/// of (C6b) this is the cost of keeping the timeout branch in the tree.
+const TIMELINE_IMPOSSIBLE: &str = "timeline_impossible";
 
 macro_rules! cast {
     ($target: expr, $pat: path) => {{
@@ -66,10 +71,16 @@ pub struct MustState {
     rqueue: RQueue,
     /// Pending trigger for the completion-time feasibility gate: armed
     /// whenever a send is added in timed mode (any send can poison the
-    /// graph's timeline under FIFO arrival coupling), cleared whenever
-    /// a later FULL-GRAPH oracle build reports a feasible base
-    /// (feasibility is monotone in the constraint set, so that build
-    /// vouches for every earlier send). Lives in MustState, NOT Must:
+    /// graph's timeline under FIFO arrival coupling) and whenever a
+    /// finite-wait receive or collector-of-one inbox commits its
+    /// timeout (that commit creates a (C6b) miss obligation, which only
+    /// the completion system Csys carries), cleared whenever a later
+    /// FULL-GRAPH exploration-oracle build reports a feasible base AND
+    /// the graph carries no Csys-only obligation (feasibility is
+    /// monotone in the constraint set, so that build vouches for every
+    /// earlier send; it can never vouch for a timeout, because the
+    /// exploration system Cexp does not contain the miss groups, see
+    /// `ExecutionGraph::carries_timeout_obligation`). Lives in MustState, NOT Must:
     /// it describes THIS branch's graph and must be saved/restored
     /// with it (a clear leaking across a state switch would skip the
     /// gate on an unrelated, possibly infeasible graph). Fresh states
@@ -206,6 +217,7 @@ impl Must {
         let _ = telemetry.register_counter(&EXECS.to_owned());
         let _ = telemetry.register_counter(&BLOCKED.to_owned());
         let _ = telemetry.register_counter(&SUPPRESSED_SPURIOUS.to_owned());
+        let _ = telemetry.register_counter(&TIMELINE_IMPOSSIBLE.to_owned());
         let _ = telemetry.register_histogram(&EXECS_EST.to_owned());
 
         Self {
@@ -252,6 +264,7 @@ impl Must {
         let _ = self.telemetry.register_counter(&EXECS.to_owned());
         let _ = self.telemetry.register_counter(&BLOCKED.to_owned());
         let _ = self.telemetry.register_counter(&SUPPRESSED_SPURIOUS.to_owned());
+        let _ = self.telemetry.register_counter(&TIMELINE_IMPOSSIBLE.to_owned());
         let _ = self.telemetry.register_histogram(&EXECS_EST.to_owned());
         self.frozen_thread_index_map = None;
         self.thread_index_map.clear();
@@ -411,6 +424,7 @@ impl Must {
         let _ = self.telemetry.register_counter(&EXECS.to_owned());
         let _ = self.telemetry.register_counter(&BLOCKED.to_owned());
         let _ = self.telemetry.register_counter(&SUPPRESSED_SPURIOUS.to_owned());
+        let _ = self.telemetry.register_counter(&TIMELINE_IMPOSSIBLE.to_owned());
         let _ = self.telemetry.register_histogram(&EXECS_EST.to_owned());
         // Note: frozen_thread_index_map, thread_index_map, next_thread_index,
         // config, rng are intentionally NOT reset — they are either set
@@ -547,6 +561,38 @@ impl Must {
         self.add_to_graph(LabelEnum::Sleep(slab));
     }
 
+    /// A program is either timed or untimed, never both. Under
+    /// `Config::with_timed` every receive and inbox must carry a wait
+    /// kind, i.e. use a `*_timed` variant: an untimed receive has no
+    /// timeout semantics and is exempt from eviction, which the timed
+    /// consistency argument (C7) assumes never happens. Sends need no
+    /// variant, a send without explicit bounds takes the configured
+    /// `[L, U]`. Monitor threads are exempt: the `#[monitor]` loop reads
+    /// copies with an untimed receive on purpose, so that observation
+    /// never constrains the program's timelines.
+    fn reject_untimed_api(&self, untimed: bool, non_blocking: bool, inbox: bool, pos: Event) {
+        if !untimed || self.config.timed.is_none() || self.monitors.contains_key(&pos.thread) {
+            return;
+        }
+        let (used, instead) = match (inbox, non_blocking) {
+            (true, _) => ("inbox / inbox_with_*", "inbox_timed / inbox_with_*_timed"),
+            (false, true) => (
+                "recv_msg / recv_tagged_msg / select_msg",
+                "recv_msg_timed(WaitTime::Finite(0)) / recv_tagged_msg_timed",
+            ),
+            (false, false) => (
+                "recv_msg_block / recv_tagged_msg_block / select_msg_block",
+                "recv_msg_block_timed / recv_tagged_msg_block_timed",
+            ),
+        };
+        panic!(
+            "TraceForge usage error at {pos:?}: untimed receive ({used}) in a timed \
+             configuration. A program is either timed or untimed: under Config::with_timed \
+             every receive and inbox must use a *_timed variant ({instead}). Sends need no \
+             change, a send without explicit bounds takes the configured [L, U]."
+        );
+    }
+
     /// Returns the value read, if any, along with the rlab's receiving channel index, if any.
     /// Note: It can be that there is a "value" but no index (Val::default, during replay).
     pub(crate) fn handle_recv(
@@ -561,6 +607,10 @@ impl Must {
             let lab = LabelEnum::RecvMsg(rlab);
             self.current.graph.validate_replay_event(&lab);
             self.process_event(lab);
+            {
+                let r = self.current.graph.recv_label(pos).unwrap();
+                self.reject_untimed_api(r.wait().is_none(), r.is_non_blocking(), false, pos);
+            }
 
             // If the send that R reads from has a different reader R', assert that
             // R' is in a cancelled async receive, then fix up the reader.
@@ -622,6 +672,14 @@ impl Must {
         info!("| Handle Mode for {}", rlab);
 
         let pos = self.add_to_graph(LabelEnum::RecvMsg(rlab));
+
+        {
+
+            let r = self.current.graph.recv_label(pos).unwrap();
+
+            self.reject_untimed_api(r.wait().is_none(), r.is_non_blocking(), false, pos);
+
+        }
         let val = self.visit_rfs(pos, blocking);
         self.current.graph.register_recv(&pos);
         let g = &self.current.graph;
@@ -647,6 +705,10 @@ impl Must {
             let lab = LabelEnum::Inbox(ilab);
             self.current.graph.validate_replay_event(&lab);
             self.process_event(lab);
+            {
+                let untimed = self.current.graph.inbox_label(pos).is_some_and(|il| il.wait().is_none());
+                self.reject_untimed_api(untimed, false, true, pos);
+            }
 
             let g = &self.current.graph;
             let ilab = g.inbox_label(pos).unwrap();
@@ -657,6 +719,14 @@ impl Must {
         info!("| Handle Mode for {}", ilab);
 
         let pos = self.add_to_graph(LabelEnum::Inbox(ilab));
+
+        {
+
+            let untimed = self.current.graph.inbox_label(pos).is_some_and(|il| il.wait().is_none());
+
+            self.reject_untimed_api(untimed, false, true, pos);
+
+        }
         let vals = self.visit_inbox_rfs(pos);
         self.current.graph.register_inbox(&pos);
         let g = &self.current.graph;
@@ -1585,6 +1655,11 @@ impl Must {
         }
     }
 
+    /// Immediate-path certification gate. In a timed run assert reports
+    /// are deferred (`defers_assert_reports`) and judged by
+    /// `judge_pending_asserts`, so the strict oracle call below is
+    /// reached only outside deferred mode (no timed config, where it
+    /// returns early, or replay). Kept for the untimed/replay callers.
     pub(crate) fn timed_error_report_allowed(&self, pos: Option<Event>) -> bool {
         // Replay exists to reproduce a recorded failure verbatim; the
         // gate must not re-judge it (a legacy-recorded artifact should
@@ -1607,13 +1682,24 @@ impl Must {
 
     /// Witness timeline of the current (feasible) graph, formatted for
     /// printing next to a certified counterexample.
+    ///
+    /// The timeline is solved on the FULL graph, so it satisfies the
+    /// completion system Csys including the (C6b) miss groups, and is
+    /// then restricted to the violation's porf prefix for display. A
+    /// witness solved on the prefix view alone could violate a miss
+    /// group of a message outside the prefix (`push_timeout_cases`
+    /// skips sends the view does not contain), i.e. print a timeline
+    /// the gate itself had refused.
     pub(crate) fn timed_witness_report(&self, pos: Option<Event>) -> Option<String> {
         let cfg = self.config.timed.as_ref()?;
         let g = &self.current.graph;
+        let w = crate::timed_dcs::TimedDcs::graph_witness(g, cfg, None)?;
         let view = pos.map(|e| g.porf(e));
-        let w = crate::timed_dcs::TimedDcs::graph_witness(g, cfg, view.as_ref())?;
         let mut out = String::from("Certified witness timeline (event @ time):\n");
         for (e, t) in w {
+            if view.as_ref().is_some_and(|v| !v.contains(e)) {
+                continue;
+            }
             out.push_str(&format!("  {e} @ {t}\n"));
         }
         Some(out)
@@ -1727,6 +1813,9 @@ impl Must {
                             None,
                         )
                 });
+            if timed_impossible {
+                self.telemetry.counter(TIMELINE_IMPOSSIBLE.to_owned());
+            }
             if !timed_impossible && self.is_consistent() {
                 self.telemetry.counter(BLOCKED.to_owned()); // increment BLOCKED
                 let event_count: usize = self.current.graph.threads.iter().map(|t| t.labels.len()).sum();
@@ -1784,8 +1873,11 @@ impl Must {
             if timed_impossible {
                 // No timeline satisfies the graph (routine under FIFO
                 // arrival coupling: e.g. same-channel transit overrides
-                // that would require overtaking): not a behavior, so it
+                // that would require overtaking; and, since (C6b), any
+                // finite-wait timeout taken beside a message that was
+                // readable during the wait): not a behavior, so it
                 // counts as nothing at all, same as the blocked arm.
+                self.telemetry.counter(TIMELINE_IMPOSSIBLE.to_owned());
                 if self.config.verbose >= 2 {
                     println!("One timeline-impossible completion (not counted)");
                     println!("{}", self.print_graph(None));
@@ -1965,6 +2057,7 @@ impl Must {
                     if idx < rfs.len() {
                         self.current.graph.change_rf(pos, Some(rfs[idx]));
                     } else {
+                        self.arm_timeout_obligation();
                         self.current.graph.change_rf(pos, None);
                     }
                     return self.current.graph.val_copy(pos);
@@ -1978,6 +2071,9 @@ impl Must {
                     });
                 }
             }
+            // The timeout is the base outcome and carries the (C6b)
+            // obligation that only the completion system judges.
+            self.arm_timeout_obligation();
             self.current.graph.change_rf(pos, None);
             return self.current.graph.val_copy(pos);
         }
@@ -2077,13 +2173,16 @@ impl Must {
                 None,
                 Some(pos),
             );
-            if d.base_feasible() && !self.current.graph.has_timed_out_recv() {
+            if d.base_feasible() && !self.current.graph.carries_timeout_obligation(Some(pos)) {
                 // Full-graph feasible base: vouches for any pending
-                // poisoned exclusion pair (see field doc). A graph with
-                // a timed-out finite-wait receive is never vouched for:
-                // this oracle is the exploration one, which by design
-                // leaves (C6') out, so only the completion check can
-                // judge such a graph.
+                // poisoned exclusion pair (see field doc). Invariant:
+                // an exploration-system probe never discharges a
+                // completion-system obligation. This oracle is built on
+                // Cexp, which has no (C6b) miss group, so it may vouch
+                // only for a graph carrying no such group. The visited
+                // inbox itself is excluded from that test (its label is
+                // born with `rfs = None`); should it commit a timeout
+                // below, that commit re-arms the gate.
                 self.current.timed_completion_check = false;
             }
             Some(d)
@@ -2196,6 +2295,9 @@ impl Must {
             } else {
                 None // timeout empty
             };
+            if canonical.is_none() && finite && min <= 1 {
+                self.arm_timeout_obligation();
+            }
             self.current.graph.change_inbox_rfs(pos, canonical);
             return self.inbox_vals_copy(pos);
         }
@@ -2299,6 +2401,12 @@ impl Must {
             );
         }
 
+        // A collector of one that times out carries the (C6b) miss
+        // obligation; a min >= 2 timeout carries none (documented
+        // relaxation, see the inbox arm of `TimedDcs::build_opts`).
+        if canonical.is_none() && finite && min <= 1 {
+            self.arm_timeout_obligation();
+        }
         self.current.graph.change_inbox_rfs(pos, canonical);
 
         self.inbox_vals_copy(pos)
@@ -2994,6 +3102,19 @@ impl Must {
         pos
     }
 
+    /// Arm the completion-time feasibility gate because a finite-wait
+    /// receive or collector-of-one inbox just committed its timeout.
+    /// That commit creates a (C6b) miss obligation which lives in the
+    /// completion system Csys only; the exploration oracle (Cexp) can
+    /// neither judge nor vouch for it, so the completed graph must be
+    /// re-judged even if an earlier inbox visit had vouched (see the
+    /// `timed_completion_check` field doc).
+    fn arm_timeout_obligation(&mut self) {
+        if self.config.timed.is_some() && !self.replay_info.replay_mode() {
+            self.current.timed_completion_check = true;
+        }
+    }
+
     /// Recover data that was Default'd either
     /// a) during (de)serialization (counterexample replay, look for `#[serde(skip)]`, or
     /// b) explicitly (revisit replay, look for `set_pending()`)
@@ -3392,6 +3513,10 @@ impl Must {
         Stats {
             execs: self.telemetry.read_counter(EXECS.into()).unwrap_or(0) as usize,
             block: self.telemetry.read_counter(BLOCKED.into()).unwrap_or(0) as usize,
+            timeline_impossible: self
+                .telemetry
+                .read_counter(TIMELINE_IMPOSSIBLE.into())
+                .unwrap_or(0) as usize,
             coverage: self.telemetry.coverage.export_aggregate().into(),
             max_graph_events: self.max_graph_events,
         }

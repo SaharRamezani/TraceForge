@@ -1392,17 +1392,31 @@ fn print_one(label: &str, p: Params, stats: &Stats, dur: Duration, c: Counts) {
     println!(
         "{label:<9} S={s} R={r} readings={rd} property={pr} timers={tm} cut={cut}  L={l} U={u} \
          sd={sd} P={per} C={chk} \
-         Ds={ds} Dr={dr} OBST={ob}  execs={execs:<6} blocked={block:<6} checks_ok={cok} \
+         Ds={ds} Dr={dr} OBST={ob}  execs={execs:<6} blocked={block:<6} impossible={imp:<6} checks_ok={cok} \
          late_reports={lr} sensor_failures={sf} missions={mi} acked={ak} rescues={rs} reached={re} dead={de} \
          time={dur:?}",
         s = p.sensors, r = p.rounds, rd = p.readings.name(), pr = p.property.name(),
         tm = p.timers.name(), cut = if p.early_cut { "on" } else { "off" },
         l = p.l, u = p.u, sd = p.sd, per = periods(&p), chk = p.check,
         ds = p.ack_deadline, dr = p.rescue_deadline, ob = p.obstacle,
-        execs = stats.execs, block = stats.block,
+        execs = stats.execs, block = stats.block, imp = stats.timeline_impossible,
         cok = c.checks_ok, lr = c.late_reports, sf = c.sensor_failures, mi = c.missions, ak = c.acked,
         rs = c.rescues, re = c.reached, de = c.dead, dur = dur,
     );
+    // The counters above are raised by PROGRAM code, so they also see endings
+    // that the (C6b) timeout-miss condition later judges to admit no timeline
+    // (such an ending runs to completion, raises the counters, and is only
+    // then discarded). A counter of ZERO is sound: nothing happened in any
+    // ending, feasible or not. A counter GREATER THAN ZERO is an upper bound.
+    if stats.timeline_impossible > 0 && (c.dead > 0 || c.sensor_failures > 0 || c.late_reports > 0) {
+        println!(
+            "NOTE: {} of the {} endings explored admit no timeline and were counted above too; \
+             dead/sensor_failures/late_reports are upper bounds here. Re-run without --keep-going \
+             (exit 101 = the engine certified a counterexample) before quoting a failure count.",
+            stats.timeline_impossible,
+            stats.execs + stats.block + stats.timeline_impossible
+        );
+    }
 }
 
 fn print_compare(p: Params, baseline: (Stats, Duration), timed: (Stats, Duration), bc: Counts, tc: Counts) {

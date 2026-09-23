@@ -35,7 +35,7 @@ fn alive_tag(r: u32) -> u32 {
 /// Reactive target: acks every ping, answers every suspicion, exits on
 /// Done. Blocking receives only (no timers).
 fn target(main_tid: ThreadId) {
-    let a: ThreadId = traceforge::recv_tagged_msg_block(move |s, _| s == main_tid);
+    let a: ThreadId = traceforge::recv_tagged_msg_block_timed(move |s, _| s == main_tid);
     loop {
         match traceforge::recv_tagged_msg_block_timed::<_, M>(move |s, _| s == a) {
             M::Ping(r) => traceforge::send_tagged_msg(a, ack_tag(r), M::Ack),
@@ -52,7 +52,7 @@ fn target(main_tid: ThreadId) {
 /// engine decides), then either asserts false (`fire`) or branches on
 /// a nondet (an execution-count multiplier).
 fn prober(b: ThreadId, main_tid: ThreadId, rounds: u32, ws: u64, fire: bool) {
-    let _: ThreadId = traceforge::recv_tagged_msg_block(move |s, _| s == main_tid);
+    let _: ThreadId = traceforge::recv_tagged_msg_block_timed(move |s, _| s == main_tid);
     for r in 0..rounds {
         traceforge::send_msg(b, M::Ping(r));
         let acked = traceforge::recv_tagged_msg_timed::<_, M>(
@@ -98,8 +98,10 @@ fn run_mini_swim(rounds: u32, ws: u64, fire: bool) -> Stats {
             let t_id = t.thread().id();
             let p = thread::spawn(move || prober(t_id, main_tid, rounds, ws, fire));
             let p_id = p.thread().id();
-            traceforge::send_msg(t_id, p_id);
-            traceforge::send_msg(p_id, t_id);
+            // Id handoff with zero transit: read at 0, as the untimed
+            // handshake was, so the pinned counts keep their meaning.
+            traceforge::send_msg_timed(t_id, p_id, 0, 0);
+            traceforge::send_msg_timed(p_id, t_id, 0, 0);
             let _ = t.join();
             let _ = p.join();
         },
@@ -380,7 +382,7 @@ fn context_coupled_eligibility_complete() {
             let q_id = q.thread().id();
             let e_thr = thread::spawn(move || {
                 let qid: traceforge::thread::ThreadId =
-                    traceforge::recv_tagged_msg_block(move |s, t| {
+                    traceforge::recv_tagged_msg_block_timed(move |s, t| {
                         s == main_tid && t == Some(109)
                     });
                 let _: Option<u32> = traceforge::recv_tagged_msg_timed(
@@ -399,7 +401,7 @@ fn context_coupled_eligibility_complete() {
             let r_id = r_thr.thread().id();
             let a_thr = thread::spawn(move || {
                 let (rid, eid): (traceforge::thread::ThreadId, traceforge::thread::ThreadId) =
-                    traceforge::recv_tagged_msg_block(move |s, t| {
+                    traceforge::recv_tagged_msg_block_timed(move |s, t| {
                         s == main_tid && t == Some(109)
                     });
                 let _: u32 = traceforge::recv_tagged_msg_block_timed(|_, t| t == Some(106));
@@ -410,7 +412,7 @@ fn context_coupled_eligibility_complete() {
             let a_id = a_thr.thread().id();
             let d_thr = thread::spawn(move || {
                 let aid: traceforge::thread::ThreadId =
-                    traceforge::recv_tagged_msg_block(move |s, t| {
+                    traceforge::recv_tagged_msg_block_timed(move |s, t| {
                         s == main_tid && t == Some(109)
                     });
                 traceforge::send_tagged_msg_timed(aid, 106, 1u32, 0, 10); // m: t_A in [0,10]
@@ -418,7 +420,7 @@ fn context_coupled_eligibility_complete() {
             let d_id = d_thr.thread().id();
             let c_thr = thread::spawn(move || {
                 let rid: traceforge::thread::ThreadId =
-                    traceforge::recv_tagged_msg_block(move |s, t| {
+                    traceforge::recv_tagged_msg_block_timed(move |s, t| {
                         s == main_tid && t == Some(109)
                     });
                 traceforge::sleep(7);
@@ -496,8 +498,11 @@ fn in_flight_front_skipped_within_cap() {
 // on a receive that contributes no timing constraints.
 // ---------------------------------------------------------------------
 
+// Since the timed/untimed API rule an untimed blocking receive under a
+// timed configuration is rejected outright instead of passing through.
 #[test]
-fn untimed_blocking_recv_unaffected_by_timed_config() {
+#[should_panic(expected = "TraceForge usage error")]
+fn untimed_blocking_recv_rejected_by_timed_config() {
     let stats = traceforge::verify(
         Config::builder().with_timed(0, 1, 0).build(),
         || {
@@ -816,7 +821,7 @@ fn context_coupling_model(r_before_c: bool) -> Stats {
         let q_id = q.thread().id();
         let e_thr = thread::spawn(move || {
             let qid: ThreadId =
-                traceforge::recv_tagged_msg_block(move |s, t| s == main_tid && t == Some(99));
+                traceforge::recv_tagged_msg_block_timed(move |s, t| s == main_tid && t == Some(99));
             let _: Option<u32> =
                 traceforge::recv_tagged_msg_timed(|_, t| t == Some(40), WaitTime::Finite(3));
             traceforge::send_tagged_msg(qid, 50, 5u32); // s_new
@@ -824,7 +829,7 @@ fn context_coupling_model(r_before_c: bool) -> Stats {
         let e_id = e_thr.thread().id();
         let a_thr = thread::spawn(move || {
             let (rid, eid): (ThreadId, ThreadId) =
-                traceforge::recv_tagged_msg_block(move |s, t| s == main_tid && t == Some(99));
+                traceforge::recv_tagged_msg_block_timed(move |s, t| s == main_tid && t == Some(99));
             let _: u32 = traceforge::recv_tagged_msg_block_timed(|_, t| t == Some(30)); // m
             traceforge::send_tagged_msg_timed(rid, 20, 1u32, 0, 0); // b at t_A
             traceforge::send_tagged_msg_timed(eid, 40, 2u32, 0, 0); // e at t_A
@@ -840,7 +845,7 @@ fn context_coupling_model(r_before_c: bool) -> Stats {
         let spawn_c = |main_tid: ThreadId| {
             thread::spawn(move || {
                 let rid: ThreadId =
-                    traceforge::recv_tagged_msg_block(move |s, t| s == main_tid && t == Some(99));
+                    traceforge::recv_tagged_msg_block_timed(move |s, t| s == main_tid && t == Some(99));
                 traceforge::send_tagged_msg_timed(rid, 21, 3u32, 0, 10); // c
             })
         };
@@ -853,9 +858,9 @@ fn context_coupling_model(r_before_c: bool) -> Stats {
             let r = spawn_r();
             (r.thread().id(), c)
         };
-        traceforge::send_tagged_msg(e_id, 99, q_id);
-        traceforge::send_tagged_msg(a_id, 99, (r_id, e_id));
-        traceforge::send_tagged_msg(c_thr.thread().id(), 99, r_id);
+        traceforge::send_tagged_msg_timed(e_id, 99, q_id, 0, 0);
+        traceforge::send_tagged_msg_timed(a_id, 99, (r_id, e_id), 0, 0);
+        traceforge::send_tagged_msg_timed(c_thr.thread().id(), 99, r_id, 0, 0);
         traceforge::send_tagged_msg_timed(a_id, 30, 9u32, 0, 10); // m: t_A in [0,10]
     })
 }
@@ -964,7 +969,7 @@ fn spawn_order_blocked_class_invariant() {
                     let h = match role {
                         0 => thread::spawn(move || {
                             let (rid, eid): (ThreadId, ThreadId) =
-                                traceforge::recv_tagged_msg_block(move |s, t| {
+                                traceforge::recv_tagged_msg_block_timed(move |s, t| {
                                     s == main && t == Some(99)
                                 });
                             let _: u32 =
@@ -987,10 +992,12 @@ fn spawn_order_blocked_class_invariant() {
                     ids[role] = Some(h.thread().id());
                     handles.push(h);
                 }
-                traceforge::send_tagged_msg(
+                traceforge::send_tagged_msg_timed(
                     ids[0].unwrap(),
                     99,
                     (ids[2].unwrap(), ids[1].unwrap()),
+                    0,
+                    0,
                 );
                 traceforge::send_tagged_msg_timed(ids[0].unwrap(), 30, 9u32, 0, 10);
             },

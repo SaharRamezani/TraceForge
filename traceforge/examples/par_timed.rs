@@ -246,7 +246,7 @@ fn cli_bail(msg: &str) -> ! {
 
 fn sender(p: Params, main_tid: ThreadId) {
     let Init { receiver, .. } =
-        traceforge::recv_tagged_msg_block::<_, Init>(move |s, _tag| s == main_tid);
+        traceforge::recv_tagged_msg_block_timed::<_, Init>(move |s, _tag| s == main_tid);
 
     let mut mt: u8 = 0;
     let mut sn: u8 = 0;
@@ -319,7 +319,7 @@ fn send_done(p: Params, receiver: ThreadId) {
 
 fn receiver(p: Params, main_tid: ThreadId) {
     let Init { sender, .. } =
-        traceforge::recv_tagged_msg_block::<_, Init>(move |s, _tag| s == main_tid);
+        traceforge::recv_tagged_msg_block_timed::<_, Init>(move |s, _tag| s == main_tid);
 
     let mut me: u8 = 1;
     let mut esn: u8 = 0;
@@ -409,11 +409,12 @@ fn report(label: &str, stats: &Stats, elapsed: Duration) -> usize {
     let c = |a: &AtomicUsize| a.load(Ordering::Relaxed);
     let p1 = c(&P1_FAILS);
     println!(
-        "{label}: execs={} blocked={} explored={} time={:.3}s p1_fails={} delivered={} duplicates={} \
+        "{label}: execs={} blocked={} impossible={} explored={} time={:.3}s p1_fails={} delivered={} duplicates={} \
          timeouts={} ackerr={} msgerr={} confused={} gave_up={}",
         stats.execs,
         stats.block,
-        stats.execs + stats.block,
+        stats.timeline_impossible,
+        stats.execs + stats.block + stats.timeline_impossible,
         elapsed.as_secs_f64(),
         p1,
         c(&DELIVERED),

@@ -181,7 +181,7 @@ fn node(
     main_tid: ThreadId,
 ) -> Vec<LogEntry> {
     let Init { peers, me: _ } =
-        traceforge::recv_tagged_msg_block::<_, Init>(move |sender, _tag| sender == main_tid);
+        traceforge::recv_tagged_msg_block_timed::<_, Init>(move |sender, _tag| sender == main_tid);
 
     let mut node = Node {
         me,
@@ -265,12 +265,16 @@ fn run(
         // Send every Init *before* joining, or the nodes block on recv
         // forever and the join below deadlocks.
         for (me, h) in handles.iter().enumerate() {
-            traceforge::send_msg(
+            // Zero-transit handoff: read at 0 by the timed Init receive, as
+            // the untimed handshake was, so the pinned counts keep their meaning.
+            traceforge::send_msg_timed(
                 h.thread().id(),
                 Init {
                     peers: all_ids.clone(),
                     me,
                 },
+                0,
+                0,
             );
         }
         let logs: Vec<Vec<LogEntry>> = handles

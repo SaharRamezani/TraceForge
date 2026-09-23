@@ -33,7 +33,7 @@ fn untimed_block_on_a_graph_without_timeline_terminates() {
                 .build(),
             || {
                 let c = thread::spawn(|| {
-                    let _r: u32 = traceforge::recv_tagged_msg_block(|_, t| t == Some(0));
+                    let _r: u32 = traceforge::recv_tagged_msg_block_timed(|_, t| t == Some(0));
                 });
                 let cid = c.thread().id();
                 thread::spawn(move || {
@@ -70,7 +70,7 @@ fn relayed_untimed_block_on_a_graph_without_timeline_terminates() {
                 let cid = c.thread().id();
                 let cid1 = cid.clone();
                 let s1 = thread::spawn(move || {
-                    let _go: u32 = traceforge::recv_tagged_msg_block(|_, t| t == Some(9));
+                    let _go: u32 = traceforge::recv_tagged_msg_block_timed(|_, t| t == Some(9));
                     traceforge::sleep(6);
                     traceforge::send_msg_timed(cid1.clone(), 3u32, 1, 3);
                     traceforge::send_tagged_msg(cid1, 0, 4u32);
@@ -109,7 +109,7 @@ fn controls_with_timelines() {
         Config::builder().with_cons_type(ConsType::FIFO).with_timed(1, 3, 0).build(),
         || {
             let c = thread::spawn(|| {
-                let _r: u32 = traceforge::recv_tagged_msg_block(|_, t| t == Some(0));
+                let _r: u32 = traceforge::recv_tagged_msg_block_timed(|_, t| t == Some(0));
             });
             let cid = c.thread().id();
             thread::spawn(move || {
@@ -161,7 +161,7 @@ fn refusal_ending_is_not_a_second_launch_point() {
             || {
                 let c = thread::spawn(|| {
                     traceforge::sleep(2);
-                    let _r1: Option<u32> = traceforge::recv_tagged_msg(|_, t| t == Some(0));
+                    let _r1: Option<u32> = traceforge::recv_tagged_msg_timed(|_, t| t == Some(0), WaitTime::Finite(0));
                     let _r2: u32 = traceforge::recv_tagged_msg_block_timed(|_, t| t == Some(0));
                 });
                 let cid = c.thread().id();
@@ -174,7 +174,16 @@ fn refusal_ending_is_not_a_second_launch_point() {
                 traceforge::send_tagged_msg(cid, 0, 4u32);
             },
         );
-        assert_eq!((s.execs, s.block), (4, 1), "policy {policy:?} seed {seed}");
+        // Since the timed/untimed API rule r1 is the zero-wait timed receive
+        // (the untimed non-blocking one is rejected under a timed
+        // configuration). Its timeout now obeys the (C6b) miss condition,
+        // so the worlds are: r1 reads m4 (a(m4) = 2), r2 reads m3; r1 times
+        // out (m4 dead before 2, or the tie a(m4) = 2), r2 reads m3; r1
+        // times out at the tie, r2 reads m4 at 2. The refusal ending is no
+        // longer reachable. Three counted, none blocked, under every
+        // policy and seed (the explored-then-dropped count varies with the
+        // schedule and is not pinned).
+        assert_eq!((s.execs, s.block), (3, 0), "policy {policy:?} seed {seed}");
     }
 }
 

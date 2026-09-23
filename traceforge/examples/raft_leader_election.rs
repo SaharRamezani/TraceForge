@@ -337,7 +337,7 @@ fn node(mode: Mode, delta: u64, rounds: u64, me: usize, num_nodes: usize, main_t
     // main_tid` skips past any racing RPCs from peers and matches
     // only the Init that main sent us. Non-matching messages stay
     // in the mailbox for the main loop to handle.
-    let Init { peers, me: _ } = traceforge::recv_tagged_msg_block::<_, Init>(
+    let Init { peers, me: _ } = traceforge::recv_tagged_msg_block_timed::<_, Init>(
         move |sender, _tag| sender == main_tid,
     );
 
@@ -489,7 +489,9 @@ fn run(mode: Mode, num_nodes: usize, delta: u64, rounds: u64) -> (Stats, Duratio
                 .enumerate()
                 .filter_map(|(i, id)| if i == me { None } else { Some(*id) })
                 .collect();
-            traceforge::send_msg(h.thread().id(), Init { peers, me });
+            // Zero-transit handoff: read at 0 by the timed Init receive, as
+            // the untimed handshake was, so the pinned counts keep their meaning.
+            traceforge::send_msg_timed(h.thread().id(), Init { peers, me }, 0, 0);
         }
     });
     (stats, t0.elapsed())

@@ -13,25 +13,43 @@
 //! a negative cycle in the constraint graph (Bellman-Ford / SPFA), and
 //! a solution doubles as a concrete witness timeline.
 //!
+//! Two systems are built from a graph (thesis and paper notation):
+//! * the EXPLORATION system `Cexp(G)`: every timing condition except
+//!   the (C6b) timeout-miss groups. `build` constructs it; every offer,
+//!   eligibility, wake, revisit and refusal probe consults it.
+//! * the COMPLETION system `Csys(G)`: `Cexp(G)` plus one (C6b) miss
+//!   group per message pending at each finite-wait timeout
+//!   (`push_timeout_cases`). `build_opts(.., strict_timeouts = true)`
+//!   constructs it; only `graph_feasible` and `graph_witness` do, i.e.
+//!   the announce/count/certify/witness paths in `must.rs`.
+//!
 //! Guarantees relied upon by the exploration:
-//! * soundness: a graph is admitted iff a witness timeline exists, so
-//!   reported counterexamples are realizable (and printable with
+//! * soundness: a graph is announced, counted or used to certify a
+//!   violation iff `Csys` has a witness timeline, so every reported
+//!   execution and counterexample is realizable (and printable with
 //!   concrete timestamps);
-//! * completeness: a candidate is pruned iff its constraint system is
-//!   unsatisfiable; constraints only accumulate along a branch, so an
-//!   unsatisfiable prefix has no realizable extension;
-//! * maximal pruning: any filter pruning more than unsatisfiable
-//!   prefixes would drop a realizable execution.
+//! * prefix-exact pruning for `Cexp`: a candidate is pruned iff its
+//!   `Cexp` is unsatisfiable; `Cexp` constraints only accumulate along
+//!   a branch, so an unsatisfiable prefix has no realizable extension;
+//! * never tighter than `Cexp`: any filter pruning more than
+//!   `Cexp`-unsatisfiable prefixes would drop a realizable execution.
+//!
+//! What is NOT guaranteed: that every explored prefix has a completion
+//! in the semantics. A finite-wait timeout whose (C6b) groups no
+//! timeline satisfies is `Cexp`-feasible, is explored to the end (its
+//! side effects, later sends and the revisits it launches happen), and
+//! is then judged by `Csys` and counted as nothing
+//! (`Stats::timeline_impossible`). Must's "no fruitless prefix"
+//! guarantee is deliberately not inherited: the timeout is the
+//! canonical launch point of every backward revisit into its receive,
+//! and cutting the branch once a pending message appears loses the
+//! executions that only a later send can produce (three threads,
+//! `L = U = 0`: `R: recv_timed(10)`, `S1: send b`, `S2: send s`; the
+//! world `r reads s, b unread` exists only through the timeout branch).
 //!
 //! Scope notes:
-//! * The `rf = None` timeout branch stays always-explorable during
-//!   EXPLORATION (it is the canonical launch point of backward
-//!   revisits, so pruning it would lose executions); a timeout is an
-//!   exact clock advance there, exactly as in the walker. The
-//!   certification and completion oracles (`graph_feasible`,
-//!   `graph_witness`) additionally enforce (C6'): the timeout must
-//!   have missed every message it could have consumed, see
-//!   `push_timeout_cases`.
+//! * (C6b) is half-open on the deadline: a message arriving exactly at
+//!   `t_p + W` may lose the race to the timer (both worlds exist).
 //! * Arrivals are EXPLICIT variables (2026-08-28): every non-dropped
 //!   send s carries `a_s` in `[t_s + L, t_s + U]`, a message has ONE
 //!   arrival consistent across every constraint that mentions it, and
@@ -785,21 +803,27 @@ impl<'g> TimedDcs<'g> {
         Self::build_opts(g, cfg, view, floating, false)
     }
 
-    /// `build` plus (C6'), the timeout-feasibility condition: a
-    /// finite-wait receive may return `bot` only in timelines where
-    /// every matching message it could have consumed missed the whole
-    /// wait window (see `push_timeout_cases`).
+    /// `build` constructs the exploration system `Cexp`; with
+    /// `strict_timeouts = true` this constructs the completion system
+    /// `Csys` = `Cexp` plus (C6b): a finite-wait receive may return
+    /// `bot` only in timelines where every message pending at it missed
+    /// the whole wait window (see `push_timeout_cases`).
     ///
     /// Only the completion/certification oracles (`graph_feasible`,
     /// `graph_witness`) pass `strict_timeouts = true`. Pruning paths
     /// must not: the timeout is the canonical launch point of backward
     /// revisits, so removing it from the exploration tree would lose
     /// executions whose reads are only reachable through it (design
-    /// note 2026-09-16, option A). The exploration tree is therefore
-    /// unchanged and soundness, completeness and duplicate-freedom
-    /// carry over; what is given up is exact-prefix pruning, i.e. a
-    /// timeline-impossible timeout is still explored and then dropped
-    /// at the end instead of being cut at the read.
+    /// note 2026-09-16, option A, confirmed by Sahar 2026-09-22). The
+    /// tree of graphs the exploration generates is therefore the
+    /// pre-(C6b) tree and soundness, completeness and duplicate-freedom
+    /// carry over; pruning stays exact for `Cexp`, and Must's guarantee
+    /// that no explored prefix is fruitless is not inherited: a
+    /// timeline-impossible timeout is explored and then dropped at the
+    /// end (`Stats::timeline_impossible`) instead of being cut at the
+    /// read. Run control still differs from the pre-(C6b) tool: a
+    /// spurious violation no longer stops an abort-mode run, and
+    /// iteration budgets count only counted endings.
     pub(crate) fn build_opts(
         g: &'g ExecutionGraph,
         cfg: &'g TimedConfig,
@@ -1092,16 +1116,21 @@ impl<'g> TimedDcs<'g> {
                                 let w = i128::from(w);
                                 edges.push((p, e, w));
                                 edges.push((e, p, -w));
-                                // (C6') for a collector of one: a single
+                                // (C6b) for a collector of one: a single
                                 // readable message already completes the
                                 // batch, so the recv condition applies
                                 // verbatim. For min >= 2 the honest
-                                // condition is "fewer than min members
-                                // are collectable in the window", a
-                                // cardinality constraint this difference
-                                // system cannot express; those timeouts
-                                // stay unconstrained (looser, never a
-                                // lost execution).
+                                // condition is "no min-subset of the
+                                // pending messages is jointly stored at
+                                // any instant of the window". It IS
+                                // expressible (a disjunction group per
+                                // min-subset, pushed, never folded) but
+                                // is not implemented: by decision
+                                // (2026-09-22) those timeouts stay
+                                // unconstrained, a documented relaxation
+                                // in the looser direction (never a lost
+                                // execution; a k >= 2 collector may still
+                                // time out beside k co-stored messages).
                                 if strict_timeouts && ilab.min() <= 1 {
                                     push_timeout_cases(
                                         &mut case_sets,
@@ -2170,6 +2199,21 @@ fn waited_inbox_cases(
 /// takes a message away and are exempt; a send read by the refusing
 /// position itself (a leftover rf being converted) is not.
 ///
+/// PENDING MESSAGES, shared vocabulary of (C8) here and (C6b) in
+/// `push_timeout_cases`: `Pend(r)` is the set of delivered (not
+/// dropped) matching sends `b` that are (i) not read by a receive
+/// porf-before `r`, (ii) not evicted for `r`'s thread (no earlier
+/// receive of the thread read past `b`), (iii) not cancelled with
+/// respect to `r`, (iv) not porf-after `r`. A receive of the SAME
+/// thread po-after `r` does not exempt `b`: under the reception
+/// discipline `r` would have taken `b` first, so `r` still has to
+/// explain how it missed it. So defined, `Pend(r)` is determined by
+/// the porf-prefix of `r`, which is what makes the (C6b) groups
+/// accumulate along extensions (the thesis monotonicity lemma). A
+/// blocked receive is the last event of its thread, so for (C8) the
+/// same-thread-later case cannot arise and this collector's plain
+/// "read by any other receive" test coincides with (i).
+///
 /// This is THE single refusal collector, shared by recv-shaped and
 /// inbox-shaped refusals at both push-probe time (`probe_gc_block`)
 /// and committed-encoding time (the Block arm of `build`). Its
@@ -2411,14 +2455,16 @@ fn exclusion_options(
 /// plain reads); omitting a monitor-order skip only loosens, never
 /// tightens.
 #[allow(clippy::too_many_arguments)]
-/// (C6') Timeout feasibility, the finite-wait sibling of the (C8)
-/// refusal conjunction `push_refusal_edges`.
+/// (C6b) Timeout miss, the finite-wait sibling of the (C8) refusal
+/// conjunction `push_refusal_edges` (see there for `Pend(r)`, the set
+/// this quantifies over). Emitted into the completion system Csys
+/// only.
 ///
 /// A receive that returns `bot` waited out its whole window, so in the
-/// witness timeline no message it could have consumed was ever
-/// readable during `[t_p, t_e]` (`t_e = t_p + W` by (C6)). A message
-/// `b` is stored over `[a_b, a_b + sd]`, and that interval misses the
-/// window exactly when
+/// witness timeline no message pending at it was ever readable during
+/// `[t_p, t_e]` (`t_e = t_p + W` by (C6a)). A message `b` is stored
+/// over `[a_b, a_b + sd]`, and that interval misses the window exactly
+/// when
 ///
 /// ```text
 ///   a_b >= t_e            (b is not there before the deadline)
@@ -2437,6 +2483,10 @@ fn exclusion_options(
 /// Every guard below excuses `b` from constraining the timeout, and
 /// each one only keeps executions: over-constraining here would cut a
 /// legitimate timeout, which is the one error this must not make.
+///
+/// Monitor threads: a monitor's own earlier monitor-read of `b` exempts
+/// it (parity with (C8)); timed receives executed by a monitor are
+/// otherwise outside the fragment the theory covers.
 #[allow(clippy::too_many_arguments)]
 fn push_timeout_cases(
     case_sets: &mut Vec<Vec<Vec<Edge>>>,
@@ -2457,18 +2507,21 @@ fn push_timeout_cases(
         if !view.contains(bpos) || b.is_cancelled_wrt(anchor) {
             continue;
         }
-        // Consumed elsewhere: another thread's receive took it, or one
-        // of ours took it before the wait began. A LATER receive of our
-        // own thread is not an excuse: under the reception discipline a
-        // waiting receive takes a readable message the instant it
-        // appears, so the timeout still has to explain why it did not.
-        // (That is exactly the timeout-validation idiom, now enforced
-        // by the constraint rather than by hand.) The floating event's
-        // reads are hypothetical, as in `push_recv_skip_cases`.
+        // Pend(r) guard (i): consumed by a receive porf-before the
+        // timeout (one of ours before the wait began, or a causally
+        // earlier reader). A LATER receive of our own thread is not an
+        // excuse: under the reception discipline a waiting receive
+        // takes a readable message the instant it appears, so the
+        // timeout still has to explain why it did not. (That is exactly
+        // the timeout-validation idiom, now enforced by the constraint
+        // rather than by hand.) The porf test, rather than "any other
+        // reader", keeps Pend(r) prefix-determined (parity with
+        // `inbox_exclusions`); for an ordinary timed receive the two
+        // coincide, since its location has a single reader thread. The
+        // floating event's reads are hypothetical, as in
+        // `push_recv_skip_cases`.
         if b.reader().is_some_and(|r| {
-            Some(r) != floating
-                && view.contains(r)
-                && (r.thread != pos.thread || r.index < pos.index)
+            Some(r) != floating && view.contains(r) && g.in_porf(r, pos)
         }) {
             continue;
         }

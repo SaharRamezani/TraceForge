@@ -230,7 +230,7 @@ fn estimate_timed_inbox_k1() {
         Config::builder().with_timed(0, 0, 1000).build(),
         || {
             let c = thread::spawn(|| {
-                let _: u32 = traceforge::recv_tagged_msg_block(|_, t| t == Some(9));
+                let _: u32 = traceforge::recv_tagged_msg_block_timed(|_, t| t == Some(9));
                 let _ = traceforge::inbox_with_tag_timed(
                     |_, t| t == Some(1),
                     1,

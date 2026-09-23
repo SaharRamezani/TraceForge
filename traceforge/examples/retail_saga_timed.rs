@@ -622,7 +622,7 @@ fn assume_reply_was_late(main_tid: ThreadId) {
 // =====================================================================
 
 fn customer(index: usize, main_tid: ThreadId, s: Setup, b: Bounds) {
-    let services = match traceforge::recv_tagged_msg_block::<_, CustMsg>(move |snd, _| {
+    let services = match traceforge::recv_tagged_msg_block_timed::<_, CustMsg>(move |snd, _| {
         snd == main_tid
     }) {
         CustMsg::Init { services } => services,
@@ -697,7 +697,7 @@ fn read_inventory_reply(inv: ThreadId) -> OsMsg {
 }
 
 fn kafka_order_service(main_tid: ThreadId, variant: Variant, expected_done: usize, b: Bounds) {
-    let inv = match traceforge::recv_tagged_msg_block::<_, OsMsg>(move |snd, _| snd == main_tid) {
+    let inv = match traceforge::recv_tagged_msg_block_timed::<_, OsMsg>(move |snd, _| snd == main_tid) {
         OsMsg::Init { inventory } => inventory,
         m => panic!("service: expected Init, got {m:?}"),
     };
@@ -755,7 +755,7 @@ fn kafka_order_service(main_tid: ThreadId, variant: Variant, expected_done: usiz
 // =====================================================================
 
 fn direct_order_service(main_tid: ThreadId, expected_done: usize, b: Bounds) {
-    let inv = match traceforge::recv_tagged_msg_block::<_, OsMsg>(move |snd, _| snd == main_tid) {
+    let inv = match traceforge::recv_tagged_msg_block_timed::<_, OsMsg>(move |snd, _| snd == main_tid) {
         OsMsg::Init { inventory } => inventory,
         m => panic!("service: expected Init, got {m:?}"),
     };

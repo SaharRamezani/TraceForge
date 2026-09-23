@@ -470,13 +470,21 @@ fn gap10_batch_is_closed_under_causal_order() {
 /// the collector C (1), which runs inbox(exactly 1, infinite wait) and
 /// then recv(wait 50). Both messages are stored at C's t0 = 0; the
 /// batch {m2} would leave m1 behind while alive, so the inbox reads {m1}
-/// and the receive takes m2 or times out: 2 executions.
+/// and the receive takes m2: 1 execution. It cannot time out instead,
+/// since (C6b) (2026-09-22): m2 is stored over [0, 100] and the wait
+/// runs [0, 50], so no timeline lets that wait miss it.
+///
+/// This pin read 2 until 2026-09-22 through an accounting hole: the
+/// Infinite-wait inbox visit vouched the completion-time check off, and
+/// a timeout committed afterwards never re-armed it, so the timeout
+/// world was counted without being judged. Every timeout commit now
+/// re-arms the check (tests/timeout_feasibility.rs, the vouch-hole pins).
 ///
 /// The offer probe once lacked the skip disjunction the committed
 /// encoding carries, so {m2} was offered, and the completion-time
 /// timeline check had been vouched off by the inbox visit: the graph
 /// with the inbox reading m2 and the receive timing out was counted
-/// although no timeline satisfies it (3 executions, one without a
+/// although no timeline satisfies it (one extra execution without a
 /// timeline). Debug builds now re-check vouched completions.
 #[test]
 fn gap10_timed_batch_cannot_leave_a_live_sibling() {
@@ -490,7 +498,7 @@ fn gap10_timed_batch_cannot_leave_a_live_sibling() {
         traceforge::send_msg(cid, M(1));
         traceforge::send_msg(cid, M(2));
     });
-    assert_eq!((stats.execs, stats.block), (2, 0));
+    assert_eq!((stats.execs, stats.block), (1, 0));
 }
 
 /// Gap 10, the condition that stays: a batch completed by a later
@@ -501,8 +509,10 @@ fn gap10_timed_batch_cannot_leave_a_live_sibling() {
 /// {m1,m3} and {m2,m3} would complete at m3's arrival, t = 3, with the
 /// excluded message stored since t = 0 and alive until t = 100: it
 /// would have completed the batch earlier, and it is an unread older
-/// sibling of m3 besides. The receive then takes m3 or times out:
-/// 2 executions, the same under every variant of the rule.
+/// sibling of m3 besides. The receive then takes m3: 1 execution, the
+/// same under every variant of the rule. It cannot time out, since
+/// (C6b): m3 is stored over [3, 103] and the wait runs [0, 50]. (Read 2
+/// until 2026-09-22 through the same vouch hole as the test above.)
 #[test]
 fn gap10_waited_batch_cannot_ignore_a_stored_message() {
     let stats = traceforge::verify(Config::builder().with_timed(0, 0, 100).build(), || {
@@ -517,13 +527,13 @@ fn gap10_waited_batch_cannot_ignore_a_stored_message() {
         traceforge::sleep(3);
         traceforge::send_msg(cid, M(3));
     });
-    assert_eq!((stats.execs, stats.block), (2, 0));
+    assert_eq!((stats.execs, stats.block), (1, 0));
 }
 
 /// Gap 11 (a message consumed by a reader that follows the inbox is
 /// still stored at the inbox's read).
 ///
-/// Timed FIFO, L = U = 0, sd = 100. main (0) spawns A (1), B (2), C (3),
+/// Timed FIFO, L = U = 0, sd = 100. main (0) spawns C (1), A (2), B (3),
 /// X (4) and tells A, B and X who C is. A: sleep 1, send m1 to C.
 /// B: sleep 5, send m2 to C. X: sleep 3, send x to C. C: inbox(exactly
 /// 2, infinite wait) then recv(wait 50).
@@ -544,31 +554,29 @@ fn gap10_waited_batch_cannot_ignore_a_stored_message() {
 /// with no timeline. A consumer that follows the read no longer exempts.
 #[test]
 fn gap11_consumer_after_the_inbox_leaves_the_message_stored() {
+    // C is spawned first so that A, B and X learn its id at spawn time:
+    // a control message would have to be read with a timed receive, and
+    // with sd = 100 that read could be up to 100 late, which is not the
+    // program this pin describes.
     let stats = traceforge::verify(Config::builder().with_timed(0, 0, 100).build(), || {
-        let a = thread::spawn(|| {
-            let c: ThreadId = traceforge::recv_tagged_msg_block(|_, t| t == Some(CTRL));
-            traceforge::sleep(1);
-            traceforge::send_msg(c, M(1));
-        });
-        let b = thread::spawn(|| {
-            let c: ThreadId = traceforge::recv_tagged_msg_block(|_, t| t == Some(CTRL));
-            traceforge::sleep(5);
-            traceforge::send_msg(c, M(2));
-        });
         let c = thread::spawn(|| {
             let got = traceforge::inbox_timed(2, WaitTime::Infinite);
             assert_eq!(got.len(), 2);
             let _rest: Option<M> = traceforge::recv_msg_timed(WaitTime::Finite(50));
         });
-        let x = thread::spawn(|| {
-            let c: ThreadId = traceforge::recv_tagged_msg_block(|_, t| t == Some(CTRL));
-            traceforge::sleep(3);
-            traceforge::send_msg(c, M(3));
-        });
         let cid = c.thread().id();
-        for h in [&a, &b, &x] {
-            traceforge::send_tagged_msg(h.thread().id(), CTRL, cid.clone());
-        }
+        let _a = thread::spawn(move || {
+            traceforge::sleep(1);
+            traceforge::send_msg(cid, M(1));
+        });
+        let _b = thread::spawn(move || {
+            traceforge::sleep(5);
+            traceforge::send_msg(cid, M(2));
+        });
+        let _x = thread::spawn(move || {
+            traceforge::sleep(3);
+            traceforge::send_msg(cid, M(3));
+        });
     });
     assert_eq!((stats.execs, stats.block), (1, 0));
 }

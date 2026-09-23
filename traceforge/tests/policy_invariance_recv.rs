@@ -204,6 +204,8 @@ const CTRL_TAG: u32 = 9;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RecvKind {
+    /// `recv_msg_timed(Finite(0))`: the non-blocking receive of a timed program.
+    Zero,
     NonBlocking,
     Blocking,
     Finite(u8),
@@ -262,10 +264,14 @@ impl ProgramSpec {
         let cons_ix = r.below(CONS.len() as u64) as u8;
         let recvs = (0..1 + r.below(3) as usize)
             .map(|_| {
+                // A program is either timed or untimed (the checker rejects
+                // an untimed receive under a timed configuration), so timed
+                // programs draw from the timed kinds only; the zero wait is
+                // the timed non-blocking form.
                 let kind = if timed {
                     match r.below(4) {
-                        0 => RecvKind::NonBlocking,
-                        1 => RecvKind::Blocking,
+                        0 => RecvKind::Zero,
+                        1 => RecvKind::Infinite,
                         2 => RecvKind::Finite(r.below(WAITS.len() as u64) as u8),
                         _ => RecvKind::Infinite,
                     }
@@ -352,6 +358,7 @@ impl ProgramSpec {
                 let k = match &rv.kind {
                     RecvKind::NonBlocking => "n".to_string(),
                     RecvKind::Blocking => "b".to_string(),
+                    RecvKind::Zero => "z".to_string(),
                     RecvKind::Finite(i) => format!("f{i}"),
                     RecvKind::Infinite => "i".to_string(),
                 };
@@ -395,6 +402,10 @@ impl ProgramSpec {
                         (RecvKind::Blocking, true) => {
                             Some(traceforge::recv_tagged_msg_block(|_, t| t == Some(0)))
                         }
+                        (RecvKind::Zero, false) => traceforge::recv_msg_timed(WaitTime::Finite(0)),
+                        (RecvKind::Zero, true) => {
+                            traceforge::recv_tagged_msg_timed(|_, t| t == Some(0), WaitTime::Finite(0))
+                        }
                         (RecvKind::Finite(w), false) => {
                             traceforge::recv_msg_timed(WaitTime::Finite(WAITS[*w as usize]))
                         }
@@ -431,7 +442,7 @@ impl ProgramSpec {
                 let handle = thread::spawn(move || {
                     if relay && idx == 1 {
                         let _go: u32 =
-                            traceforge::recv_tagged_msg_block(|_, t| t == Some(CTRL_TAG));
+                            traceforge::recv_tagged_msg_block_timed(|_, t| t == Some(CTRL_TAG));
                     }
                     if relay && idx == 0 {
                         if let Some(t) = target {
@@ -566,11 +577,16 @@ fn canary_program_108_duplicates() {
     let spec = ProgramSpec::generate(SplitMix64(20260914u64.wrapping_add(107)).next());
     assert_eq!(
         spec.print_repro(),
-        "t=0|c=F|r=f0:u;n:t;i:t|s=3.1.1,3.0.2;2.0.0;1.0.N,3.N.0|relay=1"
+        // Since the timed/untimed API rule the timed program's non-blocking
+        // receive is the zero-wait timed receive ("z"), not the untimed one ("n").
+        "t=0|c=F|r=f0:u;z:t;i:t|s=3.1.1,3.0.2;2.0.0;1.0.N,3.N.0|relay=1"
     );
     match policy_divergence(spec.cons(), spec.timed(), spec.program()) {
         Verdict::Diverged(detail) => panic!("program 108 still diverges:\n{detail}"),
         Verdict::Void { .. } => panic!("program 108 hit the cap"),
-        Verdict::Invariant { execs, block } => assert_eq!((execs, block), (13, 0)),
+        // 13 classes with the untimed non-blocking r1; with the zero-wait
+        // timed r1 (its timeout obeys the (C6b) miss condition) the program
+        // has 7, invariant under every policy and seed.
+        Verdict::Invariant { execs, block } => assert_eq!((execs, block), (7, 0)),
     }
 }

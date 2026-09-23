@@ -99,11 +99,11 @@ fn predicate_timed_recv() {
             let main_id = thread::current().id();
             let s1 = thread::spawn(move || {
                 // Receive our "id handoff" from main so we know main's id.
-                let _: i32 = traceforge::recv_msg_block();
+                let _: i32 = traceforge::recv_msg_block_timed();
                 traceforge::send_msg(main_id, 1i32);
             });
             let s2 = thread::spawn(move || {
-                let _: i32 = traceforge::recv_msg_block();
+                let _: i32 = traceforge::recv_msg_block_timed();
                 traceforge::send_msg(main_id, 2i32);
             });
             let s1_id = s1.thread().id();
@@ -145,10 +145,13 @@ fn legacy_run_unchanged_without_timed() {
 // ---------------------------------------------------------------------
 //
 // `with_timed` is set, but the consumer uses the legacy
-// `recv_msg_block` primitive so it must still behave exactly like a
-// plain blocking receive, contributing no timed constraint.
+// `recv_msg_block` primitive. A program is either timed or untimed:
+// the untimed receive is rejected at its first use (it used to pass
+// through with no timed constraint, which left it exempt from
+// eviction; see tests/api_families.rs).
 #[test]
-fn legacy_recv_inside_timed_is_transparent() {
+#[should_panic(expected = "TraceForge usage error")]
+fn legacy_recv_inside_timed_is_rejected() {
     let stats = traceforge::verify(
         Config::builder().with_timed(0, 10, 0).build(),
         || {
@@ -360,21 +363,21 @@ fn relay_pipeline_three_threads_blocking() {
             let main_id = thread::current().id();
             let t2 = thread::spawn(move || {
                 for _ in 0..3 {
-                    let v: i32 = traceforge::recv_msg_block();
+                    let v: i32 = traceforge::recv_msg_block_timed();
                     traceforge::send_msg(main_id, v + 100);
                 }
             });
             let t2_id = t2.thread().id();
             let t1 = thread::spawn(move || {
                 for _ in 0..3 {
-                    let v: i32 = traceforge::recv_msg_block();
+                    let v: i32 = traceforge::recv_msg_block_timed();
                     traceforge::send_msg(t2_id, v + 10);
                 }
             });
             let t1_id = t1.thread().id();
             for i in 0..3 {
                 traceforge::send_msg(t1_id, i);
-                let _v: i32 = traceforge::recv_msg_block();
+                let _v: i32 = traceforge::recv_msg_block_timed();
             }
         },
     );
@@ -402,7 +405,7 @@ fn star_hub_with_workers_tagged() {
             for w in 0..4u32 {
                 let h = thread::spawn(move || {
                     let v: i32 =
-                        traceforge::recv_tagged_msg_block(move |_tid, tag| tag == Some(w));
+                        traceforge::recv_tagged_msg_block_timed(move |_tid, tag| tag == Some(w));
                     traceforge::send_tagged_msg(main_id, 100 + w, v + 1);
                 });
                 worker_ids.push(h.thread().id());
@@ -412,7 +415,7 @@ fn star_hub_with_workers_tagged() {
             }
             for w in 0..4u32 {
                 let _v: i32 =
-                    traceforge::recv_tagged_msg_block(move |_tid, tag| tag == Some(100 + w));
+                    traceforge::recv_tagged_msg_block_timed(move |_tid, tag| tag == Some(100 + w));
             }
         },
     );

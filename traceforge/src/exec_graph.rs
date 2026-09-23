@@ -778,18 +778,29 @@ impl ExecutionGraph {
         }
     }
 
-    /// Does the graph hold a finite-wait receive or inbox that timed
-    /// out? Such a label carries the (C6') obligation, which only the
-    /// certification oracle enforces, so a probe oracle must not vouch
-    /// for the completion of a graph containing one.
-    pub(crate) fn has_timed_out_recv(&self) -> bool {
+    /// Does the graph carry a (C6b) miss obligation, i.e. a finite-wait
+    /// receive or a collector-of-one inbox that timed out? Such a label
+    /// is constrained only by the completion system Csys, never by the
+    /// exploration system Cexp, so an exploration oracle must not vouch
+    /// for the completion of a graph containing one. `exclude` is the
+    /// event currently being visited: its label is born with `rfs =
+    /// None` and has not committed any outcome yet, so it is not an
+    /// obligation (if it does commit a timeout, that commit re-arms the
+    /// gate). A min >= 2 inbox timeout carries no obligation (documented
+    /// relaxation) and is not counted.
+    pub(crate) fn carries_timeout_obligation(&self, exclude: Option<Event>) -> bool {
         self.threads.iter().flat_map(|t| t.labels.iter()).any(|lab| {
+            if exclude.is_some_and(|x| x == lab.pos()) {
+                return false;
+            }
             match lab {
                 LabelEnum::RecvMsg(r) => {
                     r.rf().is_none() && matches!(r.wait(), Some(WaitTime::Finite(_)))
                 }
                 LabelEnum::Inbox(i) => {
-                    i.rfs().is_none() && matches!(i.wait(), Some(WaitTime::Finite(_)))
+                    i.rfs().is_none()
+                        && i.min() <= 1
+                        && matches!(i.wait(), Some(WaitTime::Finite(_)))
                 }
                 _ => false,
             }

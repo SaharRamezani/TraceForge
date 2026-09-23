@@ -987,8 +987,8 @@ fn promote(
 // =====================================================================
 
 fn switch(p: Params, main_tid: ThreadId) {
-    // Setup handshake (untimed read at t = 0, sender-filtered).
-    let init: Msg = traceforge::recv_tagged_msg_block(move |s, _tag| s == main_tid);
+    // Setup handshake (blocking read at t = 0, sender-filtered).
+    let init: Msg = traceforge::recv_tagged_msg_block_timed(move |s, _tag| s == main_tid);
     let (dcn1, dcn2) = match init.body {
         Body::Init { dcn1, dcn2 } => (dcn1, dcn2),
         m => panic!("SW: expected Init, got {m:?}"),

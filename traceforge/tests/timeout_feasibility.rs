@@ -133,7 +133,7 @@ fn test_timeout_then_late_read_stays_feasible() {
         });
         if recv_msg_timed::<u32>(WaitTime::Finite(10)).is_none() {
             // Only reachable when the message was still in flight.
-            let late = recv_msg_block::<u32>();
+            let late = recv_msg_block_timed::<u32>();
             assert(late == 1);
         }
     });
@@ -153,7 +153,7 @@ fn test_message_consumed_earlier_does_not_forbid_timeout() {
         let _s = thread::spawn(move || {
             send_msg(me, 1u32);
         });
-        let first = recv_msg_block::<u32>();
+        let first = recv_msg_block_timed::<u32>();
         assert(first == 1);
         let second = recv_msg_timed::<u32>(WaitTime::Finite(10));
         assert(second.is_none());
@@ -224,5 +224,134 @@ fn test_inbox_of_two_timeout_stays_unconstrained() {
     assert_eq!(
         stats.execs, 1,
         "one message can never complete a batch of two: only the timeout"
+    );
+}
+
+/// The 16 Sep design-note program: L = U = 0, sd = 100, W = 10. R
+/// first does `recv_msg_timed(Finite(10))`; S1 sends b to R, then m to
+/// S2; S2 receives m, then sends s to R. Hand count: threads start at
+/// 0 and sends are instantaneous, so a(b) = 0 and R's deadline is 10.
+///
+///   E1 {r = bot, b unread, s unread}: for b neither a(b) >= 10 nor
+///      a(b) + 100 < 0 holds. NO timeline: explored, then dropped.
+///   E2 {r reads s, b unread}: a(s) = t(recv m) in [0, 10], read at
+///      a(s); b and s come from different senders, so no (C7) skip
+///      group binds them under LocalOrder. Feasible.
+///   E3 {r reads b, s unread}: feasible.
+///
+/// Counted 2, explored 3. E2 is reachable ONLY through E1's branch (s
+/// is created there and revisits r from it), which is why the timeout
+/// branch must stay in the tree and be judged at the end: a checker
+/// that cut the branch when b appeared would report 1.
+#[test]
+fn test_design_note_program_counts_two_and_drops_one() {
+    let stats = verify(cfg(0, 0, 100), || {
+        let r = thread::spawn(|| {
+            let _ = recv_msg_timed::<u32>(WaitTime::Finite(10));
+        });
+        let rid = r.thread().id();
+        let s2 = thread::spawn(move || {
+            let _m: u32 = recv_msg_block_timed();
+            send_msg(rid, 3u32); // s
+        });
+        let s2id = s2.thread().id();
+        let _s1 = thread::spawn(move || {
+            send_msg(rid, 1u32); // b
+            send_msg(s2id, 2u32); // m
+        });
+    });
+    assert_eq!(
+        (stats.execs, stats.block, stats.timeline_impossible),
+        (2, 0, 1),
+        "E2 and E3 are real; E1 (the timeout beside the stored b) is explored and dropped"
+    );
+}
+
+/// Three threads, L = U = sd = 0: R does `recv_msg_timed(Finite(10))`,
+/// S1 sends b, S2 sends s. Sem(P) = {r reads b} and {r reads s};
+/// {r = bot} has no timeline (a(b) = 0 < 10). Both worlds exist and
+/// the timeout is explored then dropped, in BOTH thread-creation
+/// orders: this is the impossibility example for pruning the timeout
+/// at the read (with R visited first there is no candidate yet, the
+/// timeout is committed, and the world "r reads s" is only reachable
+/// through it).
+#[test]
+fn test_three_thread_example_receiver_first() {
+    let stats = verify(cfg(0, 0, 0), || {
+        let r = thread::spawn(|| {
+            let _ = recv_msg_timed::<u32>(WaitTime::Finite(10));
+        });
+        let rid = r.thread().id();
+        let _s1 = thread::spawn(move || send_msg(rid, 1u32));
+        let _s2 = thread::spawn(move || send_msg(rid, 2u32));
+    });
+    assert_eq!(
+        (stats.execs, stats.block, stats.timeline_impossible),
+        (2, 0, 1)
+    );
+}
+
+#[test]
+fn test_three_thread_example_senders_first() {
+    let stats = verify(cfg(0, 0, 0), || {
+        let me = thread::current().id();
+        let _s1 = thread::spawn(move || send_msg(me, 1u32));
+        let _s2 = thread::spawn(move || send_msg(me, 2u32));
+        let _ = recv_msg_timed::<u32>(WaitTime::Finite(10));
+    });
+    assert_eq!(
+        (stats.execs, stats.block, stats.timeline_impossible),
+        (2, 0, 1)
+    );
+}
+
+/// Vouch hole, complete arm. An Infinite-wait inbox visit builds a
+/// full-graph exploration oracle and, finding it feasible, used to
+/// vouch the completion check off; a finite-wait receive that then
+/// timed out was never re-checked, and a graph with no timeline was
+/// counted. L = 0, U = 1, sd = 0: the inbox takes message 1 at
+/// a1 in [0, 1] (FIFO front, never dead before its wait); the receive
+/// then waits [a1, a1 + 10] and message 2 arrives at a2 in [a1, 1]
+/// (FIFO), readable exactly then, inside the wait. Its timeout has no
+/// timeline: one execution, one dropped.
+#[test]
+fn test_vouch_hole_complete_arm() {
+    let stats = verify(cfg(0, 1, 0), || {
+        let me = thread::current().id();
+        let _s = thread::spawn(move || {
+            send_msg(me, 1u32);
+            send_msg(me, 2u32);
+        });
+        let _ = inbox_timed(1, WaitTime::Infinite);
+        let _ = recv_msg_timed::<u32>(WaitTime::Finite(10));
+    });
+    assert_eq!(
+        (stats.execs, stats.block, stats.timeline_impossible),
+        (1, 0, 1),
+        "the timeout committed after the inbox vouch must still be judged"
+    );
+}
+
+/// Vouch hole, blocked arm: same shape, but the thread then blocks on
+/// a receive nothing can satisfy, so the ending is blocked rather than
+/// complete and goes through the other gate. Same hand count: the
+/// read world blocks (1 blocked ending), the timeout world has no
+/// timeline (dropped).
+#[test]
+fn test_vouch_hole_blocked_arm() {
+    let stats = verify(cfg(0, 1, 0), || {
+        let me = thread::current().id();
+        let _s = thread::spawn(move || {
+            send_msg(me, 1u32);
+            send_msg(me, 2u32);
+        });
+        let _ = inbox_timed(1, WaitTime::Infinite);
+        let _ = recv_msg_timed::<u32>(WaitTime::Finite(10));
+        let _: u32 = recv_msg_block_timed();
+    });
+    assert_eq!(
+        (stats.execs, stats.block, stats.timeline_impossible),
+        (0, 1, 1),
+        "a blocked ending reached through an impossible timeout counts as nothing"
     );
 }

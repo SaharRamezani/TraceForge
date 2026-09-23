@@ -74,7 +74,7 @@ enum Mode {
 }
 
 fn coordinator(mode: Mode, delta: u64) {
-    let ps: Vec<ThreadId> = match traceforge::recv_msg_block::<CoordinatorMsg>() {
+    let ps: Vec<ThreadId> = match traceforge::recv_msg_block_timed::<CoordinatorMsg>() {
         CoordinatorMsg::Init(ids) => ids,
         _ => panic!("expected Init"),
     };
@@ -91,10 +91,7 @@ fn coordinator(mode: Mode, delta: u64) {
             // timed consistent with each successive recv.
             traceforge::sleep(delta);
         }
-        let v: CoordinatorMsg = match mode {
-            Mode::Baseline => traceforge::recv_msg_block(),
-            Mode::Timed => traceforge::recv_msg_block_timed(),
-        };
+        let v: CoordinatorMsg = traceforge::recv_msg_block_timed();
         match v {
             CoordinatorMsg::Yes => yes_count += 1,
             CoordinatorMsg::No => (),
@@ -115,7 +112,7 @@ fn coordinator(mode: Mode, delta: u64) {
 }
 
 fn participant(mode: Mode, delta: u64, index: u32) {
-    let cid = match traceforge::recv_msg_block::<ParticipantMsg>() {
+    let cid = match traceforge::recv_msg_block_timed::<ParticipantMsg>() {
         ParticipantMsg::Prepare(id) => id,
         _ => panic!("expected Prepare"),
     };
@@ -135,7 +132,7 @@ fn participant(mode: Mode, delta: u64, index: u32) {
     };
     traceforge::send_msg(cid, vote);
 
-    let action: ParticipantMsg = traceforge::recv_msg_block();
+    let action: ParticipantMsg = traceforge::recv_msg_block_timed();
     match action {
         ParticipantMsg::Commit => assert!(yes),
         ParticipantMsg::Abort => (),

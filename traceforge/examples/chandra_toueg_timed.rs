@@ -737,7 +737,7 @@ fn print_one(mode: Mode, p: &Params, stats: &Stats, dur: Duration, max_execs: Op
     };
     println!(
         "{:<8} enc={enc} control={control} delta={} phi={} to={} H={}  execs={} blocked={} \
-         explored={} completed={comp} violations={susp} W*={} (attained by {w_at}) steps={} \
+         impossible={} explored={} completed={comp} violations={susp} W*={} (attained by {w_at}) steps={} \
          receives={} deliveries={} sent={} guard_seq_events={} guard_done_events={} \
          verdict={verdict} time={dur:?}",
         mode.name(),
@@ -747,7 +747,8 @@ fn print_one(mode: Mode, p: &Params, stats: &Stats, dur: Duration, max_execs: Op
         p.h,
         stats.execs,
         stats.block,
-        stats.execs + stats.block,
+        stats.timeline_impossible,
+        stats.execs + stats.block + stats.timeline_impossible,
         wstar.map_or(String::from("-"), |w| w.to_string()),
         range(0),
         range(1),
@@ -756,6 +757,22 @@ fn print_one(mode: Mode, p: &Params, stats: &Stats, dur: Duration, max_execs: Op
         GUARD_SEQ.load(Ordering::Relaxed),
         GUARD_DONE.load(Ordering::Relaxed),
     );
+    // Every counter above is raised by PROGRAM code, so it also sees endings
+    // that the (C6b) timeout-miss condition later judges to admit no timeline:
+    // those endings run to completion, raise the counters, and are only then
+    // discarded by the engine. Both the verdict and W* are therefore UPPER
+    // bounds. A counter-based HOLDS is sound (nothing suspected anywhere);
+    // a counter-based VIOLATED, and any threshold derived from W*, are not.
+    if stats.timeline_impossible > 0 {
+        println!(
+            "NOTE: {} of the {} endings explored admit no timeline, and the counters above were \
+             raised on them too. violations={susp} and W* are upper bounds: re-run without \
+             --keep-going (exit 101 = the engine certified a counterexample) before quoting a \
+             VIOLATED verdict or a W*-derived threshold.",
+            stats.timeline_impossible,
+            stats.execs + stats.block + stats.timeline_impossible
+        );
+    }
     // Depending on the mode, the engine files a violating execution under
     // execs or under blocked; `completed` counts every judged execution.
     if comp == 0 {

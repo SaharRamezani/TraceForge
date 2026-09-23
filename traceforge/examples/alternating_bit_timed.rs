@@ -538,7 +538,7 @@ impl Bounds {
 
 fn sender(p: Params, main_tid: ThreadId) {
     let Init { receiver, .. } =
-        traceforge::recv_tagged_msg_block::<_, Init>(move |s, _tag| s == main_tid);
+        traceforge::recv_tagged_msg_block_timed::<_, Init>(move |s, _tag| s == main_tid);
 
     for i in 0..p.messages {
         let bit = (i % 2) as u8;
@@ -596,7 +596,7 @@ fn sender(p: Params, main_tid: ThreadId) {
 
 fn receiver(p: Params, main_tid: ThreadId) {
     let Init { sender, .. } =
-        traceforge::recv_tagged_msg_block::<_, Init>(move |s, _tag| s == main_tid);
+        traceforge::recv_tagged_msg_block_timed::<_, Init>(move |s, _tag| s == main_tid);
 
     let mut expected_bit: u8 = 0;
     let mut next: u32 = 0;

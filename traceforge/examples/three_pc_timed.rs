@@ -294,7 +294,7 @@ fn maybe_crash(crashes: bool) -> bool {
 
 fn coordinator(b: Bounds, crashes: bool, rounds: u32, inject: bool) {
     let ps: Vec<ThreadId> = loop {
-        match traceforge::recv_msg_block::<CMsg>() {
+        match traceforge::recv_msg_block_timed::<CMsg>() {
             CMsg::Init { peers } => break peers,
             _ => {}
         }

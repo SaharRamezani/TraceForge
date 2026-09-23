@@ -70,7 +70,7 @@ impl Bounds {
 }
 
 fn coordinator(b: Bounds, num_ps: u32, crashes: bool) {
-    let ps: Vec<ThreadId> = match traceforge::recv_msg_block::<CoordinatorMsg>() {
+    let ps: Vec<ThreadId> = match traceforge::recv_msg_block_timed::<CoordinatorMsg>() {
         CoordinatorMsg::Init(ids) => ids,
         _ => panic!("expected Init"),
     };
@@ -143,7 +143,7 @@ fn coordinator(b: Bounds, num_ps: u32, crashes: bool) {
 }
 
 fn participant(b: Bounds, num_ps: u32, index: u32, crashes: bool) {
-    let cid = match traceforge::recv_msg_block::<ParticipantMsg>() {
+    let cid = match traceforge::recv_msg_block_timed::<ParticipantMsg>() {
         ParticipantMsg::Prepare(id) => id,
         _ => panic!("expected Prepare"),
     };
@@ -162,7 +162,7 @@ fn participant(b: Bounds, num_ps: u32, index: u32, crashes: bool) {
     };
     traceforge::send_msg(cid, vote);
 
-    let action: ParticipantMsg = traceforge::recv_msg_block();
+    let action: ParticipantMsg = traceforge::recv_msg_block_timed();
 
     match action {
         ParticipantMsg::Abort => return,
@@ -177,7 +177,7 @@ fn participant(b: Bounds, num_ps: u32, index: u32, crashes: bool) {
     traceforge::sleep(b.delta * num_ps as u64);
     traceforge::send_msg(cid, CoordinatorMsg::Ack);
 
-    let action: ParticipantMsg = traceforge::recv_msg_block();
+    let action: ParticipantMsg = traceforge::recv_msg_block_timed();
     match action {
         // Atomicity: a participant that voted No must never observe
         // Commit. With the bug above this assertion can fire.
@@ -234,9 +234,13 @@ fn scenario(b: Bounds, num_ps: u32, crashes: bool) -> impl Fn() + Send + Sync + 
         for i in 0..num_ps {
             ps.push(thread::spawn(move || participant(b, num_ps, i, crashes)));
         }
-        traceforge::send_msg(
+        // Zero-transit handoff: read at 0 by the timed Init receive, as the
+        // untimed handshake was.
+        traceforge::send_msg_timed(
             c.thread().id(),
             CoordinatorMsg::Init(ps.iter().map(|h| h.thread().id()).collect()),
+            0,
+            0,
         );
     }
 }

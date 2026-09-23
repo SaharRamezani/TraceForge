@@ -96,7 +96,7 @@
 //!
 //! Threads: one per bridge (A, B, C) plus `main`, which only spawns them
 //! and sends each an `Init` with the peers' ThreadIds. Bridges read `Init`
-//! with the UNTIMED `recv_tagged_msg_block`, which the timed engine treats
+//! with the UNTIMED `recv_tagged_msg_block_timed`, which the timed engine treats
 //! as transparent, so every bridge clock starts at 0: the instant the
 //! cable comes up (link-up) or the start of observation (lost-hellos).
 //! Each point-to-point LAN is a direct channel between its two bridges;
@@ -644,7 +644,7 @@ fn sleep_until(now: &mut u64, t: u64) {
 
 fn read_init(main_tid: ThreadId) -> Init {
     // UNTIMED read: transparent for timing, so the clock stays at 0.
-    traceforge::recv_tagged_msg_block::<_, Init>(move |s, _tag| s == main_tid)
+    traceforge::recv_tagged_msg_block_timed::<_, Init>(move |s, _tag| s == main_tid)
 }
 
 // =====================================================================

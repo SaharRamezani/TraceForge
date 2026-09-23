@@ -287,7 +287,7 @@ impl Bounds {
 fn lock_service(main_tid: ThreadId, ttl: u64, rounds: u32) {
     // Setup handshake, sender-filtered so a racing Acquire cannot be
     // read in its place (the raft_leader_election Init idiom).
-    let clients = match traceforge::recv_tagged_msg_block::<_, SMsg>(move |s, _tag| s == main_tid)
+    let clients = match traceforge::recv_tagged_msg_block_timed::<_, SMsg>(move |s, _tag| s == main_tid)
     {
         SMsg::Init { clients } => clients,
         m => panic!("service: expected Init, got {m:?}"),
@@ -359,7 +359,7 @@ fn lock_service(main_tid: ThreadId, ttl: u64, rounds: u32) {
 
 fn client(main_tid: ThreadId, pause: u64, rounds: u32) {
     let (service, storage_tid) =
-        match traceforge::recv_tagged_msg_block::<_, CMsg>(move |s, _tag| s == main_tid) {
+        match traceforge::recv_tagged_msg_block_timed::<_, CMsg>(move |s, _tag| s == main_tid) {
             CMsg::Init { service, storage } => (service, storage),
             m => panic!("client: expected Init, got {m:?}"),
         };

@@ -57,22 +57,33 @@
 //!
 //! ## Timeout-validation assumptions (verification harness, NOT SWIM)
 //!
-//! The false-positive assertion sits on timeout branches, and the
-//! timeout branch (rf = None) of a finite-wait receive is by design
-//! always explorable, in either mode: taking it only means "the
-//! awaited message had not arrived by the deadline IN THIS BRANCH".
-//! Without further constraint the assertion would fire trivially at
-//! any parameters and the timed mode would have no content. The
+//! The false-positive assertion sits on timeout branches. Until
+//! 2026-09-21 the timeout branch (rf = None) of a finite-wait receive
+//! was unconstrained in timed mode, so without further constraint the
+//! assertion would have fired trivially at any parameters. The
 //! assume_* functions below therefore follow each property-relevant
 //! timeout with a BLOCKING timed receive for the very message the
 //! timer awaited: an assume("the message really was late here"). The
 //! read is feasible exactly when the message could genuinely arrive
 //! or be read after the deadline, so spurious timeouts become blocked
-//! (discarded) executions instead of false counterexamples. SWIM's
-//! prober performs no such read; this is checker scaffolding, kept
-//! out of the protocol logic. Costs: hold cells report blocked > 0 by
-//! design, and the suspicion timer anchors at the validation read,
-//! not the probe deadline (visible in the L = U boundary).
+//! (discarded) executions instead of false counterexamples.
+//!
+//! Since the timeout miss condition (C6b) the checker enforces that
+//! rule itself: a timeout is a real execution only where every
+//! message the receive could have taken missed its whole wait, judged
+//! when the execution is complete. The idiom is therefore no longer
+//! REQUIRED for soundness, but it is KEPT here on purpose: the
+//! validation read is part of the swept model and produces the
+//! max(0, 2L - W_PROBE) anchor term of the published law (the
+//! suspicion timer anchors at the validation read, not the probe
+//! deadline), so removing it would move the measured boundary at
+//! every cell with 2L > W_PROBE. SWIM's prober performs no such read;
+//! this is checker scaffolding, kept out of the protocol logic. Since
+//! (C6b) a spurious timeout is dropped at completion before the
+//! validation read can block on it, so hold cells at L = 0 now report
+//! blocked = 0 (the mini-SWIM pins in tests/timed_exact.rs moved from
+//! (2, 2) and (4, 6) to (2, 0) and (4, 0)); at L > 0 the read can
+//! still block for its own reasons.
 //!
 //! ## Safety properties (per-node assertions)
 //!
@@ -300,7 +311,7 @@ fn assume_refutation_was_late(target: ThreadId, floor: u64, round: u32) {
 
 fn prober(b: Bounds, rounds: u32, main_tid: ThreadId) {
     let Init { target, bystanders, .. } =
-        traceforge::recv_tagged_msg_block::<_, Init>(move |sender, _tag| sender == main_tid);
+        traceforge::recv_tagged_msg_block_timed::<_, Init>(move |sender, _tag| sender == main_tid);
 
     // The prober's current belief of the target's incarnation; rises
     // with every refutation it accepts (SWIM's incarnation ordering).
@@ -394,7 +405,7 @@ fn prober(b: Bounds, rounds: u32, main_tid: ThreadId) {
 
 fn target(main_tid: ThreadId) {
     let Init { prober, bystanders, .. } =
-        traceforge::recv_tagged_msg_block::<_, Init>(move |sender, _tag| sender == main_tid);
+        traceforge::recv_tagged_msg_block_timed::<_, Init>(move |sender, _tag| sender == main_tid);
     let mut incarnation: u64 = 0;
 
     loop {
@@ -442,7 +453,7 @@ fn target(main_tid: ThreadId) {
 
 fn bystander(b: Bounds, main_tid: ThreadId) {
     let Init { prober, target, .. } =
-        traceforge::recv_tagged_msg_block::<_, Init>(move |sender, _tag| sender == main_tid);
+        traceforge::recv_tagged_msg_block_timed::<_, Init>(move |sender, _tag| sender == main_tid);
 
     loop {
         // Idle until the prober disseminates something (SWIM sends
