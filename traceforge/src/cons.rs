@@ -750,9 +750,13 @@ impl Consistency {
         // rlab is stamp greater or equal that revisitee's stamp
         assert!(rlab.stamp() >= g.label(rev.pos).stamp());
 
-        // Nonblocking receives are maximal only when they timeout
+        // Nonblocking receives are maximal only when they hold their
+        // base outcome: the timeout (`base_rf` is `None` unless the
+        // timeout kill is on), else the first candidate of a visit at
+        // which the timeout was impossible, or the killer they were
+        // woken by.
         if rlab.is_non_blocking() {
-            return rlab.rf().is_none();
+            return rlab.rf() == rlab.base_rf();
         }
 
         // First (non-revisit) is the maximal one.
@@ -953,6 +957,23 @@ impl Consistency {
         timed: Option<&TimedConfig>,
     ) -> Vec<Event> {
         self.coherent_rfs_in_view(g, None, rlab, porf_override, true, timed)
+    }
+
+    /// The rf options `rlab` would be offered at a visit in the world
+    /// restricted to `view` (nothing excluded). Timeout kill: the
+    /// candidates of a receive re-visited in the cut world of its killer.
+    pub(crate) fn rfs_in_view(
+        &self,
+        g: &ExecutionGraph,
+        rlab: &RecvMsg,
+        view: &VectorClock,
+        porf_override: bool,
+        timed: Option<&TimedConfig>,
+    ) -> Vec<Event> {
+        // No concurrent-receive check: that one assumes rlab is the last
+        // event of its thread; here its continuation may still be in the
+        // graph (outside the view), as for the tiebreaker.
+        self.coherent_rfs_in_view(g, Some((view, &[])), rlab, porf_override, false, timed)
     }
 
     pub(crate) fn inbox_rfs(

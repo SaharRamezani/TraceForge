@@ -749,6 +749,13 @@ pub(crate) struct RecvMsg {
     ///   (blocking receive: timeout / `rf = ⊥` is inadmissible).
     #[serde(default)]
     wait: Option<WaitTime>,
+    /// Base outcome of a finite-wait timed receive under the timeout
+    /// kill (`Config::kill_dead_timeouts`): `None` = timeout, `Some(s)` =
+    /// the first candidate at the visit, or the killer after a kill.
+    /// Stays `None` when the kill is off, so the canonicity test
+    /// `rf == base_rf` reduces to the classic `rf.is_none()`.
+    #[serde(default)]
+    base_rf: Option<Event>,
 }
 
 impl RecvMsg {
@@ -767,6 +774,7 @@ impl RecvMsg {
             non_blocking,
             revisitable: true,
             wait: None,
+            base_rf: None,
         }
     }
 
@@ -789,6 +797,7 @@ impl RecvMsg {
             non_blocking,
             revisitable: true,
             wait: Some(wait),
+            base_rf: None,
         }
     }
 
@@ -804,6 +813,14 @@ impl RecvMsg {
 
     pub(crate) fn set_rf(&mut self, rf: Option<Event>) {
         self.rf = rf
+    }
+
+    pub(crate) fn base_rf(&self) -> Option<Event> {
+        self.base_rf
+    }
+
+    pub(crate) fn set_base_rf(&mut self, base: Option<Event>) {
+        self.base_rf = base
     }
 
     pub(crate) fn is_non_blocking(&self) -> bool {

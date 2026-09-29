@@ -50,6 +50,7 @@ const SUPPRESSED_SPURIOUS: &str = "suppressed_spurious";
 /// count as neither exec nor block. Under the explore-then-judge design
 /// of (C6b) this is the cost of keeping the timeout branch in the tree.
 const TIMELINE_IMPOSSIBLE: &str = "timeline_impossible";
+const KILLED: &str = "killed";
 
 macro_rules! cast {
     ($target: expr, $pat: path) => {{
@@ -90,6 +91,12 @@ pub struct MustState {
     /// and deserialization of pre-field replay states (serde default).
     #[serde(default = "arm_completion_check")]
     timed_completion_check: bool,
+    /// This execution was stopped at a timeout kill
+    /// (`Config::kill_dead_timeouts`): its ending is counted as nothing
+    /// and its remaining worklist is still drained. Cleared when a
+    /// revisit re-enters a live world from this state.
+    #[serde(default)]
+    killed: bool,
 }
 
 fn arm_completion_check() -> bool {
@@ -108,6 +115,7 @@ impl MustState {
             graph: ExecutionGraph::new(),
             rqueue: RQueue::new(),
             timed_completion_check: true,
+            killed: false,
         }
     }
 }
@@ -218,6 +226,7 @@ impl Must {
         let _ = telemetry.register_counter(&BLOCKED.to_owned());
         let _ = telemetry.register_counter(&SUPPRESSED_SPURIOUS.to_owned());
         let _ = telemetry.register_counter(&TIMELINE_IMPOSSIBLE.to_owned());
+        let _ = telemetry.register_counter(&KILLED.to_owned());
         let _ = telemetry.register_histogram(&EXECS_EST.to_owned());
 
         Self {
@@ -265,6 +274,7 @@ impl Must {
         let _ = self.telemetry.register_counter(&BLOCKED.to_owned());
         let _ = self.telemetry.register_counter(&SUPPRESSED_SPURIOUS.to_owned());
         let _ = self.telemetry.register_counter(&TIMELINE_IMPOSSIBLE.to_owned());
+        let _ = self.telemetry.register_counter(&KILLED.to_owned());
         let _ = self.telemetry.register_histogram(&EXECS_EST.to_owned());
         self.frozen_thread_index_map = None;
         self.thread_index_map.clear();
@@ -425,6 +435,7 @@ impl Must {
         let _ = self.telemetry.register_counter(&BLOCKED.to_owned());
         let _ = self.telemetry.register_counter(&SUPPRESSED_SPURIOUS.to_owned());
         let _ = self.telemetry.register_counter(&TIMELINE_IMPOSSIBLE.to_owned());
+        let _ = self.telemetry.register_counter(&KILLED.to_owned());
         let _ = self.telemetry.register_histogram(&EXECS_EST.to_owned());
         // Note: frozen_thread_index_map, thread_index_map, next_thread_index,
         // config, rng are intentionally NOT reset — they are either set
@@ -468,6 +479,7 @@ impl Must {
                 graph,
                 rqueue,
                 timed_completion_check: true,
+                killed: false,
             });
         }
     }
@@ -789,8 +801,109 @@ impl Must {
             )
         }
 
+        // Timeout kill (`Config::kill_dead_timeouts`): a matching
+        // finite-wait receive that timed out, and whose timeout has no
+        // timeline left in the world `r <- s` would cut to (Csys
+        // infeasible while Cexp is feasible, so the miss obligation
+        // and not channel poison is what fails), was killed by this
+        // send. Its revisit is marked so the woken receive takes over
+        // as the launcher of later revisits, and this execution stops:
+        // its ending admits no timeline, and every world it could still
+        // launch is reachable from the woken one.
         self.calc_revisits(pos);
         self.current.graph.register_send(&spos);
+
+        // Timeout kill (`Config::kill_dead_timeouts`). The probe runs
+        // after registration: the miss groups are collected from the
+        // sends cache, so before it this send would carry none.
+        //
+        // A matching finite-wait receive that timed out is killed by this
+        // send when, in the world `r <- s` cuts to (its prefix plus the
+        // causal past of s), Cexp is feasible and Csys is not: the miss
+        // obligation, not channel poison, is what fails. The replacement
+        // is the world a sender-first schedule produces: that cut with r
+        // visited again, reading its first candidate there (not
+        // necessarily s: on an ordered channel s may sit behind an
+        // earlier unread message). Only the earliest killed receive is
+        // replaced; every later one lies inside its cut and runs again.
+        // The replacement is launched only from the canonical parent of
+        // that cut (every deleted event in its base state), as any
+        // backward revisit; otherwise, or with no candidate in the cut,
+        // this execution continues as the reference does.
+        let mut replaced = false;
+        if self.config.kill_dead_timeouts
+            && self.config.mode == ExplorationMode::Verification
+            && !self.replay_info.replay_mode()
+        {
+            if let Some(cfg) = self.config.timed.as_ref() {
+                let g = &self.current.graph;
+                let slab = g.send_label(pos).unwrap();
+                let mut dead: Vec<(usize, Event)> = Vec::new();
+                for rl in g.rev_matching_recvs(slab) {
+                    let RecvLike::RecvMsg(r) = rl else { continue };
+                    // Mailbox receives are excluded: their channel
+                    // coherence is checked after the fact by is_consistent,
+                    // not by the timed constraint system, so the kill could
+                    // not establish that its replacement world is real.
+                    if !r.is_non_blocking()
+                        || !matches!(r.wait(), Some(crate::WaitTime::Finite(_)))
+                        || r.comm() == crate::loc::CommunicationModel::TotalOrder
+                        || r.rf().is_some()
+                        || slab.porf().contains(r.pos())
+                        || self.is_monitor(&r.pos())
+                    {
+                        continue;
+                    }
+                    let view = g.revisit_view(&Revisit::new(r.pos(), pos));
+                    let exp_ok =
+                        crate::timed_dcs::TimedDcs::build_opts(g, cfg, Some(&view), None, false)
+                            .base_feasible();
+                    if exp_ok && !crate::timed_dcs::TimedDcs::graph_feasible(g, cfg, Some(&view)) {
+                        dead.push((r.stamp(), r.pos()));
+                    }
+                }
+                if let Some(&(_, rpos)) = dead.iter().min() {
+                    let rev = Revisit::new(rpos, pos);
+                    let rlab = g.recv_label(rpos).unwrap();
+                    let canonical =
+                        self.is_maximal_recv(rlab, &rev) && self.is_maximal_extension(&rev);
+                    let view = g.revisit_view(&rev);
+                    let has_candidate = canonical
+                        && !self
+                            .checker
+                            .rfs_in_view(g, rlab, &view, self.is_monitor(&rpos), self.timed_for_views())
+                            .is_empty();
+                    if !canonical {
+                        info!("[kill] unreplaced(non-canonical) recv {} send {}", rpos, pos);
+                    } else if !has_candidate {
+                        info!("[kill] unreplaced(no-candidate) recv {} send {}", rpos, pos);
+                    } else {
+                        replaced = true;
+                        let stamp = slab.stamp();
+                        // The re-visit offers every candidate, s included
+                        // when it is one, so the plain `r <- s` goes.
+                        if let Some(items) = self.current.rqueue.get_mut(&stamp) {
+                            items.retain(|it| {
+                                !matches!(it, RevisitEnum::BackwardRevisit(b)
+                                    if b.pos == rpos && matches!(b.rev, RevisitPlacement::Default(x) if x == pos))
+                            });
+                        }
+                        let mut kill = Revisit::new(rpos, pos);
+                        kill.kill = true;
+                        push_worklist(&mut self.current.rqueue, stamp, RevisitEnum::BackwardRevisit(kill));
+                        info!(
+                            "[kill] send {} makes the timeout of {} impossible; stopping this execution",
+                            pos, rpos
+                        );
+                    }
+                }
+            }
+        }
+        if replaced {
+            self.current.killed = true;
+            self.block_exec(BlockType::Assume);
+            self.stop();
+        }
 
         // stuck is only used during replay
         assert!(stuck.is_empty());
@@ -1775,6 +1888,16 @@ impl Must {
     }
 
     fn record_ending_telemetry(&mut self, maybe_block: &Option<BlockType>) -> bool {
+        if self.current.killed {
+            // Stopped at a timeout kill: the ending admits no timeline
+            // and the woken world took over its launches (handle_send).
+            self.telemetry.counter(KILLED.to_owned());
+            if self.config.verbose >= 2 {
+                println!("One execution stopped at a timeout kill (not counted)");
+                println!("{}", self.print_graph(None));
+            }
+            return false;
+        }
         // Deferred assert certification: the graph is complete now, so
         // the feasibility verdict is schedule independent (see the
         // pending_asserts field doc). May panic on a certified
@@ -2013,6 +2136,10 @@ impl Must {
         // generate a counterexample if they panic. OTOH, the callbacks should not.
         // A monitor provides a general solution for generating a counterexample at the end of
         // an execution.
+        // An execution stopped at a timeout kill is not a behaviour (it
+        // admits no timeline and is counted as nothing), so observers do
+        // not see its partial run; its coverage is still cleaned up.
+        let stopped_at_kill = self.current.killed;
         for cb in &mut self
             .config
             .callbacks
@@ -2020,6 +2147,9 @@ impl Must {
             .expect("Could not lock callbacks")
             .iter_mut()
         {
+            if stopped_at_kill {
+                continue;
+            }
             cb.after(
                 self.telemetry.coverage.current_eid(),
                 condition,
@@ -2062,6 +2192,40 @@ impl Must {
                     }
                     return self.current.graph.val_copy(pos);
                 } else {
+                    // Timeout kill at the visit (`Config::kill_dead_timeouts`):
+                    // when no timeline lets this receive miss every
+                    // message already present (Csys infeasible while Cexp
+                    // is feasible), the first candidate is its base outcome
+                    // and the others are siblings; no timeout branch exists.
+                    let kill_at_visit = self.config.kill_dead_timeouts
+                        && !self.replay_info.replay_mode()
+                        && !self.is_monitor(&pos)
+                        && self.current.graph.recv_label(pos).unwrap().comm()
+                            != crate::loc::CommunicationModel::TotalOrder
+                        && self.config.timed.as_ref().is_some_and(|cfg| {
+                            let g = &self.current.graph;
+                            crate::timed_dcs::TimedDcs::build_opts(g, cfg, None, None, false)
+                                .base_feasible()
+                                && !crate::timed_dcs::TimedDcs::graph_feasible(g, cfg, None)
+                        });
+                    if kill_at_visit {
+                        info!(
+                            "[kill] timeout of {} impossible at its visit; base read {}",
+                            pos, rfs[0]
+                        );
+                        self.current.graph.change_rf(pos, Some(rfs[0]));
+                        if let LabelEnum::RecvMsg(rl) = self.current.graph.label_mut(pos) {
+                            rl.set_base_rf(Some(rfs[0]));
+                        }
+                        rfs.iter().skip(1).for_each(|&rf| {
+                            push_worklist(
+                                &mut self.current.rqueue,
+                                self.current.graph.label(pos).stamp(),
+                                RevisitEnum::new_forward(pos, rf),
+                            );
+                        });
+                        return self.current.graph.val_copy(pos);
+                    }
                     rfs.iter().for_each(|&rf| {
                         push_worklist(
                             &mut self.current.rqueue,
@@ -2516,7 +2680,7 @@ impl Must {
                         )
                         && self.is_maximal_extension(&rev)
                     {
-                        revs.push(RevisitEnum::BackwardRevisit(Revisit::new(r.pos(), pos)));
+                        revs.push(RevisitEnum::BackwardRevisit(rev));
                     }
                 }
                 RecvLike::Inbox(i) => {
@@ -3193,6 +3357,9 @@ impl Must {
                 RevisitEnum::ForwardRevisit(r) => self.forward_revisit(r),
                 RevisitEnum::BackwardRevisit(r) => self.backward_revisit(r),
             } {
+                // A revisit re-enters a live world; the kill mark
+                // belonged to the ending just discarded.
+                self.current.killed = false;
                 return true;
             }
         }
@@ -3368,6 +3535,54 @@ impl Must {
             rev
         );
         let v = self.current.graph.revisit_view(rev);
+        // Timeout kill: the stopped timeout world is replaced by the
+        // world a sender-first schedule would have produced (killer
+        // before the receive), and the replacement inherits the stopped
+        // world's WHOLE worklist, so a later kill that cuts below this
+        // receive can still take over what is pending. Items below the
+        // receive apply to the same world either way (the new world keeps
+        // every event up to the receive). Above it, items of events the
+        // cut keeps (the killer's causal prefix) move over; items of
+        // events the cut deletes are regenerated when the events are
+        // re-added, and the receive's own siblings are re-pushed at its
+        // re-visit below: both are dropped, or a world would have two
+        // parents.
+        let moved: RQueue = if rev.kill {
+            let r_stamp = self.current.graph.label(rev.pos).stamp();
+            let survives = |it: &RevisitEnum| match it {
+                RevisitEnum::ForwardRevisit(f) => v.contains(f.pos),
+                RevisitEnum::BackwardRevisit(b) => {
+                    // The target must survive the cut too: a deleted
+                    // receive is re-executed and asks again.
+                    b.pos != rev.pos
+                        && v.contains(b.pos)
+                        && match &b.rev {
+                            RevisitPlacement::Default(s) => v.contains(*s),
+                            RevisitPlacement::Inbox(Some(ss)) => ss.iter().all(|s| v.contains(*s)),
+                            _ => false,
+                        }
+                }
+            };
+            std::mem::take(&mut self.current.rqueue)
+                .into_iter()
+                .filter_map(|(stamp, items)| {
+                    if stamp < r_stamp {
+                        return Some((stamp, items));
+                    }
+                    if stamp == r_stamp {
+                        return None;
+                    }
+                    let kept: Vec<RevisitEnum> = items.into_iter().filter(survives).collect();
+                    if kept.is_empty() {
+                        None
+                    } else {
+                        Some((stamp, kept))
+                    }
+                })
+                .collect()
+        } else {
+            RQueue::new()
+        };
         let mut ng = self.current.graph.copy_to_view(&v);
         // If any send's reader was set to the revisited receive via
         // cancelled_recv_readers fallback, update it before change_rf.
@@ -3376,11 +3591,70 @@ impl Must {
         self.push_state();
         self.current.graph = ng;
 
-        self.mark_prefix_non_revisitable(rev.rev.clone());
+        // The re-visit's candidate list, computed while the receive still
+        // holds its timeout (the killer is one candidate, the rest are
+        // pushed as siblings once the killer is committed).
+        let siblings: Vec<Event> = if rev.kill {
+            let mut rfs = self.checker.rfs(
+                &self.current.graph,
+                self.current.graph.recv_label(rev.pos).unwrap(),
+                self.is_monitor(&rev.pos),
+                self.timed_for_views(),
+            );
+            self.filter_symmetric_rfs(&mut rfs, rev.pos);
+            self.filter_timed_consistent_rfs(&mut rfs, rev.pos);
+            rfs
+        } else {
+            Vec::new()
+        };
+
+        if rev.kill {
+            // The killer's prefix stays revisitable: the receive is
+            // re-inserted after the killer, so a revisit there removes
+            // the receive too, and no read is left dangling.
+            self.current.rqueue = moved;
+        } else {
+            self.mark_prefix_non_revisitable(rev.rev.clone());
+        }
 
         // println!("After marking prefix");
 
-        self.change_rf(rev);
+        if rev.kill {
+            // Re-visit in the cut world: the first candidate is the base
+            // (the timeout is impossible there by construction).
+            debug_assert!(!siblings.is_empty(), "kill without a candidate in its cut");
+            let RevisitPlacement::Default(killer) = rev.rev else { unreachable!() };
+            let base = siblings.first().copied().unwrap_or(killer);
+            self.current.graph.change_rf(rev.pos, Some(base));
+        } else {
+            self.change_rf(rev);
+        }
+
+        if rev.kill {
+            // The woken receive reads its killer as its base outcome and
+            // is re-inserted after it (fresh stamp, as a woken block gets
+            // from re-execution); its other candidates are its siblings,
+            // exactly as at a visit where the timeout is impossible.
+            let (base, pos) = {
+                let r = self.current.graph.recv_label(rev.pos).unwrap();
+                (r.rf(), r.pos())
+            };
+            self.current.graph.restamp_last(pos);
+            if let LabelEnum::RecvMsg(rl) = self.current.graph.label_mut(pos) {
+                rl.set_base_rf(base);
+            }
+            let new_stamp = self.current.graph.label(pos).stamp();
+            for rf in siblings {
+                if Some(rf) != base {
+                    push_worklist(
+                        &mut self.current.rqueue,
+                        new_stamp,
+                        RevisitEnum::new_forward(pos, rf),
+                    );
+                }
+            }
+            info!("[kill] {} woken by {:?}, re-inserted last", pos, base);
+        }
 
         // println!("After change rf");
 
@@ -3517,6 +3791,7 @@ impl Must {
                 .telemetry
                 .read_counter(TIMELINE_IMPOSSIBLE.into())
                 .unwrap_or(0) as usize,
+            killed: self.telemetry.read_counter(KILLED.into()).unwrap_or(0) as usize,
             coverage: self.telemetry.coverage.export_aggregate().into(),
             max_graph_events: self.max_graph_events,
         }
@@ -3930,18 +4205,42 @@ fn pop_worklist(worklist: &mut RQueue, is_arbitrary: bool, rng: &mut Pcg64Mcg) -
             .iter_mut()
             .next_back()
             .expect("worklist is not empty");
-        if !is_arbitrary {
+        // A timeout kill replaces the world it was enqueued from and
+        // takes over the other alternatives at its stamp (see
+        // backward_revisit), so it pops before them under every policy.
+        let kill_idx = revs
+            .iter()
+            .position(|r| matches!(r, RevisitEnum::BackwardRevisit(b) if b.kill));
+        if let Some(idx) = kill_idx {
+            let rev = revs.remove(idx);
+            (*stamp, rev, revs.is_empty())
+        } else if !is_arbitrary {
             let rev = revs.pop().unwrap();
             (*stamp, rev, revs.is_empty())
         } else {
             // Choose randomly from alternatives at the highest stamp.
             // BlockInstead converts the label kind at its position, so
             // it may only pop once it is the last alternative there.
+            // A lossy send's drop sibling (forward, init placement) marks
+            // the send dropped in the current graph, and the backward
+            // revisits that send launched share its stamp and copy that
+            // graph: popped before them, it made a receive read a dropped
+            // send (LTR is safe only because the drop is pushed first).
+            // So it waits until no backward revisit is left there.
+            let has_backward = revs
+                .iter()
+                .any(|r| matches!(r, RevisitEnum::BackwardRevisit(_)));
             let eligible: Vec<usize> = revs
                 .iter()
                 .enumerate()
                 .filter(|(_, r)| {
                     !matches!(r.rev(), crate::revisit::RevisitPlacement::BlockInstead)
+                        && !(has_backward
+                            && matches!(
+                                r,
+                                RevisitEnum::ForwardRevisit(f)
+                                    if matches!(f.rev, RevisitPlacement::Default(e) if e == Event::new_init())
+                            ))
                 })
                 .map(|(i, _)| i)
                 .collect();

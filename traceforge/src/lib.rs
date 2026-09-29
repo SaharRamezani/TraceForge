@@ -95,6 +95,11 @@ pub struct Stats {
     /// during the wait is one of these: its program side effects happen,
     /// then it is excluded from every count.
     pub timeline_impossible: usize,
+    /// Executions stopped at a timeout kill (`Config::kill_dead_timeouts`):
+    /// the timeout world was cut the moment a message made the timeout
+    /// impossible, before its ending. Counted as nothing, like
+    /// `timeline_impossible`, but without exploring the dead subtree.
+    pub killed: usize,
     // Aggregate coverage information
     pub coverage: CoverageInfo,
     /// Maximum number of events across all execution graphs (complete or blocked)
@@ -106,6 +111,7 @@ impl Stats {
         self.execs += rhs.execs;
         self.block += rhs.block;
         self.timeline_impossible += rhs.timeline_impossible;
+        self.killed += rhs.killed;
         self.coverage.merge(&rhs.coverage);
         if rhs.max_graph_events > self.max_graph_events {
             self.max_graph_events = rhs.max_graph_events;
@@ -286,6 +292,17 @@ pub struct Config {
     /// the reason (timed-inconsistent or symmetric-duplicate).
     #[serde(default)]
     pub(crate) prune_log_file: Option<String>,
+
+    /// Timeout kill (experimental, timed configs only): a finite-wait
+    /// receive's timeout branch is not explored once no timeline lets
+    /// the receive miss every message present. At the visit the first
+    /// candidate becomes the base outcome; a later killing send stops
+    /// the timeout world and the woken receive (reading its killer)
+    /// takes over as the launcher of later revisits. Off by default:
+    /// the reference behaviour explores the dead world to completion
+    /// and discards it (`Stats::timeline_impossible`).
+    #[serde(default)]
+    pub(crate) kill_dead_timeouts: bool,
     #[serde(skip)]
     pub(crate) callbacks: Arc<Mutex<Vec<Box<dyn ExecutionObserver + Send>>>>,
 
@@ -362,6 +379,7 @@ impl ConfigBuilder {
             pretty_graph_printing: false,
             timed: None,
             prune_log_file: None,
+            kill_dead_timeouts: false,
             callbacks: Arc::new(Mutex::new(Vec::new())),
             #[cfg(feature = "symbolic")]
             symbolic: false,
@@ -523,6 +541,13 @@ impl ConfigBuilder {
     /// Requires `l <= u`.
     pub fn with_timed(mut self, l: u64, u: u64, sd: u64) -> Self {
         self.0.timed = Some(TimedConfig::new(l, u, sd));
+        self
+    }
+
+    /// Enables the timeout kill (see `Config::kill_dead_timeouts`).
+    /// Only meaningful together with [`ConfigBuilder::with_timed`].
+    pub fn with_kill_dead_timeouts(mut self, b: bool) -> Self {
+        self.0.kill_dead_timeouts = b;
         self
     }
 
