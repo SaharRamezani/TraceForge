@@ -209,6 +209,11 @@ const DEFAULT_ROUNDS: u32 = 1;
 // never satisfy the current holder's Release wait.
 const TAG_ACQ: u32 = 1;
 const TAG_INIT: u32 = 3;
+// Service -> client messages are tagged too: every send may be lost, so
+// after a dropped Grant the service times out, finishes the round and
+// sends the next RoundStart, which an untagged Grant read would take.
+const TAG_GRANT: u32 = 4;
+const TAG_ROUND: u32 = 5;
 const TAG_REL_BASE: u32 = 1000;
 
 fn rel_tag(token: u64) -> u32 {
@@ -298,7 +303,7 @@ fn lock_service(main_tid: ThreadId, ttl: u64, rounds: u32) {
         // (a) Open the round. RoundStart r+1 is only sent after every
         // round-r lease resolved, so rounds never overlap here.
         for c in &clients {
-            traceforge::send_msg(*c, CMsg::RoundStart { round });
+            traceforge::send_tagged_msg(*c, TAG_ROUND, CMsg::RoundStart { round });
         }
 
         // (b) Drain: accept and queue this round's C concurrent
@@ -329,7 +334,7 @@ fn lock_service(main_tid: ThreadId, ttl: u64, rounds: u32) {
         // the local queue, not from a message read, so the expiry path
         // can never be timed-infeasible.
         for holder in queue {
-            traceforge::send_msg(holder, CMsg::Grant { token });
+            traceforge::send_tagged_msg(holder, TAG_GRANT, CMsg::Grant { token });
             GRANTS.fetch_add(1, Ordering::Relaxed);
 
             let outcome: Option<SMsg> = traceforge::recv_tagged_msg_timed(
@@ -366,10 +371,13 @@ fn client(main_tid: ThreadId, pause: u64, rounds: u32) {
     let me = thread::current().id();
 
     for round in 0..rounds {
-        // The service channel strictly alternates RoundStart, Grant
-        // (FIFO), so each blocking read below sees exactly the
-        // expected variant.
-        match traceforge::recv_tagged_msg_block_timed::<_, CMsg>(move |s, _tag| s == service) {
+        // RoundStart and Grant carry their own tags: with every send
+        // lossy a Grant may be dropped and the next RoundStart follow, so
+        // each read selects its variant by tag. A client whose Grant or
+        // RoundStart was lost blocks here (a blocked ending).
+        match traceforge::recv_tagged_msg_block_timed::<_, CMsg>(move |s, tag| {
+            s == service && tag == Some(TAG_ROUND)
+        }) {
             CMsg::RoundStart { round: r } => {
                 if r != round {
                     panic!("client: RoundStart{{{r}}} in round {round}");
@@ -386,8 +394,8 @@ fn client(main_tid: ThreadId, pause: u64, rounds: u32) {
         // The Grant always arrives eventually (the service grants
         // every queued Acquire), so a blocking timed recv is safe: the
         // client starts waiting before the Grant is sent.
-        let token = match traceforge::recv_tagged_msg_block_timed::<_, CMsg>(move |s, _tag| {
-            s == service
+        let token = match traceforge::recv_tagged_msg_block_timed::<_, CMsg>(move |s, tag| {
+            s == service && tag == Some(TAG_GRANT)
         }) {
             CMsg::Grant { token } => token,
             m => panic!("client: expected Grant, got {m:?}"),

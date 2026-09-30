@@ -795,7 +795,13 @@ impl ConfigBuilder {
     }
 
     /// Consumes the builder and produces the [`Config`]
-    pub fn build(self) -> Config {
+    pub fn build(mut self) -> Config {
+        // Benchmark harnesses: TF_PROGRESS=N prints a progress line every
+        // N executions even where the program switched progress off, so
+        // a run killed at a deadline still reports how far it got.
+        if let Some(n) = std::env::var("TF_PROGRESS").ok().and_then(|v| v.parse().ok()) {
+            self.0.progress_report = n;
+        }
         self.check_valid().0
     }
 }
@@ -824,6 +830,14 @@ where
         stats
     };
     timed_dcs::prof::dump();
+    // Benchmark harnesses: one machine-readable line with the counters
+    // the examples do not all print (set TF_PRINT_STATS=1).
+    if std::env::var_os("TF_PRINT_STATS").is_some() {
+        eprintln!(
+            "TFSTATS execs={} blocked={} timeline_impossible={} pruned={}",
+            stats.execs, stats.block, stats.timeline_impossible, stats.pruned
+        );
+    }
     stats
 }
 
