@@ -14,7 +14,7 @@ Axes captured per cell (see README.md):
   4. leaders_elected_total / no_leader_execs  -- leader-election protocols only
 
 Nothing here changes protocol logic. Only the binaries' own CLI flags are used.
-3PC and 3PC-buggy require the (config-only) --l-ratio/--sd-ratio flags; the driver
+3PC requires the (config-only) --l-ratio/--sd-ratio flags; the driver
 detects whether those flags are accepted and marks the L/sd axis "not-run" if not.
 """
 import argparse, csv, os, re, resource, subprocess, sys, time
@@ -151,25 +151,6 @@ def cells_3pc(nodes_list, l_sd_supported):
                                       cmd=cmd))
     return cells
 
-def cells_3pc_buggy(nodes_list, l_sd_supported):
-    cells = []
-    for N in nodes_list:
-        lrs = L_RATIOS if l_sd_supported else [0.0]
-        srs = SD_RATIOS if l_sd_supported else [0.0]
-        for lr in lrs:
-            for sr in srs:
-                for wr in W_RATIOS:
-                    base = [os.path.join(BIN, "three_pc_timed_buggy"),
-                            "--participants", str(N), "--u", str(U), "--w-ratio", str(wr)]
-                    if l_sd_supported:
-                        base += ["--l-ratio", str(lr), "--sd-ratio", str(sr)]
-                    cmd = base + ["--mode", "timed"]
-                    baseline_cmd = base + ["--mode", "baseline"]
-                    cells.append(dict(protocol="three_pc_timed_buggy", N=N, l_over_u=lr,
-                                      sd_over_u=sr, w_over_u=wr, kind="3pc_buggy",
-                                      cmd=cmd, baseline_cmd=baseline_cmd))
-    return cells
-
 def cells_raft_timed(nodes_list, deltas, rounds_list):
     """raft TIMED-only cells (no baseline -> no pruning ratio). For N>=5 where the
     baseline subset-enumeration is intractable; still gives verdict + LE outcome."""
@@ -295,38 +276,6 @@ def do_cell(cell, timeout, mem_gb):
             row["no_leader_execs"] = bl if bl is not None else ""
         return row
 
-    if kind == "3pc_buggy":
-        row["mode"] = "compare"  # we run BOTH baseline (untimed) and timed invocations
-        row["leaders_elected_total"] = "—"; row["no_leader_execs"] = "—"
-        row["pruning_x"] = "n/a"  # both runs fire -> no exec counts to ratio
-
-        # timed run already executed at top of do_cell (cell["cmd"] has --mode timed)
-        if ec == 0:
-            tex, tbl = parse_single_execs(out)
-        else:
-            tex, tbl = "", ""
-        row["verdict"] = ("timeout" if status == "timeout" else
-                          "oom" if status == "oom" else
-                          "hold" if ec == 0 else "FIRE" if ec == 101 else f"err(ec={ec})")
-        row["execs"] = tex if (ec == 0 and tex is not None) else ""
-        row["block"] = tbl if (ec == 0 and tbl is not None) else ""
-        if row["verdict"] not in ("hold",): _log(tag, out)
-
-        # baseline (untimed MUST) run -- the comparison point
-        b_ec, b_out, b_wall, b_status = run(cell["baseline_cmd"], timeout, mem_gb)
-        if b_status == "timeout": row["baseline_verdict"] = "timeout"
-        elif b_status == "oom":   row["baseline_verdict"] = "oom"
-        elif b_ec == 0:
-            bex, bbl = parse_single_execs(b_out)
-            row["baseline_verdict"] = "hold"
-            row["baseline_execs"] = bex if bex is not None else ""
-            row["baseline_block"] = bbl if bbl is not None else ""
-        elif b_ec == 101:
-            row["baseline_verdict"] = "FIRE"
-        else:
-            row["baseline_verdict"] = f"err(ec={b_ec})"
-        return row
-
     raise ValueError(kind)
 
 def _log(tag, out):
@@ -351,8 +300,6 @@ def build_cells(which):
         cells += cells_raft([5], [1, 2, 3], [1])
     if "3pc" in which:
         cells += cells_3pc([3], l_sd_supported=detect_lsd("three_pc_timed"))
-    if "3pc_buggy" in which:
-        cells += cells_3pc_buggy([3], l_sd_supported=detect_lsd("three_pc_timed_buggy"))
     if "3pc4" in which:
         cells += cells_3pc([4], l_sd_supported=detect_lsd("three_pc_timed"))
     if "comm_closed5" in which:
@@ -401,7 +348,7 @@ def detect_lsd(binname):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--which", required=True,
-                    help="comma list: comm_closed,comm_closed_inbox,raft,3pc,3pc_buggy,raft5,comm_closed5,inbox_n45,ccle_b2")
+                    help="comma list: comm_closed,comm_closed_inbox,raft,3pc,raft5,comm_closed5,inbox_n45,ccle_b2")
     ap.add_argument("--out", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "results.csv"))
     ap.add_argument("--jobs", type=int, default=2)
     ap.add_argument("--timeout", type=int, default=600)

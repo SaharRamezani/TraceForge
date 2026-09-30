@@ -46,7 +46,6 @@ REGIMES = [
 # (protocol, label, outcome) where outcome = "le" (elected/no-leader) | "commit" (commit/abort)
 GRID_PROTOS = [
     ("three_pc_timed",                    "3PC (correct)",          "commit"),
-    ("three_pc_timed_buggy",              "3PC (buggy)",            "commit"),
     ("comm_closed_leader_election",       "Comm-closed LE",         "le"),
     ("comm_closed_leader_election_inbox", "Comm-closed LE (inbox)", "le"),
 ]
@@ -82,13 +81,7 @@ def make_regime_table():
             trip = "(%.2g, %.2g, %d)" % (lr, sr, wr)
             if x is None:
                 out.append(r"%s %s & %s & --- & --- & --- & --- & --- \\" % (tag, "", trip)); continue
-            # buggy: both runs fire, so show base/timed verdicts together
-            if proto == "three_pc_timed_buggy":
-                bv = {"hold": r"\textsf{h}", "FIRE": r"\textbf{F}"}.get(x.get("baseline_verdict",""), tex_escape(x.get("baseline_verdict","?")))
-                tv = {"hold": r"\textsf{h}", "FIRE": r"\textbf{F}"}.get(x["verdict"], tex_escape(x["verdict"]))
-                verdict = r"base=%s/timed=%s" % (bv, tv)
-            else:
-                verdict = {"hold": r"\textsf{hold}", "FIRE": r"\textbf{FIRE}"}.get(x["verdict"], tex_escape(x["verdict"]))
+            verdict = {"hold": r"\textsf{hold}", "FIRE": r"\textbf{FIRE}"}.get(x["verdict"], tex_escape(x["verdict"]))
             execs = x["execs"] if x["execs"] != "" else "---"
             bexecs = x.get("baseline_execs", "") or "---"
             prune = fmt2(x["pruning_x"]) if x["pruning_x"] not in ("", None) else "---"
@@ -187,21 +180,6 @@ def make_stability():
         h4 = sum(1 for x in c4 if x["verdict"] == "hold")
         out.append(f"- **N-scaling:** at N=4 (60-cell grid, tail) safety still HOLDS in all {h4}/{len(c4)} cells and pruning "
                    f"jumps to **{min(pr4):.1f}x .. {max(pr4):.1f}x** -- the timed model's advantage grows with N.")
-    out.append("")
-
-    # 3PC buggy
-    b = proto_rows("three_pc_timed_buggy")
-    fires = sum(1 for x in b if x["verdict"] == "FIRE")
-    bfires = sum(1 for x in b if x.get("baseline_verdict") == "FIRE")
-    out.append(f"## 3PC (buggy) -- the safety-bug witness")
-    out.append(f"- The injected majority-commit bug **FIRES in all {fires}/{len(b)} cells under MUST-tau (timed)** AND in "
-               f"all {bfires}/{len(b)} cells under untimed MUST (baseline) -- L and sd are now correctly threaded into the "
-               f"timed run (the L/U axis varies 0..0.9, sd/U 0..0.5, W/U 2..10).")
-    out.append(f"- **Honest finding:** this bug is NOT timing-gated within the section-7 grid -- it is a pure logic error "
-               f"(a No-voter can receive Commit whenever the coordinator sees a majority of Yes), so **both** the timed and "
-               f"the untimed checker find it in every regime. It is a safety bug the timed model reliably catches, but NOT "
-               f"an example of a 'timing-only' bug that an untimed checker would miss. (No fire-vs-hold variation across the "
-               f"grid; verify the corrected L/sd threading in `results.csv`.)")
     out.append("")
 
     # comm-closed (both)

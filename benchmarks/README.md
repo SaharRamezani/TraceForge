@@ -65,7 +65,6 @@ fabricate or hand-compute any WCRT number.
 | protocol | grid? | how |
 |---|---|---|
 | `three_pc_timed` (correct) | **full 60-cell** | `--u 20 --w-ratio R --l-ratio LR --sd-ratio SR` (config edit, below) |
-| `three_pc_timed_buggy` | **full 60-cell** | same flags |
 | `comm_closed_leader_election` | **full 60-cell** | native `--u 20 --w W --l L --sd SD` (no edit) |
 | `comm_closed_leader_election_inbox` | **full 60-cell** | native (no edit) |
 | `raft_leader_election` | **native axes** | U=1 fixed, `sd=(N-1)·delta`, no recv-timeout W → the W/U grid does not apply. Swept `nodes{3} × delta{1,2,3} × rounds{1,2}` (+ N=5 tail). |
@@ -76,14 +75,6 @@ changed.** Approved before editing.
 - `traceforge/examples/three_pc_timed.rs`: add `--l-ratio`/`--sd-ratio`; compute
   `L=round(l_ratio·U)`, `sd=round(sd_ratio·U)`; `with_timed(0,b.u,0)` → `with_timed(b.l,b.u,b.sd)`;
   headers print real L/sd.
-- `traceforge/examples/three_pc_timed_buggy.rs`: same flag threading; **`--mode baseline|timed`**
-  added (baseline = untimed MUST, simply skips `with_timed`) so the buggy has a comparison point;
-  plus one observability line printing `execs/blocked` on the *hold* path. The buggy decision rule
-  is untouched.
-  - **Correction (mid-run):** an earlier version of this file threaded L/sd into `Bounds` but left
-    the actual call as `with_timed(0, b.u, 0)`, so the buggy's L/sd axes were silently ignored (only
-    W/U varied). Fixed to `with_timed(b.l, b.u, b.sd)` and the buggy grid re-run. The verdict was
-    unaffected (the bug fires in every regime regardless), but the L/sd grid is now genuinely tested.
 - raft and both comm-closed examples: **unchanged.**
 
 ## Election counting mechanism

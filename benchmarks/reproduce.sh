@@ -17,8 +17,8 @@ echo "==> Phase A: zero-code-change protocols (comm-closed LE x2, raft N=3)"
 python3 benchmarks/sweep.py --which comm_closed,comm_closed_inbox,raft \
         --out "$OUT" --jobs 2 --timeout 600
 
-echo "==> Phase B (group=core): 3PC + 3PC-buggy full 60-cell grids (needs the --l-ratio/--sd-ratio edit)"
-python3 benchmarks/sweep.py --which 3pc,3pc_buggy \
+echo "==> Phase B (group=core): 3PC full 60-cell grid (needs the --l-ratio/--sd-ratio edit)"
+python3 benchmarks/sweep.py --which 3pc \
         --out "$OUT" --append --jobs 2 --timeout 600
 
 echo "==> Tail (group=n4_tail/n5_tail; time-boxed, may time out): 3PC N=4, raft N=5, comm-closed N=5"

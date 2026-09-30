@@ -94,13 +94,6 @@ R = [
  49816,646,77.12,9216,0,"5.0 s",
  "No safety bug. Pruning rises from about 15-20x at N=3 to 77x at N=4. The commit=0 anomaly persists."],
 
-# ---------- 3PC buggy (safety-bug witness) ----------
-["three_pc_timed_buggy",3,18,20,0,40,"1 round",
- "Standard tight corner. This variant commits on a majority of yes votes instead of unanimity, so the run is meant to expose the safety bug.",
- "No. Safety-bug witness.",
- "-","-","n/a","n/a","n/a","0.02 s",
- "Bug found. A participant that voted No can receive Commit; the safety assertion fires in both the timed and the untimed run."],
-
 # ---------- raft leader election (native axes) ----------
 ["raft_leader_election",3,0,1,4,"n/a","2 rounds",
  "Native parameters (U=1, storage delay = (N-1) times the stagger). Raft has no receive timeout, so the W/U grid does not apply.",
