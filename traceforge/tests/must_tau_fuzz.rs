@@ -1,16 +1,15 @@
-//! Timeout kill (`with_kill_dead_timeouts`) against the reference, on the
-//! receive-only programs of tests/policy_invariance_recv.rs (same
-//! generator, same fingerprints; this file only changes the judge).
+//! Must-tau fuzz (2026-09-29): receive-only timed programs from the
+//! generator of tests/policy_invariance_recv.rs (1-3 receives of the
+//! timed kinds, 1-3 senders, FIFO/Causal/Bag, an optional relay, a timed
+//! grid; every send lossy, as in every timed configuration). Mailbox
+//! programs are outside Must-tau's scope and are skipped.
 //!
-//! Per program: one reference run (LTR, kill off) and four kill runs
-//! (LTR plus Arbitrary seeds 11, 12, 13). Every kill run must count the
-//! same executions and blocked endings as the reference, must explore
-//! no class twice, must explore only classes the reference explored,
-//! and the kill runs must agree with each other. The observer does not
-//! see executions stopped at a kill, so a kill run's multiset is exact
-//! whenever it discards nothing else; the reference also reports the
-//! endings it discards, so it is compared by inclusion.
-//! Run with --ignored --nocapture (env: TF_FUZZ_SEED, TF_FUZZ_N).
+//! Per program: LTR and Arbitrary seeds 11, 12, 13 must count the same
+//! executions and blocked endings, report the same outcome multiset, and
+//! explore no graph without a timeline (timeline_impossible == 0).
+//! `must_tau_fuzz_smoke` runs a small batch in the suite;
+//! `must_tau_fuzz_campaign` is the long run (env TF_FUZZ_SEED,
+//! TF_FUZZ_N), run with --ignored --nocapture.
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
@@ -21,24 +20,6 @@ use traceforge::{Config, ConsType, CoverageInfo, ExecutionId, SchedulePolicy, Wa
 
 type Fingerprint = (String, BTreeSet<String>);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct RunResult {
-    execs: usize,
-    block: usize,
-    dead: usize,
-    killed: usize,
-    outcomes: BTreeMap<Fingerprint, usize>,
-    capped: bool,
-    /// Fingerprints outnumber counted endings: the observer also saw
-    /// endings the checker discarded, so the multiset is not exact.
-    discarded: bool,
-}
-
-impl RunResult {
-    fn classes(&self) -> BTreeSet<&Fingerprint> {
-        self.outcomes.keys().collect()
-    }
-}
 struct OutcomeCollector {
     sink: Arc<Mutex<Vec<Fingerprint>>>,
 }
@@ -51,164 +32,86 @@ impl ExecutionObserver for OutcomeCollector {
 }
 
 const MAX_ITERS: u64 = 20_000;
-/// Programs whose LTR run exceeds this many outcomes are skipped (void):
-/// the three Arbitrary runs would triple the time for no extra signal.
+/// Programs whose LTR run exceeds this many endings are skipped (void).
 const HEAVY: usize = 4_000;
+const SEEDS: [u64; 3] = [11, 12, 13];
 
-struct Printer;
-impl log::Log for Printer {
-    fn enabled(&self, m: &log::Metadata) -> bool {
-        m.level() <= log::Level::Info
-    }
-    fn log(&self, r: &log::Record) {
-        let s = format!("{}", r.args());
-        if s.contains("[kill]") || s.contains("[dead]") || s.contains("begin backward_revisit") || s.contains("[revisit/forward] start") || s.contains("enqueue") {
-            println!("LOG {s}");
-        }
-    }
-    fn flush(&self) {}
+struct Run {
+    execs: usize,
+    block: usize,
+    dead: usize,
+    pruned: usize,
+    capped: bool,
+    outcomes: BTreeMap<Fingerprint, usize>,
 }
-static PRINTER: Printer = Printer;
 
 fn run_once(
     policy: SchedulePolicy,
     seed: u64,
     cons: ConsType,
-    timed: Option<(u64, u64, u64)>,
+    timed: (u64, u64, u64),
     prog: Arc<dyn Fn() + Send + Sync>,
-    kill: bool,
-) -> RunResult {
-    let traced = kill
-        && match std::env::var("TF_KILL_TRACE_SEED") {
-            Ok(v) => policy == SchedulePolicy::Arbitrary && v.parse::<u64>().ok() == Some(seed),
-            Err(_) => policy == SchedulePolicy::LTR,
-        };
-    if std::env::var_os("TF_KILL_LOG").is_some() && traced {
-        let _ = log::set_logger(&PRINTER);
-        log::set_max_level(log::LevelFilter::Info);
-    } else {
-        log::set_max_level(log::LevelFilter::Off);
-    }
+) -> Run {
     let sink: Arc<Mutex<Vec<Fingerprint>>> = Arc::new(Mutex::new(Vec::new()));
-    let mut builder = Config::builder()
-        .with_policy(policy)
-        .with_seed(seed)
-        .with_cons_type(cons)
-        .with_max_iterations(MAX_ITERS)
-        .with_kill_dead_timeouts(kill)
-        .with_verbose(if traced {
-            std::env::var("TF_KILL_VERBOSE").ok().and_then(|v| v.parse().ok()).unwrap_or(0)
-        } else {
-            0
-        })
-        .with_callback(Box::new(OutcomeCollector {
-            sink: Arc::clone(&sink),
-        }));
-    if let Some((l, u, sd)) = timed {
-        builder = builder.with_timed(l, u, sd);
-    }
-    let stats = traceforge::verify(builder.build(), move || prog());
+    let stats = traceforge::verify(
+        Config::builder()
+            .with_policy(policy)
+            .with_seed(seed)
+            .with_cons_type(cons)
+            .with_max_iterations(MAX_ITERS)
+            .with_timed(timed.0, timed.1, timed.2)
+            .with_callback(Box::new(OutcomeCollector { sink: Arc::clone(&sink) }))
+            .build(),
+        move || prog(),
+    );
     let mut outcomes: BTreeMap<Fingerprint, usize> = BTreeMap::new();
     for fp in sink.lock().unwrap().iter() {
         *outcomes.entry(fp.clone()).or_insert(0) += 1;
     }
-    let total: usize = outcomes.values().sum();
-    RunResult {
+    Run {
         execs: stats.execs,
         block: stats.block,
         dead: stats.timeline_impossible,
-        killed: stats.killed,
-        outcomes,
+        pruned: stats.pruned,
         capped: (stats.execs + stats.block) as u64 >= MAX_ITERS,
-        discarded: total > stats.execs + stats.block,
+        outcomes,
     }
 }
-
-fn diff_classes(a: &RunResult, b: &RunResult) -> String {
-    let (ca, cb) = (a.classes(), b.classes());
-    let mut out = String::new();
-    for fp in ca.difference(&cb) {
-        out.push_str(&format!("  only in first:  {fp:?}\n"));
-    }
-    for fp in cb.difference(&ca) {
-        out.push_str(&format!("  only in second: {fp:?}\n"));
-    }
-    if out.is_empty() {
-        out.push_str("  (same classes, multiplicities differ)\n");
-    }
-    out
-}
-
-const SEEDS: [u64; 3] = [11, 12, 13];
 
 enum Verdict {
-    Agrees { execs: usize, block: usize, dead_ref: usize, dead_kill: usize, killed: usize },
+    Agrees { endings: usize, pruned: usize },
     Void,
     Diverged(String),
 }
 
-fn kill_divergence(
-    cons: ConsType,
-    timed: Option<(u64, u64, u64)>,
-    prog: Arc<dyn Fn() + Send + Sync>,
-) -> Verdict {
-    let reference = run_once(SchedulePolicy::LTR, 0, cons, timed, Arc::clone(&prog), false);
-    if reference.capped || reference.execs + reference.block > HEAVY {
+fn judge(cons: ConsType, timed: (u64, u64, u64), prog: Arc<dyn Fn() + Send + Sync>) -> Verdict {
+    let ltr = run_once(SchedulePolicy::LTR, 0, cons, timed, Arc::clone(&prog));
+    if ltr.capped || ltr.execs + ltr.block > HEAVY {
         return Verdict::Void;
     }
-    let mut runs: Vec<(String, RunResult)> =
-        vec![("ltr".into(), run_once(SchedulePolicy::LTR, 0, cons, timed, Arc::clone(&prog), true))];
+    if ltr.dead > 0 {
+        return Verdict::Diverged(format!("LTR explored {} graphs without a timeline", ltr.dead));
+    }
     for &s in SEEDS.iter() {
-        runs.push((
-            format!("arb[{s}]"),
-            run_once(SchedulePolicy::Arbitrary, s, cons, timed, Arc::clone(&prog), true),
-        ));
-    }
-    if runs.iter().any(|(_, r)| r.capped) {
-        return Verdict::Void;
-    }
-    for (name, r) in &runs {
-        if (r.execs, r.block) != (reference.execs, reference.block) {
-            let dump = |x: &RunResult| {
-                x.outcomes.iter().map(|(fp, n)| format!("      x{n} {} {:?}\n", fp.0, fp.1)).collect::<String>()
-            };
+        let r = run_once(SchedulePolicy::Arbitrary, s, cons, timed, Arc::clone(&prog));
+        if r.capped {
+            return Verdict::Void;
+        }
+        if r.dead > 0 {
+            return Verdict::Diverged(format!("arb[{s}] explored {} graphs without a timeline", r.dead));
+        }
+        if (r.execs, r.block) != (ltr.execs, ltr.block) {
             return Verdict::Diverged(format!(
-                "counts: reference=({},{}) kill {name}=({},{})\n{}    reference (discarded={}):\n{}    kill {name} (discarded={}):\n{}",
-                reference.execs, reference.block, r.execs, r.block,
-                diff_classes(&reference, r), reference.discarded, dump(&reference), r.discarded, dump(r)
+                "counts: LTR=({},{}) arb[{s}]=({},{})",
+                ltr.execs, ltr.block, r.execs, r.block
             ));
         }
-        if !r.discarded {
-            if let Some((fp, n)) = r.outcomes.iter().find(|(_, &n)| n > 1) {
-                return Verdict::Diverged(format!("kill {name} explores a class {n} times: {fp:?}"));
-            }
-        }
-        if r.discarded {
-            continue; // not an exact picture of the counted classes
-        }
-        if let Some(fp) = r.outcomes.keys().find(|fp| !reference.outcomes.contains_key(*fp)) {
-            return Verdict::Diverged(format!("kill {name} explores a class the reference never saw: {fp:?}"));
-        }
-        if !reference.discarded && !r.discarded && r.outcomes != reference.outcomes {
-            return Verdict::Diverged(format!("multiset: kill {name} vs reference\n{}", diff_classes(&reference, r)));
+        if r.outcomes != ltr.outcomes {
+            return Verdict::Diverged(format!("arb[{s}]: outcome multiset differs from LTR"));
         }
     }
-    for w in runs.windows(2) {
-        if !w[0].1.discarded && !w[1].1.discarded && w[0].1.outcomes != w[1].1.outcomes {
-            return Verdict::Diverged(format!(
-                "kill {} vs kill {}\n{}", w[0].0, w[1].0, diff_classes(&w[0].1, &w[1].1)
-            ));
-        }
-    }
-    Verdict::Agrees {
-        execs: reference.execs,
-        block: reference.block,
-        dead_ref: reference.dead,
-        dead_kill: runs[0].1.dead,
-        killed: runs[0].1.killed,
-    }
+    Verdict::Agrees { endings: ltr.execs + ltr.block, pruned: ltr.pruned }
 }
-
 
 const TIMED_GRID: [(u64, u64, u64); 3] = [(0, 1, 0), (0, 2, 1), (1, 3, 0)];
 const SLEEPS: [u64; 4] = [0, 1, 3, 6];
@@ -507,45 +410,126 @@ fn env_u64(name: &str, default: u64) -> u64 {
 }
 
 
-#[test]
-#[ignore = "timeout-kill campaign against the reference; run with --ignored --nocapture"]
-fn fuzz_timeout_kill_vs_reference() {
-    let base_seed = env_u64("TF_FUZZ_SEED", 20260914);
-    let n = env_u64("TF_FUZZ_N", 400) as usize;
-    println!("kill fuzz: base_seed={base_seed} n={n} arb_seeds={SEEDS:?}");
+
+fn campaign(base_seed: u64, n: usize) {
+    println!("must-tau fuzz: base_seed={base_seed} n={n} arb_seeds={SEEDS:?}");
     let (mut divergent, mut void, mut agree, mut skipped) = (Vec::new(), 0usize, 0usize, 0usize);
-    let (mut dead_ref, mut dead_kill, mut killed, mut execs_total) = (0usize, 0usize, 0usize, 0usize);
-    let t0 = std::time::Instant::now();
+    let (mut endings, mut pruned) = (0usize, 0usize);
     for i in 0..n {
         let spec = ProgramSpec::generate(SplitMix64(base_seed.wrapping_add(i as u64)).next());
-        if spec.vacuous() {
+        let Some(timed) = spec.timed() else {
+            skipped += 1;
+            continue;
+        };
+        if spec.vacuous() || spec.cons() == ConsType::Mailbox {
             skipped += 1;
             continue;
         }
-        let t1 = std::time::Instant::now();
-        match kill_divergence(spec.cons(), spec.timed(), spec.program()) {
-            Verdict::Agrees { execs, block, dead_ref: dr, dead_kill: dk, killed: k } => {
+        match judge(spec.cons(), timed, spec.program()) {
+            Verdict::Agrees { endings: e, pruned: p } => {
                 agree += 1;
-                dead_ref += dr;
-                dead_kill += dk;
-                killed += k;
-                execs_total += execs + block;
-                println!("[{}/{n}] ok   ({execs},{block}) dead ref/kill={dr}/{dk} killed={k} {:.1}s {}",
-                    i + 1, t1.elapsed().as_secs_f64(), spec.print_repro());
+                endings += e;
+                pruned += p;
             }
-            Verdict::Void => {
-                void += 1;
-                println!("[{}/{n}] void {}", i + 1, spec.print_repro());
-            }
+            Verdict::Void => void += 1,
             Verdict::Diverged(detail) => {
-                println!("[{}/{n}] DIVERGED {}\n{detail}", i + 1, spec.print_repro());
+                println!("[{}/{n}] DIVERGED {}\n  {detail}", i + 1, spec.print_repro());
                 divergent.push(spec.print_repro());
             }
         }
     }
     println!(
-        "SUMMARY: {}/{n} divergent, {agree} agree, {void} void, {skipped} vacuous; counted endings {execs_total}; dead endings explored: reference {dead_ref}, kill {dead_kill}; executions stopped at a kill {killed}; {:.0}s",
-        divergent.len(), t0.elapsed().as_secs_f64()
+        "SUMMARY: {}/{n} divergent, {agree} agree, {void} void, {skipped} skipped (untimed, vacuous or Mailbox); endings {endings}, pruned children {pruned}",
+        divergent.len()
     );
-    assert!(divergent.is_empty(), "kill diverges from the reference on:\n{}", divergent.join("\n"));
+    assert!(divergent.is_empty(), "Must-tau diverges on:\n{}", divergent.join("\n"));
+}
+
+#[test]
+fn must_tau_fuzz_smoke() {
+    campaign(20260929, 60);
+}
+
+#[test]
+#[ignore = "Must-tau fuzz campaign; run with --ignored --nocapture (env TF_FUZZ_SEED, TF_FUZZ_N)"]
+fn must_tau_fuzz_campaign() {
+    campaign(env_u64("TF_FUZZ_SEED", 20260914), env_u64("TF_FUZZ_N", 400) as usize);
+}
+
+/// One line per (program, run) in the format of the pre-Must-tau
+/// reference rows, for an offline comparison (env TF_FUZZ_SEED,
+/// TF_FUZZ_N). Untimed programs are skipped here: their sends are not
+/// lossy, unlike in the all-lossy reference.
+#[test]
+#[ignore = "rows for an offline comparison; run with --ignored --nocapture"]
+fn must_tau_rows() {
+    let base_seed = env_u64("TF_FUZZ_SEED", 20260914);
+    let n = env_u64("TF_FUZZ_N", 400) as usize;
+    for i in 0..n {
+        let spec = ProgramSpec::generate(SplitMix64(base_seed.wrapping_add(i as u64)).next());
+        let Some(timed) = spec.timed() else { continue };
+        if spec.vacuous() || spec.cons() == ConsType::Mailbox {
+            continue;
+        }
+        let mut runs = vec![("ltr".to_string(), SchedulePolicy::LTR, 0u64)];
+        for &s in SEEDS.iter() {
+            runs.push((format!("arb{s}"), SchedulePolicy::Arbitrary, s));
+        }
+        for (name, policy, seed) in runs {
+            let r = run_once(policy, seed, spec.cons(), timed, spec.program());
+            let ms: Vec<String> = r.outcomes.iter().map(|(fp, n)| format!("{n}x{}{:?}", fp.0, fp.1)).collect();
+            println!(
+                "ROW i={i} run={name} execs={} block={} dead={} pruned={} capped={} ms={} spec={}",
+                r.execs, r.block, r.dead, r.pruned, r.capped, ms.join("|").replace(' ', ""), spec.print_repro()
+            );
+            if r.capped || r.execs + r.block > HEAVY {
+                break;
+            }
+        }
+    }
+    println!("DONE");
+}
+
+/// One program, verbose, for graph-level comparisons: env TF_FUZZ_SEED
+/// (the program is index 0 of that base), POL (ltr or arbN), V.
+#[test]
+#[ignore = "single-program driver; run with --ignored --nocapture"]
+fn must_tau_one() {
+    let spec = ProgramSpec::generate(SplitMix64(env_u64("TF_FUZZ_SEED", 20260914)).next());
+    println!("SPEC {}", spec.print_repro());
+    let pol = std::env::var("POL").unwrap_or_else(|_| "ltr".into());
+    let (policy, seed) = if pol == "ltr" {
+        (SchedulePolicy::LTR, 0)
+    } else {
+        (SchedulePolicy::Arbitrary, pol[3..].parse().unwrap())
+    };
+    let timed = spec.timed().expect("timed program");
+    let prog = spec.program();
+    if std::env::var_os("TF_LOG").is_some() {
+        struct Printer;
+        impl log::Log for Printer {
+            fn enabled(&self, m: &log::Metadata) -> bool {
+                m.level() <= log::Level::Info
+            }
+            fn log(&self, r: &log::Record) {
+                println!("LOG {}", r.args());
+            }
+            fn flush(&self) {}
+        }
+        static PRINTER: Printer = Printer;
+        let _ = log::set_logger(&PRINTER);
+        log::set_max_level(log::LevelFilter::Info);
+    }
+    let st = traceforge::verify(
+        Config::builder()
+            .with_policy(policy)
+            .with_seed(seed)
+            .with_cons_type(spec.cons())
+            .with_max_iterations(MAX_ITERS)
+            .with_timed(timed.0, timed.1, timed.2)
+            .with_verbose(env_u64("V", 2) as usize)
+            .build(),
+        move || prog(),
+    );
+    println!("STATS execs={} block={} dead={} pruned={}", st.execs, st.block, st.timeline_impossible, st.pruned);
 }

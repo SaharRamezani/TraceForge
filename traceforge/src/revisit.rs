@@ -20,7 +20,6 @@ impl RevisitEnum {
         RevisitEnum::ForwardRevisit(Revisit {
             pos,
             rev: RevisitPlacement::Default(placement),
-            kill: false,
         })
     }
 
@@ -29,7 +28,6 @@ impl RevisitEnum {
         RevisitEnum::BackwardRevisit(Revisit {
             pos: recv,
             rev: RevisitPlacement::Default(send),
-            kill: false,
         })
     }
 
@@ -41,7 +39,6 @@ impl RevisitEnum {
         RevisitEnum::ForwardRevisit(Revisit {
             pos,
             rev: RevisitPlacement::Inbox(placements),
-            kill: false,
         })
     }
 
@@ -50,7 +47,6 @@ impl RevisitEnum {
         RevisitEnum::ForwardRevisit(Revisit {
             pos,
             rev: RevisitPlacement::BlockInstead,
-            kill: false,
         })
     }
 
@@ -111,12 +107,6 @@ pub(crate) struct Revisit {
     pub(crate) pos: Event,
     /// the placement (rf or co choice)
     pub(crate) rev: RevisitPlacement,
-    /// Timeout kill (`Config::kill_dead_timeouts`): this backward
-    /// revisit replaces a timeout world that the revisiting send made
-    /// impossible. On application the receive reads the send as its
-    /// base outcome and is re-inserted after it.
-    #[serde(default)]
-    pub(crate) kill: bool,
 }
 
 impl Revisit {
@@ -124,7 +114,6 @@ impl Revisit {
         Self {
             pos,
             rev: RevisitPlacement::Default(rev),
-            kill: false,
         }
     }
 
@@ -132,7 +121,6 @@ impl Revisit {
         Self {
             pos,
             rev: RevisitPlacement::Inbox(rev),
-            kill: false,
         }
     }
 }

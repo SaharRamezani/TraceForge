@@ -3,9 +3,56 @@
 //! Each test exercises a small scenario where the timed feasibility
 //! check (timed_consistent) must either admit or reject an interleaving.
 //! Assertions are on the number of complete executions explored.
+//!
+//! Since Must-tau (2026-09-29) every send of a timed program may be
+//! dropped (no budget), so each count below includes the worlds where
+//! messages are lost, and no ending without a timeline is explored
+//! (`timeline_impossible` stays 0). Where a count alone no longer
+//! separates the property under test, the test asserts the multiset of
+//! receive outcomes over the explored endings. Every new count was
+//! cross-checked graph by graph against the pre-Must-tau exploration
+//! with every send lossy.
 
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
+
+use traceforge::coverage::ExecutionObserver;
+use traceforge::monitor_types::EndCondition;
 use traceforge::thread::{self, ThreadId};
 use traceforge::*;
+
+struct Collector(Arc<Mutex<Vec<String>>>);
+
+impl ExecutionObserver for Collector {
+    fn after(&mut self, _eid: ExecutionId, cond: &EndCondition, c: CoverageInfo) {
+        let mut goals: Vec<String> = c.coverage.keys().cloned().collect();
+        goals.sort();
+        let tag = if matches!(cond, EndCondition::Deadlock) { "blocked " } else { "" };
+        self.0.lock().unwrap().push(format!("{tag}{}", goals.join(" ")));
+    }
+}
+
+/// Runs `f` under `builder` and returns its stats and the multiset of
+/// `cover!` goals per explored ending (blocked endings prefixed).
+fn outcomes<F>(builder: ConfigBuilder, f: F) -> (Stats, BTreeMap<String, usize>)
+where
+    F: Fn() + Send + Sync + 'static,
+{
+    let sink = Arc::new(Mutex::new(Vec::new()));
+    let stats = traceforge::verify(
+        builder.with_callback(Box::new(Collector(Arc::clone(&sink)))).build(),
+        f,
+    );
+    let mut out = BTreeMap::new();
+    for o in sink.lock().unwrap().iter() {
+        *out.entry(o.clone()).or_insert(0) += 1;
+    }
+    (stats, out)
+}
+
+fn expect(pairs: &[(&str, usize)]) -> BTreeMap<String, usize> {
+    pairs.iter().map(|(k, n)| (k.to_string(), *n)).collect()
+}
 
 // ---------------------------------------------------------------------
 // Sleep advances the lower bound; both outcomes reachable
@@ -15,19 +62,20 @@ use traceforge::*;
 //   send window = [10, 1010], recv-reading-from-send window = [10, 100]
 //   recv-timeout window                                    = [100, 100]
 // Both the `rf = send` and `rf = ⊥` branches are timed consistent.
+// Every send lossy: read and timeout beside the delivered send, plus
+// the timeout with it dropped.
 #[test]
 fn sleep_advances_lower_bound_both_outcomes() {
-    let stats = traceforge::verify(
-        Config::builder().with_timed(0, 1000, 0).build(),
-        || {
-            let consumer = thread::spawn(|| {
-                let _: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(100));
-            });
-            traceforge::sleep(10);
-            traceforge::send_msg(consumer.thread().id(), 42i32);
-        },
-    );
-    assert_eq!(stats.execs, 2);
+    let (stats, out) = outcomes(Config::builder().with_timed(0, 1000, 0), || {
+        let consumer = thread::spawn(|| {
+            let got: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(100));
+            cover!(format!("got={got:?}"));
+        });
+        traceforge::sleep(10);
+        traceforge::send_msg(consumer.thread().id(), 42i32);
+    });
+    assert_eq!(out, expect(&[("got=None", 2), ("got=Some(42)", 1)]));
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (3, 0, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -39,7 +87,8 @@ fn sleep_advances_lower_bound_both_outcomes() {
 //   timeout window          = [0, 10]
 //   rf-from-send window for recv = [max(0,100), min(10, 100)] = [100, 10] (empty)
 // Only the timeout branch survives and the `rf = send` candidate is dropped
-// by the timed filter.
+// by the timed filter. Every send lossy: the timeout with the send
+// delivered and with it dropped; the in-program assert pins the outcome.
 #[test]
 fn finite_wait_forces_timeout() {
     let stats = traceforge::verify(
@@ -53,7 +102,7 @@ fn finite_wait_forces_timeout() {
             traceforge::send_msg(consumer.thread().id(), 42i32);
         },
     );
-    assert_eq!(stats.execs, 1);
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (2, 0, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -91,10 +140,17 @@ fn infinite_wait_prunes_timeout() {
 // only the first sender. With generous timed bounds, the send from
 // the matching sender is always timed consistent, while the
 // other sender's message is simply filtered out by the predicate.
+//
+// Every send lossy. A dropped handoff leaves its sender blocked forever.
+// Complete (both handoffs delivered): reply 1 delivered gives read or
+// timeout (it may arrive after 50), dropped gives timeout, times reply
+// 2 delivered or dropped: 3 x 2 = 6. Blocked: handoff 1 dropped gives a
+// timeout times reply 2 (2); handoff 2 dropped gives the same 3 main
+// outcomes (3); both dropped gives 1: 6. Reply 2 is never read.
 #[test]
 fn predicate_timed_recv() {
-    let stats = traceforge::verify(
-        Config::builder().with_timed(0, 100, 0).build(),
+    let (stats, out) = outcomes(
+        Config::builder().with_timed(0, 100, 0),
         || {
             let main_id = thread::current().id();
             let s1 = thread::spawn(move || {
@@ -114,11 +170,19 @@ fn predicate_timed_recv() {
                 move |tid: ThreadId, _tag| tid == s1_id,
                 WaitTime::Finite(50),
             );
-            // At least some execution must receive the value.
-            let _ = v;
+            cover!(format!("got={v:?}"));
         },
     );
-    assert!(stats.execs == 2);
+    assert_eq!(
+        out,
+        expect(&[
+            ("got=None", 4),
+            ("got=Some(1)", 2),
+            ("blocked got=None", 5),
+            ("blocked got=Some(1)", 1),
+        ])
+    );
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (6, 6, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -183,35 +247,46 @@ fn legacy_recv_inside_timed_is_rejected() {
 // and this one is readable at 0 in every timeline, `rf = ⊥` is gone
 // and exactly one execution remains.
 //
-// Both halves therefore explore ONE execution and the count alone no
-// longer separates them, so each half asserts WHICH branch survived:
-// the override reads the message, the fallback times out. That is the
-// property this test was always about.
+// The count alone does not separate the halves, so each asserts WHICH
+// branches survived: the override reads the message, the fallback
+// times out. That is the property this test was always about.
+//
+// Every send lossy: each half also has the timeout with the send
+// dropped, so the override is {read, timeout} and the fallback is
+// {timeout, timeout}.
 #[test]
 fn per_send_bounds_override_global() {
-    let stats_override = traceforge::verify(
-        Config::builder().with_timed(10, 10, 0).build(),
+    let (stats_override, out_override) = outcomes(
+        Config::builder().with_timed(10, 10, 0),
         || {
             let consumer = thread::spawn(|| {
                 let v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(5));
-                traceforge::assert(v.is_some());
+                cover!(format!("got={v:?}"));
             });
             traceforge::send_msg_timed(consumer.thread().id(), 42i32, 0, 0);
         },
     );
-    assert_eq!(stats_override.execs, 1);
+    assert_eq!(out_override, expect(&[("got=None", 1), ("got=Some(42)", 1)]));
+    assert_eq!(
+        (stats_override.execs, stats_override.block, stats_override.timeline_impossible),
+        (2, 0, 0)
+    );
 
-    let stats_no_override = traceforge::verify(
-        Config::builder().with_timed(10, 10, 0).build(),
+    let (stats_no_override, out_no_override) = outcomes(
+        Config::builder().with_timed(10, 10, 0),
         || {
             let consumer = thread::spawn(|| {
                 let v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(5));
-                traceforge::assert(v.is_none());
+                cover!(format!("got={v:?}"));
             });
             traceforge::send_msg(consumer.thread().id(), 42i32);
         },
     );
-    assert_eq!(stats_no_override.execs, 1);
+    assert_eq!(out_no_override, expect(&[("got=None", 2)]));
+    assert_eq!(
+        (stats_no_override.execs, stats_no_override.block, stats_no_override.timeline_impossible),
+        (2, 0, 0)
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -224,14 +299,18 @@ fn per_send_bounds_override_global() {
 // readable inside the wait in every timeline. The in-program assert
 // pins that the surviving execution is the send_a read, so the test
 // still separates "b was pruned" from "everything was pruned".
+//
+// Every send lossy: read a (a delivered) or timeout (a dropped), times
+// b delivered or dropped = 2 x 2. b is never read, and a timeout beside
+// a delivered a would be a third `None` pair.
 #[test]
 fn per_send_distinct_windows_disjoint() {
-    let stats = traceforge::verify(
-        Config::builder().with_timed(0, 100, 0).build(),
+    let (stats, out) = outcomes(
+        Config::builder().with_timed(0, 100, 0),
         || {
             let consumer = thread::spawn(|| {
                 let v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(10));
-                traceforge::assert(v == Some(1));
+                cover!(format!("got={v:?}"));
             });
             let cid = consumer.thread().id();
             let _a = thread::spawn(move || {
@@ -242,7 +321,8 @@ fn per_send_distinct_windows_disjoint() {
             });
         },
     );
-    assert_eq!(stats.execs, 1);
+    assert_eq!(out, expect(&[("got=None", 2), ("got=Some(1)", 2)]));
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (4, 0, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -253,13 +333,18 @@ fn per_send_distinct_windows_disjoint() {
 // timelines where a arrives after that read (a_a > a_b, e.g. 4 > 3).
 // The timeout does not: each send is readable inside the [0, 10] wait
 // in every timeline, so (C6') removes it. 3 became 2 on 2026-09-21.
+//
+// Every send lossy: read a (b delivered or dropped), read b (a
+// delivered or dropped), and the timeout only when both are dropped:
+// 2 + 2 + 1.
 #[test]
 fn per_send_distinct_windows_overlap() {
-    let stats = traceforge::verify(
-        Config::builder().with_timed(0, 100, 0).build(),
+    let (stats, out) = outcomes(
+        Config::builder().with_timed(0, 100, 0),
         || {
             let consumer = thread::spawn(|| {
-                let _v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(10));
+                let v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(10));
+                cover!(format!("got={v:?}"));
             });
             let cid = consumer.thread().id();
             let _a = thread::spawn(move || {
@@ -270,7 +355,11 @@ fn per_send_distinct_windows_overlap() {
             });
         },
     );
-    assert_eq!(stats.execs, 2);
+    assert_eq!(
+        out,
+        expect(&[("got=None", 1), ("got=Some(1)", 2), ("got=Some(2)", 2)])
+    );
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (5, 0, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -280,15 +369,19 @@ fn per_send_distinct_windows_overlap() {
 // With main's sd = 10 the message (arrival in [0, 5]) is still stored
 // at t = 10, so the point read takes it; without the override it is a
 // corpse by then and only the timeout remains. Since (C6') each half
-// has exactly ONE execution, so, as in per_send_bounds_override_global,
-// each asserts which branch survived rather than counting branches.
+// has exactly ONE execution with the send delivered, so, as in
+// per_send_bounds_override_global, each asserts which branches survived
+// rather than counting branches.
+//
+// Every send lossy: each half also has the timeout with the send
+// dropped, so the override is {read, timeout} and the fallback is
+// {timeout, timeout}.
 #[test]
 fn per_node_sd_overrides_global() {
-    let stats = traceforge::verify(
+    let (stats, out) = outcomes(
         Config::builder()
             .with_timed(0, 5, 0)
-            .with_node_sd(traceforge::thread::main_thread_id(), 10)
-            .build(),
+            .with_node_sd(traceforge::thread::main_thread_id(), 10),
         || {
             let main_id = thread::current().id();
             let _p = thread::spawn(move || {
@@ -296,15 +389,16 @@ fn per_node_sd_overrides_global() {
             });
             traceforge::sleep(10);
             let v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(0));
-            traceforge::assert(v.is_some());
+            cover!(format!("got={v:?}"));
         },
     );
-    assert_eq!(stats.execs, 1);
+    assert_eq!(out, expect(&[("got=None", 1), ("got=Some(42)", 1)]));
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (2, 0, 0));
 
-    // Same scenario without the per-node override: send is rejected,
-    // only the timeout branch survives.
-    let stats_fallback = traceforge::verify(
-        Config::builder().with_timed(0, 5, 0).build(),
+    // Same scenario without the per-node override: the read is
+    // rejected, only the timeout branch survives (delivered or dropped).
+    let (stats_fallback, out_fallback) = outcomes(
+        Config::builder().with_timed(0, 5, 0),
         || {
             let main_id = thread::current().id();
             let _p = thread::spawn(move || {
@@ -312,20 +406,27 @@ fn per_node_sd_overrides_global() {
             });
             traceforge::sleep(10);
             let v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(0));
-            traceforge::assert(v.is_none());
+            cover!(format!("got={v:?}"));
         },
     );
-    assert_eq!(stats_fallback.execs, 1);
+    assert_eq!(out_fallback, expect(&[("got=None", 2)]));
+    assert_eq!(
+        (stats_fallback.execs, stats_fallback.block, stats_fallback.timeline_impossible),
+        (2, 0, 0)
+    );
 }
 
 // ---------------------------------------------------------------------
 // Sleep is per-thread: it does not leak into parallel threads'
 // timed windows.
 // ---------------------------------------------------------------------
+//
+// Every send lossy: the read (delivered) and the timeout (dropped). A
+// leaked sleep would give two timeouts instead.
 #[test]
 fn sleep_is_per_thread() {
-    let stats = traceforge::verify(
-        Config::builder().with_timed(0, 0, 0).build(),
+    let (stats, out) = outcomes(
+        Config::builder().with_timed(0, 0, 0),
         || {
             let b = thread::spawn(|| {
                 // Short wait; if A's sleep leaked in, B's wait would
@@ -337,7 +438,7 @@ fn sleep_is_per_thread() {
                 // the count no longer separates the two: assert the
                 // value instead.
                 let v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(5));
-                traceforge::assert(v.is_some());
+                cover!(format!("got={v:?}"));
             });
             let _a = thread::spawn(|| {
                 traceforge::sleep(1_000_000);
@@ -345,7 +446,8 @@ fn sleep_is_per_thread() {
             traceforge::send_msg(b.thread().id(), 99i32);
         },
     );
-    assert!(stats.execs == 1);
+    assert_eq!(out, expect(&[("got=None", 1), ("got=Some(99)", 1)]));
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (2, 0, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -436,7 +538,7 @@ fn star_hub_with_workers_tagged() {
 #[test]
 fn four_thread_pipeline_timed_pruning() {
     fn run(global_u: u64, wait_ns: u64) -> usize {
-        traceforge::verify(
+        let stats = traceforge::verify(
             Config::builder().with_timed(0, global_u, 0).build(),
             move || {
                 let main_id = thread::current().id();
@@ -476,8 +578,10 @@ fn four_thread_pipeline_timed_pruning() {
                     let _v: Option<i32> = traceforge::recv_msg_timed(WaitTime::Finite(wait_ns));
                 }
             },
-        )
-        .execs
+        );
+        // Every ending completes; none is timeline-impossible.
+        assert_eq!((stats.block, stats.timeline_impossible), (0, 0));
+        stats.execs
     }
 
     let loose = run(50, 50);
@@ -498,5 +602,11 @@ fn four_thread_pipeline_timed_pruning() {
     // can miss its whole wait, so the worlds where a stage timed out
     // while its input sat readable are gone. Both sides drop and the
     // loose > tight relation still holds, which is what this test pins.
-    assert_eq!((loose, tight), (38, 21));
+    //
+    // Re-baselined 2026-09-30 (was 38, 21; now 130, 76) for Must-tau:
+    // every send lossy adds the worlds where a relay message is dropped
+    // (its receive times out); no ending is timeline-impossible. Both
+    // sets match the pre-Must-tau exploration with every send lossy
+    // graph for graph, and loose > tight still holds.
+    assert_eq!((loose, tight), (130, 76));
 }

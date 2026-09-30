@@ -686,7 +686,7 @@ fn rounds_model(p: Params) {
 
 fn build_config(mode: Mode, keep_going: bool, workers: usize, max_execs: Option<u64>) -> Config {
     // FIFO per (sender, destination) channel, pinned (it is the default).
-    let mut b = Config::builder().with_progress_report(usize::MAX).with_cons_type(ConsType::FIFO);
+    let mut b = Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX).with_cons_type(ConsType::FIFO);
     if keep_going {
         b = b.with_keep_going_after_error(true);
     }

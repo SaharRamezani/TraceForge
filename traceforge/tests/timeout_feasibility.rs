@@ -8,39 +8,82 @@
 //! cannot happen (the witness in `test_no_timeout_when_message_must_be_readable`
 //! is the one Sahar reported on 2026-09-16).
 //!
-//! The constraint is enforced by the completion/certification oracle
-//! only, never during pruning, so the exploration tree is unchanged:
-//! an impossible timeout is still explored and then dropped at the end
-//! (it stops being counted in `execs`, and any assert on it is
-//! suppressed instead of reported).
+//! Since Must-tau (2026-09-29) the constraint is part of the
+//! consistency check of every exploration step, so an impossible
+//! timeout is never explored: `timeline_impossible` stays 0. Every send
+//! of a timed program may also be dropped (no budget), so each count
+//! below includes the worlds where messages are lost.
 //!
 //! Every expected count below is derived by hand from the semantics,
-//! not read off the implementation.
+//! not read off the implementation, and was cross-checked graph by
+//! graph against the pre-Must-tau exploration with every send lossy.
 
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
+
+use traceforge::coverage::ExecutionObserver;
+use traceforge::monitor_types::EndCondition;
 use traceforge::*;
 
 fn cfg(l: u64, u: u64, sd: u64) -> Config {
     Config::builder().with_timed(l, u, sd).build()
 }
 
-/// L=0, U=1, sd=0, W=10: the message arrives by 1 and the receive
-/// waits until 10, so no timeline lets it miss. The timeout branch is
-/// still explored but must be dropped at completion: one execution,
-/// and the assert must NOT fire.
+struct Collector(Arc<Mutex<Vec<String>>>);
+
+impl ExecutionObserver for Collector {
+    fn after(&mut self, _eid: ExecutionId, _cond: &EndCondition, c: CoverageInfo) {
+        let mut goals: Vec<String> = c.coverage.keys().cloned().collect();
+        goals.sort();
+        self.0.lock().unwrap().push(goals.join(" "));
+    }
+}
+
+/// Runs `f` and returns its stats and the multiset of `cover!` goals
+/// per explored ending.
+fn outcomes<F>(l: u64, u: u64, sd: u64, f: F) -> (Stats, BTreeMap<String, usize>)
+where
+    F: Fn() + Send + Sync + 'static,
+{
+    let sink = Arc::new(Mutex::new(Vec::new()));
+    let stats = verify(
+        Config::builder()
+            .with_timed(l, u, sd)
+            .with_callback(Box::new(Collector(Arc::clone(&sink))))
+            .build(),
+        f,
+    );
+    let mut out = BTreeMap::new();
+    for o in sink.lock().unwrap().iter() {
+        *out.entry(o.clone()).or_insert(0) += 1;
+    }
+    (stats, out)
+}
+
+fn expect(pairs: &[(&str, usize)]) -> BTreeMap<String, usize> {
+    pairs.iter().map(|(k, n)| (k.to_string(), *n)).collect()
+}
+
+/// L=0, U=1, sd=0, W=10: a delivered message arrives by 1 and the
+/// receive waits until 10, so no timeline lets it miss. Every send
+/// lossy: the read (delivered) and one timeout (dropped). A timeout
+/// beside the delivered message would be a second `None`.
 #[test]
 fn test_no_timeout_when_message_must_be_readable() {
-    let stats = verify(cfg(0, 1, 0), || {
+    let (stats, out) = outcomes(0, 1, 0, || {
         let me = thread::current().id();
         let _s = thread::spawn(move || {
             send_msg(me, 1u32);
         });
         let got = recv_msg_timed::<u32>(WaitTime::Finite(10));
-        assert(got.is_some());
+        cover!(format!("got={got:?}"));
     });
     assert_eq!(
-        stats.execs, 1,
-        "only the read is a real world; the timeout has no timeline"
+        out,
+        expect(&[("got=None", 1), ("got=Some(1)", 1)]),
+        "the only timeout is the one where the message was dropped"
     );
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (2, 0, 0));
 }
 
 /// Same program with U = 20 > W = 10: the message may genuinely arrive
@@ -67,19 +110,25 @@ fn test_timeout_survives_when_message_can_be_late() {
 ///
 /// With the strict form `a_b > t_e` the timeout would vanish here, and
 /// every PAR tie cell `To = dK + dL + dR` would turn into a false hold.
+///
+/// Every send lossy: read and timeout beside the delivered message,
+/// plus the timeout with it dropped. Strict form would give 1 + 1.
 #[test]
 fn test_arrival_exactly_at_deadline_keeps_both_worlds() {
-    let stats = verify(cfg(5, 5, 0), || {
+    let (stats, out) = outcomes(5, 5, 0, || {
         let me = thread::current().id();
         let _s = thread::spawn(move || {
             send_msg(me, 1u32);
         });
-        let _ = recv_msg_timed::<u32>(WaitTime::Finite(5));
+        let got = recv_msg_timed::<u32>(WaitTime::Finite(5));
+        cover!(format!("got={got:?}"));
     });
     assert_eq!(
-        stats.execs, 2,
+        out,
+        expect(&[("got=None", 2), ("got=Some(1)", 1)]),
         "arrival exactly at the deadline races the timer: read and timeout"
     );
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (3, 0, 0));
 }
 
 /// A message that died before the wait began cannot be blamed for the
@@ -101,22 +150,26 @@ fn test_message_dead_before_the_wait_began_allows_timeout() {
 }
 
 /// Two matching messages, both certain to be readable in the window:
-/// dodging one is not enough, so the timeout has no timeline at all.
+/// dodging one is not enough, so the timeout needs both dropped.
+/// Every send lossy: read 1 (2 delivered or dropped), read 2 (1
+/// dropped; FIFO forbids it otherwise), timeout (both dropped).
 #[test]
 fn test_every_candidate_must_miss_the_window() {
-    let stats = verify(cfg(0, 1, 0), || {
+    let (stats, out) = outcomes(0, 1, 0, || {
         let me = thread::current().id();
         let _s = thread::spawn(move || {
             send_msg(me, 1u32);
             send_msg(me, 2u32);
         });
         let got = recv_msg_timed::<u32>(WaitTime::Finite(10));
-        assert(got.is_some());
+        cover!(format!("got={got:?}"));
     });
     assert_eq!(
-        stats.execs, 1,
-        "FIFO: only the first message is readable first; no timeout world"
+        out,
+        expect(&[("got=None", 1), ("got=Some(1)", 2), ("got=Some(2)", 1)]),
+        "a timeout only when every candidate was dropped"
     );
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (4, 0, 0));
 }
 
 /// A timeout followed by a blocking read of the same message (the
@@ -173,23 +226,24 @@ fn test_timeout_with_no_sender_is_unconstrained() {
 
 /// A collector of one is a receive by another name: with the message
 /// certain to arrive inside the window, its empty (timeout) result has
-/// no timeline either. This also covers the vouching hazard: an inbox
-/// visit must not vouch for a graph whose inbox timed out, or the
-/// stricter completion check would be skipped.
+/// no timeline beside the delivered message. Every send lossy: one batch
+/// {1} (delivered) and one empty (dropped), and the timeout beside the
+/// delivered message is never explored. This also covers the vouching
+/// hazard: an inbox visit must not vouch for a graph whose inbox timed
+/// out.
 #[test]
 fn test_inbox_of_one_timeout_obeys_the_same_rule() {
-    let stats = verify(cfg(0, 1, 0), || {
+    let (stats, out) = outcomes(0, 1, 0, || {
         let me = thread::current().id();
         let _s = thread::spawn(move || {
             send_msg(me, 1u32);
         });
         let got = inbox_timed(1, WaitTime::Finite(10));
-        assert(!got.is_empty());
+        cover!(format!("got={}", got.len()));
     });
-    assert_eq!(
-        stats.execs, 1,
-        "a readable message completes a batch of one: no empty world"
-    );
+    assert_eq!(out, expect(&[("got=0", 1), ("got=1", 1)]));
+    assert_eq!(stats.execs, 2);
+    assert_eq!(stats.timeline_impossible, 0);
 }
 
 /// The same collector when the message may genuinely be late: the
@@ -221,9 +275,12 @@ fn test_inbox_of_two_timeout_stays_unconstrained() {
         let got = inbox_timed(2, WaitTime::Finite(10));
         assert(got.is_empty());
     });
+    // Every send lossy: the timeout beside the delivered message and
+    // the timeout with it dropped.
     assert_eq!(
-        stats.execs, 1,
-        "one message can never complete a batch of two: only the timeout"
+        (stats.execs, stats.block, stats.timeline_impossible),
+        (2, 0, 0),
+        "one message can never complete a batch of two: only timeouts"
     );
 }
 
@@ -233,16 +290,22 @@ fn test_inbox_of_two_timeout_stays_unconstrained() {
 /// 0 and sends are instantaneous, so a(b) = 0 and R's deadline is 10.
 ///
 ///   E1 {r = bot, b unread, s unread}: for b neither a(b) >= 10 nor
-///      a(b) + 100 < 0 holds. NO timeline: explored, then dropped.
+///      a(b) + 100 < 0 holds. NO timeline: never explored.
 ///   E2 {r reads s, b unread}: a(s) = t(recv m) in [0, 10], read at
 ///      a(s); b and s come from different senders, so no (C7) skip
 ///      group binds them under LocalOrder. Feasible.
 ///   E3 {r reads b, s unread}: feasible.
 ///
-/// Counted 2, explored 3. E2 is reachable ONLY through E1's branch (s
-/// is created there and revisits r from it), which is why the timeout
-/// branch must stay in the tree and be judged at the end: a checker
-/// that cut the branch when b appeared would report 1.
+/// E2 is reachable only through a timeout (s is created there and
+/// revisits r from it), so a checker that cut that branch too early
+/// would lose E2. Must-tau rejects E1 at the step that makes it
+/// impossible and still reaches E2.
+///
+/// Every send lossy. m delivered: (b, s) both delivered gives E2, E3;
+/// only b: read b; only s: read s, or timeout (S2 may take m after
+/// R's deadline, so s can be late); neither: timeout. That is 6.
+/// m dropped: S2 blocks; R reads b or times out with b dropped: 2
+/// blocked.
 #[test]
 fn test_design_note_program_counts_two_and_drops_one() {
     let stats = verify(cfg(0, 0, 100), || {
@@ -262,19 +325,21 @@ fn test_design_note_program_counts_two_and_drops_one() {
     });
     assert_eq!(
         (stats.execs, stats.block, stats.timeline_impossible),
-        (2, 0, 1),
-        "E2 and E3 are real; E1 (the timeout beside the stored b) is explored and dropped"
+        (6, 2, 0),
+        "E2 and E3 are real; E1 (the timeout beside the stored b) is never explored"
     );
 }
 
 /// Three threads, L = U = sd = 0: R does `recv_msg_timed(Finite(10))`,
-/// S1 sends b, S2 sends s. Sem(P) = {r reads b} and {r reads s};
-/// {r = bot} has no timeline (a(b) = 0 < 10). Both worlds exist and
-/// the timeout is explored then dropped, in BOTH thread-creation
-/// orders: this is the impossibility example for pruning the timeout
-/// at the read (with R visited first there is no candidate yet, the
-/// timeout is committed, and the world "r reads s" is only reachable
-/// through it).
+/// S1 sends b, S2 sends s. With both delivered, Sem(P) = {r reads b}
+/// and {r reads s}; {r = bot} has no timeline (a(b) = 0 < 10). Both
+/// worlds must exist in BOTH thread-creation orders: this is the
+/// impossibility example for pruning the timeout at the read (with R
+/// visited first there is no candidate yet, the timeout is committed,
+/// and the world "r reads s" is only reachable through it).
+///
+/// Every send lossy: both delivered: read b, read s; one dropped: read
+/// the other (2); both dropped: timeout. 5 executions, none dead.
 #[test]
 fn test_three_thread_example_receiver_first() {
     let stats = verify(cfg(0, 0, 0), || {
@@ -287,7 +352,7 @@ fn test_three_thread_example_receiver_first() {
     });
     assert_eq!(
         (stats.execs, stats.block, stats.timeline_impossible),
-        (2, 0, 1)
+        (5, 0, 0)
     );
 }
 
@@ -301,7 +366,7 @@ fn test_three_thread_example_senders_first() {
     });
     assert_eq!(
         (stats.execs, stats.block, stats.timeline_impossible),
-        (2, 0, 1)
+        (5, 0, 0)
     );
 }
 
@@ -313,7 +378,9 @@ fn test_three_thread_example_senders_first() {
 /// a1 in [0, 1] (FIFO front, never dead before its wait); the receive
 /// then waits [a1, a1 + 10] and message 2 arrives at a2 in [a1, 1]
 /// (FIFO), readable exactly then, inside the wait. Its timeout has no
-/// timeline: one execution, one dropped.
+/// timeline. Every send lossy: both delivered: inbox 1, read 2; 2
+/// dropped: inbox 1, timeout; 1 dropped: inbox 2, timeout; both
+/// dropped: the inbox blocks. 3 executions, 1 blocked, none dead.
 #[test]
 fn test_vouch_hole_complete_arm() {
     let stats = verify(cfg(0, 1, 0), || {
@@ -327,16 +394,16 @@ fn test_vouch_hole_complete_arm() {
     });
     assert_eq!(
         (stats.execs, stats.block, stats.timeline_impossible),
-        (1, 0, 1),
-        "the timeout committed after the inbox vouch must still be judged"
+        (3, 1, 0),
+        "no timeout beside the delivered message 2 after the inbox"
     );
 }
 
 /// Vouch hole, blocked arm: same shape, but the thread then blocks on
 /// a receive nothing can satisfy, so the ending is blocked rather than
-/// complete and goes through the other gate. Same hand count: the
-/// read world blocks (1 blocked ending), the timeout world has no
-/// timeline (dropped).
+/// complete and goes through the other gate. Every send lossy: the
+/// same four worlds as above, each ending blocked (the last receive
+/// has nothing left, or the inbox blocks). 4 blocked, none dead.
 #[test]
 fn test_vouch_hole_blocked_arm() {
     let stats = verify(cfg(0, 1, 0), || {
@@ -351,7 +418,7 @@ fn test_vouch_hole_blocked_arm() {
     });
     assert_eq!(
         (stats.execs, stats.block, stats.timeline_impossible),
-        (0, 1, 1),
-        "a blocked ending reached through an impossible timeout counts as nothing"
+        (0, 4, 0),
+        "no blocked ending is reached through an impossible timeout"
     );
 }

@@ -6,7 +6,13 @@
 //! a_s <= t <= a_s + sd; same-channel sends b1, b2 with b1 in sb(b2)
 //! (delivery-model order; LocalOrder, the default, is same-sender
 //! program order) satisfy a_b1 <= a_b2 when both are delivered.
-//! Dropped lossy sends never arrive and are exempt from coupling.
+//! Dropped sends never arrive and are exempt from coupling.
+//!
+//! Universal loss (2026-09-30): under with_timed EVERY send may be
+//! dropped, with no budget. Each count below is the sum over the
+//! drop patterns of the sends; the pattern in which every send is
+//! delivered is the reliable-network world this file originally
+//! pinned, and it keeps its old count and its old argument.
 //! A message has one arrival consistent across every constraint site
 //! (single-arrival consistency; previously each site projected its own
 //! phantom arrival out of [t_s + L, t_s + U]). Programs whose transit
@@ -71,7 +77,12 @@ use traceforge::*;
 //              existed: the branch was feasible, giving (2, 0).
 //   (r1 = TO): timeouts are always explorable.             FEASIBLE
 //
-// Expected: (1, 0).
+// Both delivered: (1, 0). Every send lossy adds the drop patterns:
+//   m2 dropped, m delivered: no coupling, a_m in [0, 10]; r1 = m at
+//             a_m = 5 and r1 = TO (a_m != 5) are both feasible:  2
+//   m dropped (m2 either way): only the timeout:               1 + 1
+// Expected: (5, 0). Without single-arrival consistency the
+// both-delivered read would survive too, giving (6, 0).
 // ---------------------------------------------------------------------
 
 #[test]
@@ -91,7 +102,7 @@ fn single_arrival_pins_wide_window_through_successor() {
             traceforge::send_tagged_msg_timed(r, 2, 20u32, 0, 0); // m2
         },
     );
-    assert_eq!((stats.execs, stats.block), (1, 0));
+    assert_eq!((stats.execs, stats.block), (5, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -126,7 +137,15 @@ fn single_arrival_pins_wide_window_through_successor() {
 //             read within [a, a + sd]).                    FEASIBLE
 //   (TO, TO): by design.                                   FEASIBLE
 //
-// Derived: (5, 0).
+// Derived for all three delivered: (5, 0). Every send lossy: sum
+// over the delivered set D, same rules (reads at 5, chain over the
+// delivered sends only):
+//   D = {}: (TO, TO)                                              1
+//   D = {c}, {b}, {s}: read it or time out at the one receive     2 each
+//   D = {c, b} or {c, s}: each receive reads or times out freely  4 each
+//   D = {b, s}: rB in {b, s (a_b <= 4), TO}                       3
+//   D = {c, b, s}: the case above                                 5
+// Expected: 1 + 6 + 8 + 3 + 5 = (23, 0).
 //
 // RESOLVED 2026-08-28: the offer path now performs dead-front
 // unsealing (coherent_rfs_in_view offers a deeper eligible candidate
@@ -179,7 +198,7 @@ fn possibly_dead_front_skip_world_is_lost_by_offer_sealing() {
             traceforge::send_tagged_msg_timed(r, 3, 30u32, 0, 10); // s
         },
     );
-    assert_eq!((stats.execs, stats.block), (5, 0));
+    assert_eq!((stats.execs, stats.block), (23, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -210,8 +229,12 @@ fn possibly_dead_front_skip_world_is_lost_by_offer_sealing() {
 //             both readable instants are <= 10 < 20.     IMPOSSIBLE
 //   (TO, TO): r1's timeout is the same infeasible one.   IMPOSSIBLE
 //
-// 1 execution, 0 blocked.
-// This count changed from 3 to 1 with (C6') (2026-09-21): a
+// Both delivered: 1 execution, 0 blocked. Every send lossy adds:
+//   only m1 delivered: (m1, TO), r1's timeout still cannot miss m1:  1
+//   only m2 delivered: (m2, TO), no m1 to skip:                      1
+//   none delivered: (TO, TO):                                        1
+// Expected: (4, 0).
+// The both-delivered count changed from 3 to 1 with (C6') (2026-09-21): a
 // finite-wait receive may return bot only where every message it
 // could have consumed misses the whole wait, and here m1 (for r1) and
 // m2 (for r2) are readable inside it in every timeline. The two
@@ -237,7 +260,7 @@ fn same_sender_uniform_windows_match_prefifo_count() {
             traceforge::send_msg(r, 2u32); // m2
         },
     );
-    assert_eq!((stats.execs, stats.block), (1, 0));
+    assert_eq!((stats.execs, stats.block), (4, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -263,7 +286,14 @@ fn same_sender_uniform_windows_match_prefifo_count() {
 // the contradictory sends: the program has zero behaviors, and
 // timeline-impossible branches count as nothing.
 //
-// Expected: (0, 0).
+// Every send lossy: the two drop patterns with m1 AND m2 delivered
+// are vacuous (0 each, whatever m3 does). The other six patterns have
+// a satisfiable base and give exactly 1 each: read m3 at 7 if m3 is
+// delivered (the timeout cannot miss a3 = 7 inside [0, 10]), else the
+// timeout. Expected: (6, 0); partial vacuity would add the read and
+// the timeout of the two vacuous patterns, giving (8, 0). The
+// vacuous worlds are rejected during exploration, so none completes
+// as timeline-impossible.
 // ---------------------------------------------------------------------
 
 #[test]
@@ -283,21 +313,21 @@ fn fifo_vacuity_is_total_not_partial() {
             traceforge::send_tagged_msg_timed(r, 3, 3u32, 7, 7); // m3, live
         },
     );
-    assert_eq!((stats.execs, stats.block), (0, 0));
+    assert_eq!((stats.execs, stats.block), (6, 0));
+    assert_eq!(stats.timeline_impossible, 0);
 }
 
 // ---------------------------------------------------------------------
 // 4. Lossy exemption: a dropped send has no arrival, hence no
 // coupling.
 //
-// Config (0, 0, 0) with lossy budget 1. Main sends to one channel:
+// Config (0, 0, 0); every send may be dropped. Main sends to one
+// channel:
 //   m1 = send_lossy_msg_timed(r, 1, 10, 10): a1 = 10 when delivered
 //   m2 = send_msg_timed(r, 2, 0, 0):         a2 = 0
 // Receiver: recv(Finite(0)) at t0 = 0, wait is the point [0, 0].
 //
-// The lossy budget (see lossy_channels.rs: one lossy send under
-// with_lossy(1) explores exactly the delivered world and the dropped
-// world) splits the exploration:
+// Worlds by m1 (m2 delivered):
 //
 // m1 DELIVERED: FIFO couples a1 <= a2, i.e. 10 <= 0: contradiction.
 //   The whole delivered world is vacuous; every branch in it counts
@@ -307,14 +337,17 @@ fn fifo_vacuity_is_total_not_partial() {
 //   no obligation. a2 = 0.
 //     (read m2): t = 0 = a2.                               FEASIBLE
 //     (timeout): by design.                                FEASIBLE
+// m2 dropped as well: m1 delivered gives the timeout only (a1 = 10,
+// no read at 0), m1 dropped gives the timeout only: 1 + 1.
 //
-// Expected: (2, 0).
+// Expected: 0 + 2 + 2 = (4, 0). Coupling a dropped m1 would erase
+// the m1-dropped world too, giving (2, 0).
 // ---------------------------------------------------------------------
 
 #[test]
 fn lossy_drop_exempts_fifo_coupling() {
     let stats = traceforge::verify(
-        Config::builder().with_timed(0, 0, 0).with_lossy(1).build(),
+        Config::builder().with_timed(0, 0, 0).build(),
         || {
             let receiver = thread::spawn(|| {
                 let _: Option<u32> = traceforge::recv_msg_timed(WaitTime::Finite(0));
@@ -324,7 +357,8 @@ fn lossy_drop_exempts_fifo_coupling() {
             traceforge::send_msg_timed(r, 2u32, 0, 0); // m2
         },
     );
-    assert_eq!((stats.execs, stats.block), (2, 0));
+    assert_eq!((stats.execs, stats.block), (4, 0));
+    assert_eq!(stats.timeline_impossible, 0);
 }
 
 // ---------------------------------------------------------------------
@@ -367,6 +401,10 @@ fn lossy_drop_exempts_fifo_coupling() {
 // collapse this to (0, 0), and losing the cross-sender overtaking
 // would drop (y, x) too, leaving (1, 0). The surviving pair still
 // separates all three.
+//
+// Every send lossy adds: only x delivered (x, TO); only y delivered
+// (y, TO); none delivered (TO, TO): 1 each. Expected: (5, 0). The
+// both-delivered world above still separates the three models.
 // ---------------------------------------------------------------------
 
 #[test]
@@ -387,7 +425,7 @@ fn cross_sender_sends_not_coupled_under_local_order() {
             });
         },
     );
-    assert_eq!((stats.execs, stats.block), (2, 0));
+    assert_eq!((stats.execs, stats.block), (5, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -403,10 +441,13 @@ fn cross_sender_sends_not_coupled_under_local_order() {
 // sd = 5 they touch at 5, where m2 arrives and m1 is still stored, so
 // the batch is collected there as well.
 //
-// Expected: (1, 0) at sd = 2 and (2, 0) at sd = 5, the same pair as
-// the cross-sender twin. (Finite wait: the never-collects world IS
-// the timeout execution; GC refusal classes exist only for infinite
-// waits, so block = 0.)
+// Both delivered: (1, 0) at sd = 2 and (2, 0) at sd = 5, the same
+// pair as the cross-sender twin. (Finite wait: the never-collects
+// world IS the timeout execution; GC refusal classes exist only for
+// infinite waits, so block = 0.) Every send lossy: the three drop
+// patterns with at most one message delivered cannot reach min = 2
+// and give the timeout only, +3 at either sd. Expected: (4, 0) and
+// (5, 0); the same +3 applies to the cross-sender twins 6b and 6c.
 // ---------------------------------------------------------------------
 
 fn run_min2_inbox(sd: u64, same_sender: bool) -> Stats {
@@ -436,9 +477,9 @@ fn run_min2_inbox(sd: u64, same_sender: bool) -> Stats {
 #[test]
 fn same_sender_min2_inbox_follows_the_lifetimes() {
     let disjoint = run_min2_inbox(2, true);
-    assert_eq!((disjoint.execs, disjoint.block), (1, 0));
+    assert_eq!((disjoint.execs, disjoint.block), (4, 0));
     let touching = run_min2_inbox(5, true);
-    assert_eq!((touching.execs, touching.block), (2, 0));
+    assert_eq!((touching.execs, touching.block), (5, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -459,13 +500,14 @@ fn same_sender_min2_inbox_follows_the_lifetimes() {
 // The only subset {m1, m2} admits no read time: that branch counts
 // as nothing. The timeout branch (empty at t0 + 10) remains.
 //
-// Expected: (1, 0).
+// Both delivered: (1, 0). Every send lossy: +3 timeout-only drop
+// patterns (see 6a). Expected: (4, 0).
 // ---------------------------------------------------------------------
 
 #[test]
 fn disjoint_lifetimes_never_fill_min2_inbox() {
     let stats = run_min2_inbox(2, false);
-    assert_eq!((stats.execs, stats.block), (1, 0));
+    assert_eq!((stats.execs, stats.block), (4, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -478,11 +520,12 @@ fn disjoint_lifetimes_never_fill_min2_inbox() {
 //   completing at a2 (t = 5): a1 <= 5 <= a1 + 5, t <= 10.  FEASIBLE
 // Subset branch + timeout branch.
 //
-// Expected: (2, 0).
+// Both delivered: (2, 0). Every send lossy: +3 timeout-only drop
+// patterns (see 6a). Expected: (5, 0).
 // ---------------------------------------------------------------------
 
 #[test]
 fn touching_lifetimes_fill_min2_inbox() {
     let stats = run_min2_inbox(5, false);
-    assert_eq!((stats.execs, stats.block), (2, 0));
+    assert_eq!((stats.execs, stats.block), (5, 0));
 }

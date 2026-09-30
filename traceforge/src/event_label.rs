@@ -749,13 +749,6 @@ pub(crate) struct RecvMsg {
     ///   (blocking receive: timeout / `rf = ⊥` is inadmissible).
     #[serde(default)]
     wait: Option<WaitTime>,
-    /// Base outcome of a finite-wait timed receive under the timeout
-    /// kill (`Config::kill_dead_timeouts`): `None` = timeout, `Some(s)` =
-    /// the first candidate at the visit, or the killer after a kill.
-    /// Stays `None` when the kill is off, so the canonicity test
-    /// `rf == base_rf` reduces to the classic `rf.is_none()`.
-    #[serde(default)]
-    base_rf: Option<Event>,
 }
 
 impl RecvMsg {
@@ -774,7 +767,6 @@ impl RecvMsg {
             non_blocking,
             revisitable: true,
             wait: None,
-            base_rf: None,
         }
     }
 
@@ -797,7 +789,6 @@ impl RecvMsg {
             non_blocking,
             revisitable: true,
             wait: Some(wait),
-            base_rf: None,
         }
     }
 
@@ -815,12 +806,25 @@ impl RecvMsg {
         self.rf = rf
     }
 
-    pub(crate) fn base_rf(&self) -> Option<Event> {
-        self.base_rf
-    }
-
-    pub(crate) fn set_base_rf(&mut self, base: Option<Event>) {
-        self.base_rf = base
+    /// The blocking receive a GC refusal block stands for, reading
+    /// nothing. A later matching send can backward-revisit the refusal,
+    /// turning it back into this receive.
+    pub(crate) fn from_refusal(b: &Block) -> Option<RecvMsg> {
+        if !b.refuses_matching {
+            return None;
+        }
+        let BlockType::Value(loc, Some(wait), _, comm, false) = &b.btype else {
+            return None;
+        };
+        Some(RecvMsg {
+            label: b.label.clone(),
+            loc: loc.clone(),
+            comm: *comm,
+            rf: None,
+            non_blocking: false,
+            revisitable: true,
+            wait: Some(*wait),
+        })
     }
 
     pub(crate) fn is_non_blocking(&self) -> bool {

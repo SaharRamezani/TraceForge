@@ -84,6 +84,21 @@ fn zero_wait_timed_receive_matches_the_untimed_non_blocking_receive() {
     let a = verify(untimed(), one_sender_program(|| recv_msg::<u32>()));
     let b = verify(untimed(), one_sender_program(|| recv_msg_timed::<u32>(WaitTime::Finite(0))));
     assert_eq!((a.execs, a.block), (b.execs, b.block));
-    let c = verify(timed(), one_sender_program(|| recv_msg_timed::<u32>(WaitTime::Finite(0))));
-    assert_eq!(c.execs + c.timeline_impossible, 2, "the timeout world is explored; with U = 1 it may or may not have a timeline");
+    static READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    static TIMEOUTS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let c = verify(
+        timed(),
+        one_sender_program(|| {
+            let r = recv_msg_timed::<u32>(WaitTime::Finite(0));
+            let ctr = if r.is_some() { &READS } else { &TIMEOUTS };
+            ctr.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            r
+        }),
+    );
+    // Every send lossy: 1 read, 1 timeout with the message delivered
+    // (arrival at 1 > t0 = 0), 1 timeout with the send dropped.
+    assert_eq!((c.execs, c.block), (3, 0));
+    assert_eq!(READS.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert_eq!(TIMEOUTS.load(std::sync::atomic::Ordering::SeqCst), 2);
+    assert_eq!(c.timeline_impossible, 0, "no graph without a timeline is explored");
 }

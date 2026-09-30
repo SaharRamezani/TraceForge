@@ -518,7 +518,7 @@ fn apply_parallel(builder: traceforge::ConfigBuilder) -> traceforge::ConfigBuild
 }
 
 fn build_config(mode: Mode, b: Bounds, dot_out: Option<&str>, keep_going: bool) -> Config {
-    let mut builder = apply_parallel(Config::builder().with_progress_report(usize::MAX));
+    let mut builder = apply_parallel(Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX));
     if keep_going {
         // Explore the whole state space even after a violation, so the
         // untimed baseline (which always FIREs on this benchmark) yields

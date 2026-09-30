@@ -248,7 +248,7 @@ fn apply_parallel(builder: traceforge::ConfigBuilder, parallel: Parallel) -> tra
 }
 
 fn build_config(mode: Mode, _n: usize, tb: TimedBounds, parallel: Parallel) -> Config {
-    let builder = Config::builder()
+    let builder = Config::builder().with_all_sends_lossy()
         .with_progress_report(usize::MAX)
         .with_verbose(0);
     let builder = apply_parallel(builder, parallel);

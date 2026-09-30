@@ -479,7 +479,7 @@ fn apply_parallel(builder: traceforge::ConfigBuilder) -> traceforge::ConfigBuild
 }
 
 fn build_config(mode: Mode, b: Bounds) -> Config {
-    let builder = apply_parallel(Config::builder().with_progress_report(usize::MAX));
+    let builder = apply_parallel(Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX));
     match mode {
         Mode::Baseline => builder.build(),
         Mode::Timed => builder.with_timed(b.l, b.u, b.sd).build(),

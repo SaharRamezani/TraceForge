@@ -149,6 +149,16 @@ fn gap3_members_causally_after_inbox_rejected() {
 /// its read set with {s1, s2}, judged r non-canonical in every branch,
 /// and withheld the revisits {s1, e} and {s3, e} (only {s1, s3} and
 /// {s2, s3} were explored; with gap 4 present the inbox never woke at all).
+///
+/// Every send lossy (a dropped send enters no constraint). With the
+/// control message c delivered, main reads a feasible pair of the
+/// delivered data: all delivered 4 (the sets above); e dropped 2; s1
+/// dropped 2; s2 dropped 3; s3 dropped 2 ({s1, e}, {s2, e}); two of the
+/// four dropped 1 each, except s3 and e dropped ({s1, s2} infeasible,
+/// blocked): 4 + 2 + 2 + 3 + 2 + 5 = 18 executions, and 1 + 5 blocked
+/// (three or four dropped). With c dropped E blocks for ever, so every
+/// ending is blocked: {s1, s3} and {s2, s3} (all delivered), 1 each with
+/// s1 or s2 dropped, main blocked in the 5 other cases: 9. Blocked 15.
 #[test]
 fn gap2_canonical_inbox_subset_is_first_feasible() {
     let stats = traceforge::verify(Config::builder().with_timed(0, 0, 5).build(), || {
@@ -177,8 +187,7 @@ fn gap2_canonical_inbox_subset_is_first_feasible() {
         let got = traceforge::inbox_with_tag_timed(|_, t| t == Some(DATA), 2, WaitTime::Infinite);
         assert_eq!(got.len(), 2);
     });
-    assert_eq!(stats.block, 0);
-    assert_eq!(stats.execs, 4);
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (18, 15, 0));
 }
 
 /// Gap 4 (member eligibility of a k >= 2 timed inbox must not demand a
@@ -193,6 +202,9 @@ fn gap2_canonical_inbox_subset_is_first_feasible() {
 /// read it alone with the other message dodged; s3 failed that test
 /// (s1 is alive and unread at 4), the member pool shrank to {s1}, no
 /// batch of size 2 existed, and the inbox blocked forever.
+///
+/// Every send lossy: the batch when both are delivered, and the inbox
+/// blocks in the 3 cases with a message dropped: 1 execution, 3 blocked.
 #[test]
 fn gap4_member_eligibility_is_window_only_for_batches() {
     let stats = traceforge::verify(Config::builder().with_timed(0, 0, 5).build(), || {
@@ -208,8 +220,7 @@ fn gap4_member_eligibility_is_window_only_for_batches() {
         let got = traceforge::inbox_with_tag_timed(|_, t| t == Some(DATA), 2, WaitTime::Infinite);
         assert_eq!(got.len(), 2);
     });
-    assert_eq!(stats.block, 0);
-    assert_eq!(stats.execs, 1);
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (1, 3, 0));
 }
 
 /// Gap 5 (a member read by a receive the revisit deletes is free).
@@ -486,6 +497,11 @@ fn gap10_batch_is_closed_under_causal_order() {
 /// with the inbox reading m2 and the receive timing out was counted
 /// although no timeline satisfies it (one extra execution without a
 /// timeline). Debug builds now re-check vouched completions.
+///
+/// Every send lossy: {m1} then m2 (both delivered); {m1} then timeout
+/// (m2 dropped); {m2} then timeout (m1 dropped, so nothing is left
+/// behind); inbox blocked (both dropped): 3 executions, 1 blocked. The
+/// gap would add {m2} with m1 delivered.
 #[test]
 fn gap10_timed_batch_cannot_leave_a_live_sibling() {
     let stats = traceforge::verify(Config::builder().with_timed(0, 0, 100).build(), || {
@@ -498,7 +514,7 @@ fn gap10_timed_batch_cannot_leave_a_live_sibling() {
         traceforge::send_msg(cid, M(1));
         traceforge::send_msg(cid, M(2));
     });
-    assert_eq!((stats.execs, stats.block), (1, 0));
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (3, 1, 0));
 }
 
 /// Gap 10, the condition that stays: a batch completed by a later
@@ -513,6 +529,11 @@ fn gap10_timed_batch_cannot_leave_a_live_sibling() {
 /// same under every variant of the rule. It cannot time out, since
 /// (C6b): m3 is stored over [3, 103] and the wait runs [0, 50]. (Read 2
 /// until 2026-09-22 through the same vouch hole as the test above.)
+///
+/// Every send lossy: {m1,m2} then m3 (all delivered); {m1,m2} then
+/// timeout (m3 dropped); {m2,m3} or {m1,m3} then timeout (m1 or m2
+/// dropped); inbox blocked with two or three dropped: 4 executions,
+/// 4 blocked.
 #[test]
 fn gap10_waited_batch_cannot_ignore_a_stored_message() {
     let stats = traceforge::verify(Config::builder().with_timed(0, 0, 100).build(), || {
@@ -527,7 +548,7 @@ fn gap10_waited_batch_cannot_ignore_a_stored_message() {
         traceforge::sleep(3);
         traceforge::send_msg(cid, M(3));
     });
-    assert_eq!((stats.execs, stats.block), (1, 0));
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (4, 4, 0));
 }
 
 /// Gap 11 (a message consumed by a reader that follows the inbox is
@@ -552,6 +573,11 @@ fn gap10_waited_batch_cannot_ignore_a_stored_message() {
 /// because C's later receive consumes it, although x was stored at the
 /// inbox's read, and the checker counted that graph: 3 executions, one
 /// with no timeline. A consumer that follows the read no longer exempts.
+///
+/// Every send lossy: {m1,x} then m2 (all delivered); with one message
+/// dropped the other two form the batch and the receive times out (3);
+/// inbox blocked with two or three dropped: 4 executions, 4 blocked.
+/// The gap would add {m1,m2} with x delivered.
 #[test]
 fn gap11_consumer_after_the_inbox_leaves_the_message_stored() {
     // C is spawned first so that A, B and X learn its id at spawn time:
@@ -578,7 +604,7 @@ fn gap11_consumer_after_the_inbox_leaves_the_message_stored() {
             traceforge::send_msg(cid, M(3));
         });
     });
-    assert_eq!((stats.execs, stats.block), (1, 0));
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (4, 4, 0));
 }
 
 /// Gap 12 (a batch of two or more may leave behind a sibling that
@@ -598,6 +624,10 @@ fn gap11_consumer_after_the_inbox_leaves_the_message_stored() {
 /// 1 blocked. The message of another sender in the same position was
 /// always allowed to expire (exclusion alternative B), so the two rules
 /// now agree.
+///
+/// Every send lossy: {m2, t} with m1 delivered or dropped (2); the inbox
+/// blocks in the 6 cases where m2 or t is dropped: 2 executions, 6
+/// blocked. With the wait-start anchor the m1-delivered case blocked.
 #[test]
 fn gap12_batch_may_leave_a_sibling_that_expired_mid_wait() {
     let stats = traceforge::verify(Config::builder().with_timed(0, 0, 1).build(), || {
@@ -614,13 +644,17 @@ fn gap12_batch_may_leave_a_sibling_that_expired_mid_wait() {
         traceforge::sleep(5);
         traceforge::send_msg(cid, M(2));
     });
-    assert_eq!((stats.execs, stats.block), (1, 0));
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (2, 6, 0));
 }
 
 /// Gap 12, finite wait: the same program with inbox(exactly 2, wait 20).
 /// The batch {m2, t} completes at 5 and the timeout branch is explorable
 /// by design: 2 executions. With the wait-start anchor the batch was
 /// silently absent and only the timeout remained: 1.
+///
+/// Every send lossy: batch + timeout when m2 and t are delivered (m1
+/// delivered or dropped: 2 x 2), timeout only in the other 6 delivery
+/// cases: 10 executions.
 #[test]
 fn gap12_finite_wait_batch_is_not_silently_lost() {
     let stats = traceforge::verify(Config::builder().with_timed(0, 0, 1).build(), || {
@@ -637,5 +671,5 @@ fn gap12_finite_wait_batch_is_not_silently_lost() {
         traceforge::sleep(5);
         traceforge::send_msg(cid, M(2));
     });
-    assert_eq!((stats.execs, stats.block), (2, 0));
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (10, 0, 0));
 }

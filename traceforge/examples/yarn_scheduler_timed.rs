@@ -857,7 +857,7 @@ fn max_thread_events(ams: usize, horizon: u32) -> u64 {
 }
 
 fn build_config(mode: Mode, p: Params, keep_going: bool) -> Config {
-    let mut builder = Config::builder()
+    let mut builder = Config::builder().with_all_sends_lossy()
         .with_progress_report(usize::MAX)
         .with_thread_threshold(THREAD_EVENT_LIMIT);
     if keep_going {

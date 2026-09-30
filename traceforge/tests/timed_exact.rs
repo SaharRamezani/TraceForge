@@ -14,6 +14,7 @@
 //! over-prunes).
 
 use traceforge::thread::{self, ThreadId};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use traceforge::*;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -125,7 +126,9 @@ fn chain_scenario_counts() {
             traceforge::send_msg(consumer.thread().id(), 42i32);
         },
     );
-    assert_eq!(stats.execs, 2);
+    // Every send lossy: delivered gives read or timeout (arrival in
+    // [10, 1010] can miss the wait), dropped gives one more timeout.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (3, 0, 0));
     let stats = traceforge::verify(
         Config::builder().with_timed(0, 0, 0).build(),
         || {
@@ -137,7 +140,9 @@ fn chain_scenario_counts() {
             traceforge::send_msg(consumer.thread().id(), 42i32);
         },
     );
-    assert_eq!(stats.execs, 1);
+    // The send lands after the wait whether delivered or dropped: two
+    // timeout endings, and the assert never fires.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (2, 0, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -161,16 +166,22 @@ fn chain_scenario_counts() {
 // itself, one step earlier, so the world never starts. The execs are
 // unchanged, which is the point: the idiom was converting false
 // timeouts into blocked runs, and the constraint now prevents them.
+//
+// Every send lossy (2026-09-30): the execs are unchanged, because every
+// drop leaves some thread waiting forever (a lost handoff, ping, ack,
+// Alive or Done), so each drop world ends blocked; the blocked counts
+// are those drop worlds (graph sets identical to the old engine run
+// with every send lossy). No ending lacks a timeline.
 #[test]
 fn mini_swim_single_round_counts() {
     let stats = run_mini_swim(1, 4, false);
-    assert_eq!((stats.execs, stats.block), (2, 0));
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (2, 16, 0));
 }
 
 #[test]
 fn mini_swim_two_rounds_shared_ancestor_pruned() {
     let stats = run_mini_swim(2, 4, false);
-    assert_eq!((stats.execs, stats.block), (4, 0));
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (4, 34, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -182,7 +193,9 @@ fn mini_swim_two_rounds_shared_ancestor_pruned() {
 #[test]
 fn exact_never_reaches_spurious_assert() {
     let stats = run_mini_swim(2, 4, true);
-    assert_eq!((stats.execs, stats.block), (4, 0));
+    // Same state space as the nondet variant above: neither reaches
+    // the pinch branch.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (4, 34, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -235,7 +248,12 @@ fn expired_fifo_front_skipped_under_gc() {
     // no longer reachable HERE, because the only way to reach it was
     // through that false timeout. dead_front_skipped_after_sleep below
     // keeps that coverage, with the front dying before the wait begins.
-    assert_eq!((stats.execs, stats.block), (1, 0));
+    //
+    // Every send lossy: m1 delivered gives Branch A, m1 dropped gives an
+    // honest timeout then m2; either way a dropped m2 leaves the second
+    // read blocked. 2 execs + 2 blocked, and no false timeout beside a
+    // delivered m1.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (2, 2, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -244,6 +262,9 @@ fn expired_fifo_front_skipped_under_gc() {
 // alternative branch.
 // ---------------------------------------------------------------------
 
+// Endings whose receive took m2 (every send lossy: only m1 dropped).
+static LIVE_FRONT_READ_M2: AtomicUsize = AtomicUsize::new(0);
+
 #[test]
 fn live_front_still_mandatory_under_gc() {
     let stats = traceforge::verify(
@@ -251,15 +272,23 @@ fn live_front_still_mandatory_under_gc() {
         || {
             let receiver = thread::spawn(|| {
                 let v: u32 = traceforge::recv_msg_block_timed();
-                traceforge::assert(v == 1);
+                // m2 is read only when m1 was dropped; a lost m1 is not
+                // observable here, so the ending count is checked below.
+                if v == 2 {
+                    LIVE_FRONT_READ_M2.fetch_add(1, Ordering::SeqCst);
+                }
             });
             let r = receiver.thread().id();
             traceforge::send_msg(r, 1u32);
             traceforge::send_msg(r, 2u32);
         },
     );
-    // Exactly one execution: m1 is alive, minimal, and mandatory.
-    assert_eq!((stats.execs, stats.block), (1, 0));
+    // m1 is alive, minimal, and mandatory whenever it is delivered.
+    // Every send lossy: the reads of m1 (m2 delivered or dropped) and of
+    // m2 (m1 dropped) complete, both dropped blocks: (3, 1). A delivered
+    // m1 is never skipped, so exactly one ending reads m2.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (3, 1, 0));
+    assert_eq!(LIVE_FRONT_READ_M2.load(Ordering::SeqCst), 1);
 }
 
 // ---------------------------------------------------------------------
@@ -294,7 +323,10 @@ fn dead_front_skipped_after_sleep() {
             traceforge::send_msg(r, 2u32);
         },
     );
-    assert_eq!((stats.execs, stats.block), (1, 0));
+    // Every send lossy: m2 delivered reads m2 past the corpse m1 (m1
+    // delivered or dropped), m2 dropped blocks: (2, 2). The assert
+    // never fires, so a delivered dead m1 is always skipped.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (2, 2, 0));
 }
 
 #[test]
@@ -317,7 +349,10 @@ fn skipped_message_is_evicted() {
             traceforge::send_msg(r, 2u32);
         },
     );
-    assert_eq!((stats.execs, stats.block), (0, 1));
+    // Every send lossy: the delivered subsets {m1, m2}, {m1}, {m2}, {}
+    // each end blocked at a read with nothing left (the corpse is never
+    // resurrected): (0, 4).
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (0, 4, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -344,7 +379,10 @@ fn late_skipped_message_evicted() {
             traceforge::send_msg_timed(r, 1u32, 0, 0); // s1: would overtake
         },
     );
-    assert_eq!((stats.execs, stats.block), (0, 0));
+    // Every send lossy: the world with both delivered stays empty (FIFO
+    // vacuity). b alone: timeout, then read b (1 exec); s1 alone: read
+    // s1, then block; none: timeout, then block (2 blocked).
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (1, 2, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -439,7 +477,11 @@ fn context_coupled_eligibility_complete() {
             let _ = c_thr.join();
         },
     );
-    assert_eq!((stats.execs, stats.block), (5, 0));
+    // Every send lossy: 64 executions and 129 blocked endings (a lost
+    // id handoff or m leaves a thread waiting forever). Graph sets are
+    // identical to the old engine run with every send lossy; no ending
+    // lacks a timeline.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (64, 129, 0));
 }
 
 #[test]
@@ -461,7 +503,12 @@ fn first_skipper_only_carries_dodge() {
     // channel would have to be overtaken; a_b <= a_s1 <= a_s2 admits
     // no timeline, so the program has no behaviors. (Pre-FIFO counts:
     // (s1,s2), (s1,timeout), (timeout,b), (timeout,timeout) = (4, 0).)
-    assert_eq!((stats.execs, stats.block), (0, 0));
+    //
+    // Every send lossy: the delivered sets holding both b and s1 stay
+    // empty (FIFO vacuity). {b, s2}, {b}: (timeout, b); {s1, s2}: (s1,
+    // s2); {s1}: (s1, timeout); {s2}: (timeout, s2); {}: (timeout,
+    // timeout). 6 executions.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (6, 0, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -487,7 +534,10 @@ fn in_flight_front_skipped_within_cap() {
     // FIFO vacuity (2026-08-28): m1 [50,50] sent before m2 [0,0] on
     // one channel admits no coupled arrival order: no behaviors.
     // (Pre-FIFO: read m2 skipping the in-flight m1, or time out = 2.)
-    assert_eq!((stats.execs, stats.block), (0, 0));
+    //
+    // Every send lossy: both delivered stays empty (FIFO vacuity); m1
+    // alone times out (arrival 50), m2 alone is read, none times out.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (3, 0, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -585,7 +635,11 @@ fn committed_inbox_read_time_is_at_the_arrival() {
     // collector's wait, so a collector of one cannot miss it. The
     // impostor timeline must still never appear and the assert must
     // still never fire, which is what this test is really for.
-    assert_eq!((stats.execs, stats.block), (1, 0));
+    //
+    // Every send lossy: tag 1 delivered gives the subset branch, dropped
+    // gives an honest inbox timeout; tag 9 delivered or dropped doubles
+    // both (the pinch still times out): 4 executions.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (4, 0, 0));
 }
 
 #[test]
@@ -630,7 +684,11 @@ fn min2_completing_arrival_pins_read_time() {
     );
     // Subset branch (read at 5, pinch times out) + inbox-timeout
     // branch: 2 executions, no impostor, no fire.
-    assert_eq!((stats.execs, stats.block), (2, 0));
+    //
+    // Every send lossy: each of the 8 delivered subsets has the inbox
+    // timeout, and the 2 holding both members add the subset branch:
+    // 10 executions, still no impostor and no fire.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (10, 0, 0));
 }
 
 #[test]
@@ -672,7 +730,11 @@ fn min2_genuine_completing_read_kept() {
     );
     // Subset branch: pinch Some (genuine) + pinch timeout = 2;
     // inbox-timeout branch: 1. Total 3.
-    assert_eq!((stats.execs, stats.block), (3, 0));
+    //
+    // Every send lossy: 8 inbox timeouts (one per delivered subset),
+    // plus the subset branch with the pinch message delivered (Some +
+    // timeout = 2) or dropped (timeout = 1). Total 11.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (11, 0, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -709,7 +771,10 @@ fn pairwise_incompatible_min2_inbox_terminates_blocked() {
     // Exact pin: this scenario ends in the empty-combinations Block
     // (no jointly feasible subset), NOT in a GC refusal branch; the
     // refusal machinery must not double-count it.
-    assert_eq!((stats.execs, stats.block), (0, 1));
+    //
+    // Every send lossy: one blocked ending per delivered subset of the
+    // two members (4), still one each.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (0, 4, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -798,7 +863,12 @@ fn inbox_backward_revisits_coexist_with_exact() {
     // batch the committed encoding refuses but the offer probe did not,
     // and the completion-time gate had been vouched off by the inbox
     // visit.
-    assert_eq!((stats.execs, stats.block), (2, 0));
+    //
+    // Every send lossy: the inbox takes the first delivered message
+    // (FIFO closure) and the receive the next one or a timeout. Per
+    // delivered subset of (1, 2, 3): {1,2,3} 2, {1,2} 2, {1,3} 2, {1} 1,
+    // {2,3} 1, {2} 1, {3} 1, {} 1. Total 11.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (11, 0, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -869,8 +939,10 @@ fn context_coupling_model(r_before_c: bool) -> Stats {
 fn context_coupling_spawn_order_invariant() {
     let a = context_coupling_model(true);
     let b = context_coupling_model(false);
-    assert_eq!((a.execs, a.block), (6, 4));
-    assert_eq!((b.execs, b.block), (6, 4));
+    // Every send lossy: (30, 130) in both orders (graph sets identical
+    // to the old engine run with every send lossy).
+    assert_eq!((a.execs, a.block, a.timeline_impossible), (30, 130, 0));
+    assert_eq!((b.execs, b.block, b.timeline_impossible), (30, 130, 0));
 }
 
 // ---------------------------------------------------------------------
@@ -904,7 +976,11 @@ fn cross_predicate_skip_still_evicts() {
     // is one FIFO stream; b [4,4] before s2 [0,0] admits no coupled
     // arrival order, so the program has no behaviors. (Pre-FIFO:
     // (s2, timeout), (timeout, b), (timeout, timeout) = (3, 0).)
-    assert_eq!((stats.execs, stats.block), (0, 0));
+    //
+    // Every send lossy: both delivered stays empty (FIFO vacuity); b
+    // alone gives (timeout, b), s2 alone (s2, timeout), none (timeout,
+    // timeout): the three pre-FIFO classes, each with one send dropped.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (3, 0, 0));
 }
 
 // =====================================================================
@@ -947,7 +1023,11 @@ fn inbox_excluded_members_constrain_completion() {
             let _ = c.join();
         },
     );
-    assert_eq!((stats.execs, stats.block), (2, 0));
+    // Every send lossy: one inbox timeout per delivered subset (8), plus
+    // one batch per subset holding two members: {m0,m1,m2} and {m0,m1}
+    // read {m0,m1}; {m0,m2} and {m1,m2} read themselves. Total 12; no
+    // {m0,m2} batch beside a delivered m1.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (12, 0, 0));
 }
 
 // A timing-coupled Finite receive executing after a concurrent BLOCKING
@@ -1006,7 +1086,9 @@ fn spawn_order_blocked_class_invariant() {
     let a = run([0, 1, 2]);
     let b = run([0, 2, 1]);
     assert_eq!((a.execs, a.block), (b.execs, b.block));
-    assert_eq!((a.execs, a.block), (1, 2));
+    // Every send lossy: (2, 9) in both orders (graph sets identical to
+    // the old engine run with every send lossy).
+    assert_eq!((a.execs, a.block, a.timeline_impossible), (2, 9, 0));
 }
 
 // The certified-false-counterexample hole: an assert firing
@@ -1014,6 +1096,14 @@ fn spawn_order_blocked_class_invariant() {
 // (the porf-prefix witness omitted m1's thread; the gate now judges
 // the full committed graph). No violation is reported; the impossible
 // branch counts as nothing at all (2026-08-28 rule).
+//
+// Every send lossy: {m0, m2} is a GENUINE batch when m1 is dropped, so
+// an assert on it would fire legitimately. The test now counts the
+// endings that read [1, 3] instead: exactly one (m1 dropped, m0 and m2
+// delivered). A second one would be the impossible batch beside a
+// delivered m1.
+static FALSE_CEX_READ_1_3: AtomicUsize = AtomicUsize::new(0);
+
 #[test]
 fn inbox_false_counterexample_suppressed() {
     let stats = traceforge::verify(
@@ -1028,7 +1118,9 @@ fn inbox_false_counterexample_suppressed() {
                 .into_iter()
                 .filter_map(|m| m.and_then(|x| x.as_any().downcast_ref::<u32>().copied()))
                 .collect();
-                traceforge::assert(!(v == vec![1, 3]));
+                if v == vec![1, 3] {
+                    FALSE_CEX_READ_1_3.fetch_add(1, Ordering::SeqCst);
+                }
             });
             let c_id = c.thread().id();
             let s1 = thread::spawn(move || {
@@ -1045,7 +1137,9 @@ fn inbox_false_counterexample_suppressed() {
             let _ = c.join();
         },
     );
-    assert_eq!((stats.execs, stats.block), (2, 0));
+    // Same 12 endings as inbox_excluded_members_constrain_completion.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (12, 0, 0));
+    assert_eq!(FALSE_CEX_READ_1_3.load(Ordering::SeqCst), 1);
 }
 
 // =====================================================================
@@ -1078,7 +1172,8 @@ fn inbox_refusal_class_appears() {
             let _ = c.join();
         },
     );
-    assert_eq!((stats.execs, stats.block), (1, 1));
+    // Every send lossy: a dropped message adds one blocked ending.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (1, 2, 0));
 }
 
 // No sleep: the wait begins at 0 and the message cannot die before it
@@ -1100,7 +1195,9 @@ fn inbox_refusal_not_pushed_when_infeasible() {
             let _ = c.join();
         },
     );
-    assert_eq!((stats.execs, stats.block), (1, 0));
+    // Every send lossy: the dropped message blocks the inbox (1 blocked);
+    // the delivered world still has no refusal.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (1, 1, 0));
 }
 
 // min = 2: joint read feasible (both arrivals in [3,5]) and all-dead
@@ -1129,12 +1226,14 @@ fn inbox_refusal_min2_all_dead() {
             let _ = c.join();
         },
     );
-    assert_eq!((stats.execs, stats.block), (1, 1));
+    // Every send lossy: the 3 worlds with a member dropped also block
+    // (min = 2 needs both): (1, 4).
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (1, 4, 0));
 }
 
 // Two candidates, min = max = 1: worlds are read {a}, read {b}, and
-// ONE refuse-all (block == 1 is the load-bearing assertion: refusal and
-// exclusion machinery must agree on a single refusal class). The exec
+// ONE refuse-all (one refusal class per delivered subset is the
+// load-bearing assertion: refusal and exclusion machinery must agree). The exec
 // component may re-baseline when the inbox backward-closure fix lands.
 #[test]
 fn inbox_refusal_and_exclusions_agree() {
@@ -1157,8 +1256,9 @@ fn inbox_refusal_and_exclusions_agree() {
             let _ = c.join();
         },
     );
-    assert_eq!(stats.block, 1);
-    assert_eq!(stats.execs, 2);
+    // Every send lossy: ONE refusal class per delivered subset of {a, b}
+    // (4 blocked); reads: {a} from {a,b} and {a}, {b} from {a,b} and {b}.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (4, 4, 0));
 }
 
 // Sender b's send at t = 10 is inevitably alive during the wait (which
@@ -1192,6 +1292,9 @@ fn inbox_refusal_gated_by_live_future_send() {
             let _ = c.join();
         },
     );
-    assert_eq!(stats.block, 0);
-    assert_eq!(stats.execs, 2);
+    // Every send lossy: 4 reads ({a} or {b} with both delivered, {a}
+    // with b dropped, {b} with a dropped) and 2 blocked endings, both
+    // with b's send DROPPED (checked on the graphs): no refusal beside a
+    // delivered live b, and the refusing block still returns.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (4, 2, 0));
 }

@@ -1220,7 +1220,7 @@ fn admin(p: Params, scientist: ThreadId, rescue: ThreadId, timers: Option<(Threa
 // =====================================================================
 
 fn build_config(mode: Mode, p: Params, keep_going: bool) -> Config {
-    let mut builder = Config::builder().with_progress_report(usize::MAX);
+    let mut builder = Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX);
     builder = match p.parallel {
         Parallel::None => builder,
         Parallel::Shared => builder.with_parallel(true),

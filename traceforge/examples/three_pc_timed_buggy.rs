@@ -6,7 +6,7 @@
 //! full bound algebra and citations.
 //!
 //! The bug: the coordinator advances to `PreCommit` (and ultimately
-//! `Commit`) whenever a *majority* of received votes are Yes — instead
+//! `Commit`) whenever a *majority* of received votes are Yes, instead
 //! of requiring *all* N votes to be Yes AND all to have arrived. With
 //! timeouts in play, even a single missing vote should force an abort
 //! under correct 3PC; the buggy version proceeds anyway as long as
@@ -15,6 +15,10 @@
 //! When the model checker finds an interleaving where some participant
 //! voted No but the buggy coordinator still committed, the
 //! participant's `assert(yes)` on receiving Commit fires.
+//!
+//! Every send may be dropped (no budget), in both modes. A participant
+//! whose Prepare is lost never votes and aborts; a Commit reaching a
+//! participant that never voted Yes is the same atomicity violation.
 //!
 //! Usage:
 //!     cargo run --release --example three_pc_timed_buggy -- --participants 3
@@ -128,8 +132,9 @@ fn coordinator(b: Bounds, num_ps: u32, crashes: bool) {
         let v: Option<CoordinatorMsg> = traceforge::recv_msg_timed(WaitTime::Finite(b.w));
         match v {
             Some(CoordinatorMsg::Ack) => acks_received += 1,
-            None => {}
-            Some(_) => panic!("expected ack"),
+            // A vote that missed its timeout is ignored.
+            Some(CoordinatorMsg::Yes | CoordinatorMsg::No) | None => {}
+            Some(CoordinatorMsg::Init(_)) => panic!("expected ack"),
         }
     }
 
@@ -143,9 +148,18 @@ fn coordinator(b: Bounds, num_ps: u32, crashes: bool) {
 }
 
 fn participant(b: Bounds, num_ps: u32, index: u32, crashes: bool) {
+    // Every send may be dropped, so the Prepare can be lost and a later
+    // coordinator message arrive first. Such a participant never voted:
+    // it stays in the initial state, which aborts (Skeen '81), and it
+    // cannot ack because it never learned the coordinator. A Commit is
+    // still an atomicity violation, since it never voted Yes.
     let cid = match traceforge::recv_msg_block_timed::<ParticipantMsg>() {
         ParticipantMsg::Prepare(id) => id,
-        _ => panic!("expected Prepare"),
+        ParticipantMsg::Abort | ParticipantMsg::PreCommit => return,
+        ParticipantMsg::Commit => {
+            traceforge::assert(false);
+            return;
+        }
     };
 
     if crashes && traceforge::nondet() {
@@ -167,7 +181,12 @@ fn participant(b: Bounds, num_ps: u32, index: u32, crashes: bool) {
     match action {
         ParticipantMsg::Abort => return,
         ParticipantMsg::PreCommit => (),
-        _ => panic!("expected PreCommit or Abort"),
+        // The PreCommit was dropped: the atomicity check still applies.
+        ParticipantMsg::Commit => {
+            traceforge::assert(yes);
+            return;
+        }
+        ParticipantMsg::Prepare(_) => panic!("expected PreCommit or Abort"),
     }
 
     if crashes && traceforge::nondet() {
@@ -269,7 +288,7 @@ fn main() {
     println!("  N           = {num_ps}");
     println!("  L={}  U={}  W={} (= {}·U)  DELTA={}  sd={}", b.l, b.u, b.w, w_ratio, b.delta, b.sd);
     println!("  source: Skeen '81 termination bound; report § 4.2");
-    println!("Coordinator commits on majority instead of unanimity — bug witness fires.");
+    println!("Coordinator commits on majority instead of unanimity: bug witness fires.");
     if crashes {
         println!("--crashes: coordinator/participants may crash mid-protocol.");
     }
@@ -278,7 +297,7 @@ fn main() {
     println!("  replay log -> {BUG_FILE}");
     println!();
 
-    let mut builder = Config::builder();
+    let mut builder = Config::builder().with_all_sends_lossy();
     if timed {
         // FIXED: thread the swept L and sd (was hardcoded with_timed(0, b.u, 0)).
         builder = builder.with_timed(b.l, b.u, b.sd);

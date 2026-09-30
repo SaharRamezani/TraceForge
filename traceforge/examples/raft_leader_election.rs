@@ -446,7 +446,7 @@ fn node(mode: Mode, delta: u64, rounds: u64, me: usize, num_nodes: usize, main_t
 
 fn build_config(mode: Mode, num_nodes: usize, delta: u64) -> Config {
     match mode {
-        Mode::Baseline => Config::builder()
+        Mode::Baseline => Config::builder().with_all_sends_lossy()
             .with_progress_report(100_000)
             .with_verbose(0)
             .build(),
@@ -462,7 +462,7 @@ fn build_config(mode: Mode, num_nodes: usize, delta: u64) -> Config {
             // cross-round message orderings. Timed mode is intended
             // for R=1; for R≥2 use baseline.
             let sd = (num_nodes as u64).saturating_sub(1) * delta;
-            Config::builder()
+            Config::builder().with_all_sends_lossy()
                 .with_timed(0, 1, sd)
                 .with_progress_report(100_000)
                 .with_verbose(0)

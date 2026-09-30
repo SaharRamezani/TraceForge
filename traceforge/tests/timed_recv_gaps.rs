@@ -7,7 +7,10 @@
 //! sender's messages to the same destination (the later never arrives
 //! before the earlier), a graph that admits no timeline counts as neither
 //! an execution nor a blocked one, and an untimed receive carries no
-//! timing constraint of its own.
+//! timing constraint of its own. Under a timed configuration every send
+//! may also be dropped (no budget); a dropped send enters no timing
+//! constraint, and a step whose graph has no timeline is pruned before
+//! it is visited, so timeline_impossible stays 0.
 
 use traceforge::{thread, Config, ConsType, SchedulePolicy, WaitTime};
 
@@ -21,6 +24,12 @@ use traceforge::{thread, Config, ConsType, SchedulePolicy, WaitTime};
 /// the block on structural availability, and the checker alternated
 /// between the two for ever. Found by the receive-only scheduler fuzz
 /// (program 106 of seed 20260914).
+///
+/// Every send lossy: only the world delivering both m1 and m2 has no
+/// timeline (it is pruned, never counted). The rest: m1 read, m2 lost
+/// (1 execution); m1 lost, m2 delivered or lost, the tag-0 receive
+/// blocks (2 blocked). The control below differs by exactly the pruned
+/// world.
 #[test]
 fn untimed_block_on_a_graph_without_timeline_terminates() {
     for policy in [SchedulePolicy::LTR, SchedulePolicy::Arbitrary] {
@@ -43,7 +52,9 @@ fn untimed_block_on_a_graph_without_timeline_terminates() {
                 });
             },
         );
-        assert_eq!((s.execs, s.block), (0, 0), "policy {policy:?}");
+        assert_eq!((s.execs, s.block), (1, 2), "policy {policy:?}");
+        assert_eq!(s.timeline_impossible, 0, "policy {policy:?}");
+        assert!(s.pruned >= 1, "policy {policy:?}: the no-timeline world must be pruned");
     }
 }
 
@@ -53,6 +64,13 @@ fn untimed_block_on_a_graph_without_timeline_terminates() {
 /// delivery. Again no timeline, again zero behaviours, again a run that
 /// once never ended (program 96 of the same fuzz seed): the relay's
 /// untimed receive was the one woken for ever.
+///
+/// Every send lossy: again only worlds delivering both m1 and m2 lack a
+/// timeline (pruned). Go delivered: 7 executions with m1 delivered and
+/// m2 lost (read m1 x4 fates of s1's two sends, read s1's first x2, read
+/// s1's second x1), 10 with m1 lost; plus 1 blocked where all four data
+/// sends are lost. Go lost (relay blocked): the collector reads m1, reads
+/// m2 or blocks, 3 blocked. Total 17 executions, 4 blocked.
 #[test]
 fn relayed_untimed_block_on_a_graph_without_timeline_terminates() {
     for policy in [SchedulePolicy::LTR, SchedulePolicy::Arbitrary] {
@@ -83,7 +101,9 @@ fn relayed_untimed_block_on_a_graph_without_timeline_terminates() {
                 });
             },
         );
-        assert_eq!((s.execs, s.block), (0, 0), "policy {policy:?}");
+        assert_eq!((s.execs, s.block), (17, 4), "policy {policy:?}");
+        assert_eq!(s.timeline_impossible, 0, "policy {policy:?}");
+        assert!(s.pruned >= 1, "policy {policy:?}: the no-timeline worlds must be pruned");
     }
 }
 
@@ -103,6 +123,11 @@ fn relayed_untimed_block_on_a_graph_without_timeline_terminates() {
 /// both are gone but the receive would already have fired, and one
 /// refusal ending where both die before the wait (impossible here, the
 /// wait starts at 0). Expected 2 executions, 0 blocked.
+///
+/// Every send lossy (only the first program is run here): the receive
+/// reads m1 with m2 delivered or lost (2 executions); m1 lost, m2
+/// delivered or lost, the tag-0 receive blocks (2 blocked). Nothing is
+/// pruned.
 #[test]
 fn controls_with_timelines() {
     let s = traceforge::verify(
@@ -119,7 +144,8 @@ fn controls_with_timelines() {
             });
         },
     );
-    assert_eq!((s.execs, s.block), (1, 0));
+    assert_eq!((s.execs, s.block), (2, 2));
+    assert_eq!((s.timeline_impossible, s.pruned), (0, 0));
 }
 
 /// The refusal ending is a second outcome of its receive, not a second
@@ -181,9 +207,13 @@ fn refusal_ending_is_not_a_second_launch_point() {
         // out (m4 dead before 2, or the tie a(m4) = 2), r2 reads m3; r1
         // times out at the tie, r2 reads m4 at 2. The refusal ending is no
         // longer reachable. Three counted, none blocked, under every
-        // policy and seed (the explored-then-dropped count varies with the
-        // schedule and is not pinned).
-        assert_eq!((s.execs, s.block), (3, 0), "policy {policy:?} seed {seed}");
+        // policy and seed when both sends are delivered.
+        // Every send lossy adds: m3 lost, r1 times out, r2 reads m4 or
+        // refuses (m4 dead before 2); m3 lost, r1 reads m4, r2 blocks;
+        // m4 lost, r1 times out, r2 reads m3 or blocks. 3 + 2 = 5
+        // executions, 3 blocked, each once, under every policy and seed.
+        assert_eq!((s.execs, s.block), (5, 3), "policy {policy:?} seed {seed}");
+        assert_eq!(s.timeline_impossible, 0, "policy {policy:?} seed {seed}");
     }
 }
 

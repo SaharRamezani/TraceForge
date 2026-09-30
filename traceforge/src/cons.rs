@@ -750,13 +750,33 @@ impl Consistency {
         // rlab is stamp greater or equal that revisitee's stamp
         assert!(rlab.stamp() >= g.label(rev.pos).stamp());
 
+        // Timed receives (Must-tau): the canonical outcome is judged in
+        // Previous(e), the events inserted no later than e plus the
+        // causal past of the revisiting send WITHOUT that send, with the
+        // full timed system. A finite wait holds the timeout if some
+        // timeline admits it there, else the first candidate whose read
+        // has a timeline; an infinite wait holds that candidate (its
+        // refusal is judged in `Must::refusal_canonical`).
+        if let (Some(cfg), Some((pview, send))) = (timed, Self::previous_view_of(g, rlab.pos(), rev)) {
+            if rlab.wait().is_some()
+                && !porf_override
+                && Self::timed_gc_offer_arm(rlab.wait(), rlab.comm())
+            {
+                if matches!(rlab.wait(), Some(WaitTime::Finite(_))) {
+                    let mut d = TimedDcs::build(g, cfg, Some(&pview), Some(rlab.pos()));
+                    if d.base_feasible() && d.probe_recv_timeout(rlab.pos(), &pview) {
+                        return rlab.rf().is_none();
+                    }
+                }
+                return rlab.rf().is_some()
+                    && self.first_read_in_previous(g, rlab, &pview, send, &set_last, cfg) == rlab.rf();
+            }
+        }
+
         // Nonblocking receives are maximal only when they hold their
-        // base outcome: the timeout (`base_rf` is `None` unless the
-        // timeout kill is on), else the first candidate of a visit at
-        // which the timeout was impossible, or the killer they were
-        // woken by.
+        // base outcome: the timeout.
         if rlab.is_non_blocking() {
-            return rlab.rf() == rlab.base_rf();
+            return rlab.rf().is_none();
         }
 
         // First (non-revisit) is the maximal one.
@@ -777,6 +797,63 @@ impl Consistency {
         }
     }
 
+    /// The send whose addition launches the backward revisit `rev`: its
+    /// placement, or the newest member of an inbox placement's set (the
+    /// older members were already in the graph).
+    pub(crate) fn revisiting_send(g: &ExecutionGraph, rev: &Revisit) -> Option<Event> {
+        match &rev.rev {
+            crate::revisit::RevisitPlacement::Default(s) => Some(*s),
+            crate::revisit::RevisitPlacement::Inbox(Some(sends)) => {
+                sends.iter().copied().max_by_key(|&e| g.label(e).stamp())
+            }
+            _ => None,
+        }
+    }
+
+    /// Previous(e) of the backward revisit `rev`, judged for the event
+    /// `e`: the events inserted no later than `e` plus the causal past of
+    /// the placement, without the revisiting send (Must's condition).
+    pub(crate) fn previous_view_of(g: &ExecutionGraph, e: Event, rev: &Revisit) -> Option<(VectorClock, Event)> {
+        let send = Self::revisiting_send(g, rev)?;
+        let mut v = g.revisit_view(&Revisit { pos: e, rev: rev.rev.clone() });
+        if v.get(send.thread) == Some(send.index) {
+            v.set(Event::new(send.thread, send.index - 1));
+        }
+        Some((v, send))
+    }
+
+    /// Previous(e) of the backward revisit of some receive by `send`:
+    /// the events inserted no later than `e` plus the causal past of
+    /// `send`, without `send` itself (Must's revisit condition).
+    pub(crate) fn previous_view(g: &ExecutionGraph, e: Event, send: Event) -> VectorClock {
+        let mut v = g.revisit_view(&Revisit::new(e, send));
+        // `send` is the last event of its thread in that view (nothing
+        // inserted before e depends on it), so dropping it is one step.
+        if v.get(send.thread) == Some(send.index) {
+            v.set(Event::new(send.thread, send.index - 1));
+        }
+        v
+    }
+
+    /// The tiebreaker read of the timed receive `rlab` in the Previous
+    /// view `pview` of the revisit by `send`: the first candidate of the
+    /// offer list, which for a timed receive only holds reads that have
+    /// a timeline under the full timed system.
+    /// The members of an inbox placement's set (other than the revisiting
+    /// send) rank last, as in the untimed tiebreaker.
+    pub(crate) fn first_read_in_previous(
+        &self,
+        g: &ExecutionGraph,
+        rlab: &RecvMsg,
+        pview: &VectorClock,
+        send: Event,
+        set_last: &[Event],
+        cfg: &TimedConfig,
+    ) -> Option<Event> {
+        let cands = self.coherent_rfs_in_view(g, Some((pview, &[send])), rlab, false, false, Some(cfg));
+        Self::rank_set_last(cands, set_last).first().copied()
+    }
+
     pub(crate) fn inbox_reads_tiebreaker(
         &self,
         g: &ExecutionGraph,
@@ -792,7 +869,28 @@ impl Consistency {
             return matches!(ilab.rfs(), Some(rfs) if rfs.is_empty());
         }
 
+        // Timed collector of one with a finite wait (Must-tau): the
+        // timeout is canonical iff some timeline admits it in Previous(e)
+        // (the revisiting send excluded), exactly like a finite recv;
+        // otherwise the canonical set is judged below like a blocking
+        // inbox's. A min >= 2 timeout carries no (C6b) group, so it
+        // stays the canonical outcome.
+        let timeout_judged = matches!(ilab.wait(), Some(crate::timed_cons::WaitTime::Finite(_)))
+            && ilab.min() <= 1;
+        let prev = Self::previous_view_of(g, ilab.pos(), rev);
+        let prev_send = prev.as_ref().map(|(_, s)| *s);
+        let timeout_ok_in_previous = |_send: Event, cfg: &TimedConfig| -> bool {
+            let pview = &prev.as_ref().unwrap().0;
+            let mut d = TimedDcs::build(g, cfg, Some(pview), Some(ilab.pos()));
+            d.base_feasible() && d.probe_recv_timeout(ilab.pos(), pview)
+        };
+
         let Some(current) = ilab.rfs() else {
+            if timeout_judged {
+                if let (Some(cfg), Some(send)) = (timed, prev_send) {
+                    return timeout_ok_in_previous(send, cfg);
+                }
+            }
             // Timed-out inbox (rfs() == None). A finite-wait inbox that times
             // out is the canonical-maximal empty outcome of its branch: it is
             // the SINGLE graph from which the non-empty feasible subsets are
@@ -811,7 +909,14 @@ impl Consistency {
         };
 
         if matches!(ilab.wait(), Some(crate::timed_cons::WaitTime::Finite(_))) {
-            return false;
+            // A read set is canonical only when the timeout is not.
+            let judged = match (timed, prev_send) {
+                (Some(cfg), Some(send)) if timeout_judged => !timeout_ok_in_previous(send, cfg),
+                _ => false,
+            };
+            if !judged {
+                return false;
+            }
         }
 
         // The judged inbox is ranked in ITS OWN view (its stamp prefix
@@ -821,8 +926,14 @@ impl Consistency {
         let judged_is_revisited = ilab.pos() == rev.pos;
         let (view, exclude, set_last): (VectorClock, Vec<Event>, Vec<Event>) = match &rev.rev {
             // Recv-style placement: remove the newly inserted send.
+            // Timed: Must's Previous set, the send itself excluded.
             crate::revisit::RevisitPlacement::Default(ev) => {
-                (g.revisit_view(&Revisit::new(ilab.pos(), *ev)), vec![*ev], Vec::new())
+                let v = if timed.is_some() {
+                    Self::previous_view(g, ilab.pos(), *ev)
+                } else {
+                    g.revisit_view(&Revisit::new(ilab.pos(), *ev))
+                };
+                (v, vec![*ev], Vec::new())
             }
             // Inbox placement: the revisited inbox ranks every stored
             // candidate (its own reads included; the fresh send is not
@@ -830,7 +941,10 @@ impl Consistency {
             // set the revisited inbox is about to consume LAST (see
             // reads_tiebreaker).
             crate::revisit::RevisitPlacement::Inbox(sends) => {
-                let own = g.revisit_view(&Revisit::new_inbox(ilab.pos(), sends.clone()));
+                let own = match (&prev, timed) {
+                    (Some((v, _)), Some(_)) => v.clone(),
+                    _ => g.revisit_view(&Revisit::new_inbox(ilab.pos(), sends.clone())),
+                };
                 let last = if judged_is_revisited {
                     Vec::new()
                 } else {
@@ -853,8 +967,10 @@ impl Consistency {
         // else the first feasible `min`-subset in enumeration order.
         // One view-restricted oracle serves member eligibility and the
         // joint subset probes.
-        let blocking_timed =
-            matches!(ilab.wait(), Some(crate::timed_cons::WaitTime::Infinite));
+        // A finite collector of one reaches this point only when its
+        // timeout has no timeline in Previous: judged like a blocking one.
+        let blocking_timed = matches!(ilab.wait(), Some(crate::timed_cons::WaitTime::Infinite))
+            || (timeout_judged && timed.is_some() && prev_send.is_some());
         let mut oracle = match timed {
             Some(cfg) if blocking_timed => {
                 Some(TimedDcs::build(g, cfg, Some(&view), Some(ilab.pos())))
@@ -957,23 +1073,6 @@ impl Consistency {
         timed: Option<&TimedConfig>,
     ) -> Vec<Event> {
         self.coherent_rfs_in_view(g, None, rlab, porf_override, true, timed)
-    }
-
-    /// The rf options `rlab` would be offered at a visit in the world
-    /// restricted to `view` (nothing excluded). Timeout kill: the
-    /// candidates of a receive re-visited in the cut world of its killer.
-    pub(crate) fn rfs_in_view(
-        &self,
-        g: &ExecutionGraph,
-        rlab: &RecvMsg,
-        view: &VectorClock,
-        porf_override: bool,
-        timed: Option<&TimedConfig>,
-    ) -> Vec<Event> {
-        // No concurrent-receive check: that one assumes rlab is the last
-        // event of its thread; here its continuation may still be in the
-        // graph (outside the view), as for the tiebreaker.
-        self.coherent_rfs_in_view(g, Some((view, &[])), rlab, porf_override, false, timed)
     }
 
     pub(crate) fn inbox_rfs(

@@ -69,8 +69,9 @@ fn legacy_inbox_inside_timed_is_rejected() {
 // subset {a,b} has an empty window (b is late). An under-min subset like
 // {a} (size 1 < min 2) is NEVER a valid return (boss semantics: return is
 // {} or a set of [min, max]). So the only outcome is the timeout empty {}
-// (t = [2, 2]): exactly one execution that returns {}, and it does NOT
-// block (a finite-W_r inbox always times out rather than blocking).
+// (t = [2, 2]), and it does NOT block (a finite-W_r inbox always times
+// out rather than blocking). Every send is lossy under with_timed, so
+// that single outcome appears once per drop combination of a and b.
 #[test]
 fn timed_inbox_min2_wait2_below_min_returns_empty() {
     let stats = traceforge::verify(
@@ -81,6 +82,8 @@ fn timed_inbox_min2_wait2_below_min_returns_empty() {
                 // The inbox never returns an under-min non-empty set: it is
                 // either empty or has exactly `min` (= max = 2) messages.
                 assert!(v.is_empty() || v.len() == 2);
+                // b is late, so {a, b} never fits W_r: only {} is feasible.
+                assert!(v.is_empty(), "only the timeout empty is feasible");
             });
             let cid = collector.thread().id();
             let _a = thread::spawn(move || {
@@ -92,9 +95,11 @@ fn timed_inbox_min2_wait2_below_min_returns_empty() {
             });
         },
     );
-    // The only feasible outcome is the timeout empty: one execution, no block.
+    // Every send lossy: the timeout empty once per drop combination of
+    // a and b (2 x 2 = 4), no block.
     assert_eq!(stats.block, 0);
-    assert_eq!(stats.execs, 1);
+    assert_eq!(stats.execs, 4);
+    assert_eq!(stats.timeline_impossible, 0);
 }
 
 // ---------------------------------------------------------------------
@@ -211,38 +216,85 @@ fn two_sequential_timed_inboxes_explore_all_outcomes() {
 // Two sequential timed inboxes explore each execution exactly once.
 // ---------------------------------------------------------------------
 
+/// Outcomes of `two_sequential_run`'s program as seen by an execution
+/// observer, which reports exactly the explored endings. (The program's
+/// own sink also records runs stopped at a pruned step, whose code ran
+/// before the step that has no timeline.)
+fn two_sequential_observed(use_inbox: bool) -> (traceforge::Stats, Vec<String>) {
+    use traceforge::coverage::ExecutionObserver;
+    struct Obs(Arc<Mutex<Vec<String>>>);
+    impl ExecutionObserver for Obs {
+        fn after(
+            &mut self,
+            _eid: traceforge::ExecutionId,
+            _cond: &traceforge::monitor_types::EndCondition,
+            c: traceforge::CoverageInfo,
+        ) {
+            let mut goals: Vec<String> = c.coverage.keys().cloned().collect();
+            goals.sort();
+            self.0.lock().unwrap().push(goals.join(" "));
+        }
+    }
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let stats = traceforge::verify(
+        Config::builder()
+            .with_timed(0, 0, 0)
+            .with_callback(Box::new(Obs(Arc::clone(&seen))))
+            .build(),
+        move || {
+            let collector = thread::spawn(move || {
+                let (r1, r2) = if use_inbox {
+                    (
+                        one_u32(&traceforge::inbox_timed(1, WaitTime::Finite(10))),
+                        one_u32(&traceforge::inbox_timed(1, WaitTime::Finite(10))),
+                    )
+                } else {
+                    (
+                        traceforge::recv_msg_timed::<u32>(WaitTime::Finite(10)),
+                        traceforge::recv_msg_timed::<u32>(WaitTime::Finite(10)),
+                    )
+                };
+                traceforge::cover!(format!("{r1:?} {r2:?}"));
+            });
+            let cid = collector.thread().id();
+            let c1 = cid.clone();
+            thread::spawn(move || traceforge::send_msg(c1, 2u32));
+            thread::spawn(move || traceforge::send_msg(cid, 3u32));
+        },
+    );
+    let seen = seen.lock().unwrap().clone();
+    (stats, seen)
+}
+
 #[test]
 fn two_sequential_timed_inboxes_have_no_duplicate_executions() {
-    // Since (C6') (2026-09-21) `execs` and the sink no longer count the
-    // same thing, so this compares the sink against itself. A timeout
-    // whose messages were readable all along is dropped when the
-    // execution is judged whole, which is AFTER the program has run and
-    // pushed its record: with L = U = sd = 0 both messages are readable
-    // only at 0, so the three outcomes containing a timeout are explored
-    // and then not counted, leaving execs = 2 while the sink holds 5.
-    // Duplicate-freedom is still exactly "no outcome recorded twice".
-    let (inbox_execs, inbox) = two_sequential_run(true);
+    // Every send lossy (L = U = sd = 0): the five outcomes are
+    // (None, None) with both dropped, (2, None) and (3, None) with one
+    // delivered, and (2, 3), (3, 2) with both delivered. A timeout
+    // beside a delivered message has no timeline (both are readable
+    // only at 0) and is never explored.
+    let (inbox_stats, inbox) = two_sequential_observed(true);
     assert_eq!(
         inbox.len(),
         distinct(&inbox).len(),
         "each explored execution should be explored exactly once (no duplicates)"
     );
-    assert_eq!(
-        inbox_execs, 2,
-        "only the two timeout-free outcomes survive the (C6') judgement"
-    );
+    assert_eq!(inbox_stats.execs, 5);
+    assert_eq!(inbox_stats.timeline_impossible, 0);
 
     // The recv oracle is duplicate-free by construction; the inbox should
-    // explore the same number of executions, no more.
-    let (recv_execs, recv) = two_sequential_run(false);
+    // explore the same executions, no more.
+    let (recv_stats, recv) = two_sequential_observed(false);
     assert_eq!(
         recv.len(),
         distinct(&recv).len(),
         "the recv oracle should not duplicate either"
     );
+    assert_eq!(recv_stats.timeline_impossible, 0);
     assert_eq!(
-        inbox_execs, recv_execs,
-        "inbox exec count should match the duplicate-free recv oracle"
+        distinct(&inbox),
+        distinct(&recv),
+        "inbox outcomes should match the duplicate-free recv oracle"
     );
 }
 
@@ -286,9 +338,12 @@ fn single_timed_inbox_returns_exactly_k_or_empty() {
         expected,
         "a k=2 timed inbox should explore the timeout plus every size-2 subset, and no other size"
     );
+    // Every send lossy, by delivered set D: |D| <= 1 (4 drop combos) gives
+    // the timeout only (4); |D| = 2 (3 combos) gives the pair + timeout (6);
+    // |D| = 3 gives 3 pairs + timeout (4). 4 + 6 + 4 = 14, each once.
     assert_eq!(
-        stats.execs,
-        expected.len(),
-        "each subset should be explored exactly once (no duplicates)"
+        stats.execs, 14,
+        "each (drop combination, subset) should be explored exactly once (no duplicates)"
     );
+    assert_eq!(stats.timeline_impossible, 0);
 }

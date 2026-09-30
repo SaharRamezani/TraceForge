@@ -1114,7 +1114,7 @@ fn switch(p: Params, main_tid: ThreadId) {
 // =====================================================================
 
 fn build_config(mode: Mode, p: &Params, keep_going: bool) -> Config {
-    let mut builder = Config::builder().with_progress_report(usize::MAX);
+    let mut builder = Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX);
     if keep_going {
         builder = builder.with_keep_going_after_error(true);
     }

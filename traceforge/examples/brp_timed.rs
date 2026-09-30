@@ -33,9 +33,9 @@
 //!     readable is that ack lost on L, which DKRT allow). z < TR: R arms its
 //!     timer at k*TR - 1 and, on the live one, sleep(1) is the z = TR
 //!     transition; a frame arriving at z = TR is read after it, in new_file.
-//!   * Loss: every lossy send may be dropped (budget = number of lossy sends),
-//!     since DKRT's lines lose without bound; at sd = 0 an evicted frame or ack
-//!     is another loss, also DKRT-legal.
+//!   * Loss: every send may be dropped, with no budget, in both modes, since
+//!     DKRT's lines lose without bound; at sd = 0 an evicted frame or ack is
+//!     another loss, also DKRT-legal.
 //!   * The sender client offers the next file after any wait in [0, DC],
 //!     DC >= TR (DKRT's client has no deadline; an eager client with a
 //!     bounded number of files would report false holds of (2)).
@@ -328,8 +328,6 @@ struct Params {
     /// before offering the next file (DC, in DKRT units).
     files: u32,
     dc: u64,
-    /// Loss budget (lossy sends that may be dropped per execution).
-    loss: usize,
     property: Property,
 }
 
@@ -958,11 +956,10 @@ fn run_once(p: Params) {
     }
 }
 
-fn build_config(mode: Mode, p: &Params, keep_going: bool, workers: usize) -> Config {
-    let mut b = Config::builder()
+fn build_config(mode: Mode, keep_going: bool, workers: usize) -> Config {
+    let mut b = Config::builder().with_all_sends_lossy()
         .with_progress_report(usize::MAX)
-        .with_cons_type(ConsType::FIFO)
-        .with_lossy(p.loss);
+        .with_cons_type(ConsType::FIFO);
     if keep_going {
         b = b.with_keep_going_after_error(true);
     }
@@ -978,7 +975,7 @@ fn build_config(mode: Mode, p: &Params, keep_going: bool, workers: usize) -> Con
 }
 
 fn run(mode: Mode, p: Params, keep_going: bool, workers: usize) -> (Stats, Duration) {
-    let cfg = build_config(mode, &p, keep_going, workers);
+    let cfg = build_config(mode, keep_going, workers);
     reset_counts();
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || run_once(p));
@@ -999,7 +996,7 @@ fn print_one(mode: Mode, p: &Params, stats: &Stats, dur: Duration) {
         Property::All => v2 + v4 + vc,
     };
     println!(
-        "{:<8} model={:?} n={} MAX={} TD={} T1={} TR={} SYNC={} k={} F={} DC={} loss={} prop={:?}  \
+        "{:<8} model={:?} n={} MAX={} TD={} T1={} TR={} SYNC={} k={} F={} DC={} prop={:?}  \
          execs={} blocked={} impossible={} explored={} judged={j} p2_runs={v2} p2_tr_side={} p2_sync_side={} \
          p4_runs={v4} client_runs={vc} failed_file_runs={} timeout_runs={} restart_after_fail_runs={} \
          first_safe_after_timeout_runs={} probe_nontrivial_runs={} confused_ack_runs={} verdict={} time={dur:?}",
@@ -1014,7 +1011,6 @@ fn print_one(mode: Mode, p: &Params, stats: &Stats, dur: Duration) {
         p.k,
         p.files,
         p.dc,
-        p.loss,
         p.property,
         stats.execs,
         stats.block,
@@ -1099,11 +1095,9 @@ fn main() {
         k: 2,
         files: 1,
         dc: 0,
-        loss: 0,
         property: Property::P2,
     };
     let mut dc = None;
-    let mut loss = None;
     let mut keep_going = false;
     let mut workers = 1usize;
     while let Some(a) = args.next() {
@@ -1126,7 +1120,6 @@ fn main() {
             "--k" => p.k = val("--k").parse().expect("--k"),
             "--files" => p.files = val("--files").parse().expect("--files"),
             "--dc" => dc = Some(val("--dc").parse().expect("--dc")),
-            "--loss" => loss = Some(val("--loss").parse().expect("--loss")),
             "--property" => {
                 p.property = match val("--property").as_str() {
                     "p2" => Property::P2,
@@ -1141,7 +1134,7 @@ fn main() {
             _ => panic!(
                 "unknown flag {a}. Usage: brp_timed [--mode timed|baseline|compare] [--model dkrt|spin] \
                  [--n N] [--max M] [--td D] [--t1 T] [--tr R] [--sync S] [--k K] [--files F] [--dc DC] \
-                 [--loss B] [--property p2|p4|client|all] [--keep-going] [--workers W]"
+                 [--property p2|p4|client|all] [--keep-going] [--workers W]"
             ),
         }
     }
@@ -1154,8 +1147,6 @@ fn main() {
     // The client's wait before a later file: long enough for R to time out
     // (DC >= TR removes the bounded-client false holds; see DEVIATIONS).
     p.dc = dc.unwrap_or(p.tr + p.td);
-    // Every lossy send may be dropped: DKRT's channels lose without bound.
-    p.loss = loss.unwrap_or((2 * p.n as usize) * (p.max as usize + 1) * p.files as usize);
     let mut modes = match mode.as_str() {
         "timed" => vec![Mode::Timed],
         "baseline" => vec![Mode::Baseline],

@@ -75,17 +75,19 @@
 //!   TraceForge's always-available timeout and late receive do not give.
 //! * Bounded runs. The listing loops forever (payloads modulo MAX = 8, any
 //!   number of retransmissions, losses and idle ticks). Here K messages are
-//!   sent, each at most R times resent (a timeout or an ACKerr counts), with
-//!   at most B lost copies (`with_lossy(B)`; a copy that finds its reader
-//!   busy is lost on top of B), and the idle time before a new message is
-//!   at most UD ticks. After R resends of one message the sender stops
-//!   (verification scaffolding, not a verdict). A FIRE is therefore a real
-//!   violation of the listing; a HOLD holds for these bounds.
+//!   sent, each at most R times resent (a timeout or an ACKerr counts), and
+//!   the idle time before a new message is at most UD ticks. Losses are not
+//!   bounded: every send may be dropped, in both modes (no budget), and a
+//!   copy that finds its reader busy is lost as well. After R resends of one
+//!   message the sender stops (verification scaffolding, not a verdict). A
+//!   FIRE is therefore a real violation of the listing; a HOLD holds for
+//!   these bounds.
 //! * The assertion needs 4 messages to fail (message 2 lost and its place
 //!   taken by message 4), so K >= 4 is needed for a FIRE.
-//! * Harness. A Done message (not lossy, transit dK + dR + 2, so it reaches
-//!   an idle receiver) ends the reactive receiver. The Init bootstrap from
-//!   main is an untimed receive, transparent for timing.
+//! * Harness. A Done message (transit dK + dR + 2, so it reaches an idle
+//!   receiver) ends the reactive receiver. Like every send it may be
+//!   dropped, as may main's Init bootstrap; the receiver then stays blocked
+//!   (a blocked execution, not a violation).
 //!
 //! Integer time: the listing is a discrete-time model, and TraceForge's
 //! timed engine uses integer instants, so the two share one time domain.
@@ -113,7 +115,6 @@
 //!   --retries-first R1              resend bound for message 1 only (default
 //!                                   R; at To = 1 message 1 alone needs about
 //!                                   dK + dL + dR resends before its ack returns)
-//!   --lossy B                       lost-copy budget (default 1)
 //!   --udelay UD                     max idle ticks before a new message
 //!                                   (default 0)
 //!   --no-errs                       drop the ACKerr and MSGerr branches
@@ -126,7 +127,8 @@
 //! ## RESULTS
 //!
 //! Data, oracles and drivers: docs/research/ta_problems/need-from-user-papers/
-//! par-b02/ (README.md there). RT = dK + dL + dR.
+//! par-b02/ (README.md there). RT = dK + dL + dR. Items 3 and 4 were
+//! measured with at most one lost copy, before every send became lossy.
 //!
 //! 1. Oracles. Spin 6.5.2 on the verbatim listing and DT-Spin 4.1.1 on the
 //!    same listing with local timers agree with the rule "FIRE iff To <= RT"
@@ -195,7 +197,7 @@ const MAX: u8 = 8;
 enum SMsg {
     /// The listing's `A!mt,sn`.
     Frame { mt: u8, sn: u8 },
-    /// Harness: ends the receiver. Not lossy.
+    /// Harness: ends the receiver. May be dropped like every send.
     Done,
 }
 
@@ -230,7 +232,6 @@ struct Params {
     retries: u32,
     /// Resend bound for the first message only (defaults to `retries`).
     retries_first: Option<u32>,
-    lossy: usize,
     udelay: u64,
     errs: bool,
 }
@@ -362,8 +363,8 @@ fn receiver(p: Params, main_tid: ThreadId) {
 
 static PARALLEL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
-fn build_config(mode: Mode, p: Params, keep_going: bool) -> Config {
-    let mut builder = Config::builder().with_progress_report(usize::MAX).with_lossy(p.lossy);
+fn build_config(mode: Mode, keep_going: bool) -> Config {
+    let mut builder = Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX);
     builder = match PARALLEL.get().map(|s| s.as_str()).unwrap_or("none") {
         "none" => builder,
         "shared" => builder.with_parallel(true),
@@ -389,7 +390,7 @@ fn reset_counts() {
 }
 
 fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
-    let cfg = build_config(mode, p, keep_going);
+    let cfg = build_config(mode, keep_going);
     reset_counts();
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
@@ -443,7 +444,6 @@ fn main() {
         messages: 4,
         retries: 1,
         retries_first: None,
-        lossy: 1,
         udelay: 0,
         errs: true,
     };
@@ -465,7 +465,6 @@ fn main() {
             "--messages" => p.messages = num(args.next(), "--messages") as u32,
             "--retries" => p.retries = num(args.next(), "--retries") as u32,
             "--retries-first" => p.retries_first = Some(num(args.next(), "--retries-first") as u32),
-            "--lossy" => p.lossy = num(args.next(), "--lossy") as usize,
             "--udelay" => p.udelay = num(args.next(), "--udelay"),
             "--no-errs" => p.errs = false,
             "--keep-going" => keep_going = true,
@@ -491,7 +490,7 @@ fn main() {
     let reachable = (u64::from(r1) + 1) * p.to >= rt;
     println!(
         "par (Bosnacki-Dams): dK={} dL={} dR={} To={} (rule To > dK+dL+dR = {}: listing {}) \
-         K={} R={} R1={} B={} UD={} errs={}{}",
+         K={} R={} R1={} UD={} errs={}{}",
         p.dk,
         p.dl,
         p.dr,
@@ -501,7 +500,6 @@ fn main() {
         p.messages,
         p.retries,
         r1,
-        p.lossy,
         p.udelay,
         p.errs,
         if p.to <= rt && !reachable {

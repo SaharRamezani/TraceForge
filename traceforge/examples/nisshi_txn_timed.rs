@@ -690,7 +690,7 @@ enum Mode {
 static PARALLEL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 fn build_config(mode: Mode, p: Params, keep_going: bool, verbose: usize) -> Config {
-    let mut builder = Config::builder().with_progress_report(usize::MAX).with_verbose(verbose);
+    let mut builder = Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX).with_verbose(verbose);
     builder = match PARALLEL.get().map(|s| s.as_str()).unwrap_or("none") {
         "none" => builder,
         "shared" => builder.with_parallel(true),

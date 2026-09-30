@@ -89,17 +89,16 @@ pub struct Stats {
     /// Number of blocked executions explored
     pub block: usize,
     /// Endings explored to completion and then judged to admit no
-    /// timeline (counted as neither exec nor block). Since the (C6b)
-    /// timeout-miss condition is judged only when the graph is whole, a
-    /// finite-wait timeout taken beside a message that was readable
-    /// during the wait is one of these: its program side effects happen,
-    /// then it is excluded from every count.
+    /// timeline (counted as neither exec nor block). A timed exploration
+    /// checks every step against the full timed constraint system, so
+    /// this stays 0 for it; the final check is kept as a safety net.
     pub timeline_impossible: usize,
-    /// Executions stopped at a timeout kill (`Config::kill_dead_timeouts`):
-    /// the timeout world was cut the moment a message made the timeout
-    /// impossible, before its ending. Counted as nothing, like
-    /// `timeline_impossible`, but without exploring the dead subtree.
-    pub killed: usize,
+    /// Children rejected before being visited because no timeline admits
+    /// them (the consistency check of every step in a timed exploration),
+    /// e.g. a delivered send that makes an earlier timeout impossible, or
+    /// a revisit whose result has no timeline. Counted as nothing; no
+    /// program code runs past the rejected step.
+    pub pruned: usize,
     // Aggregate coverage information
     pub coverage: CoverageInfo,
     /// Maximum number of events across all execution graphs (complete or blocked)
@@ -111,7 +110,7 @@ impl Stats {
         self.execs += rhs.execs;
         self.block += rhs.block;
         self.timeline_impossible += rhs.timeline_impossible;
-        self.killed += rhs.killed;
+        self.pruned += rhs.pruned;
         self.coverage.merge(&rhs.coverage);
         if rhs.max_graph_events > self.max_graph_events {
             self.max_graph_events = rhs.max_graph_events;
@@ -293,16 +292,12 @@ pub struct Config {
     #[serde(default)]
     pub(crate) prune_log_file: Option<String>,
 
-    /// Timeout kill (experimental, timed configs only): a finite-wait
-    /// receive's timeout branch is not explored once no timeline lets
-    /// the receive miss every message present. At the visit the first
-    /// candidate becomes the base outcome; a later killing send stops
-    /// the timeout world and the woken receive (reading its killer)
-    /// takes over as the launcher of later revisits. Off by default:
-    /// the reference behaviour explores the dead world to completion
-    /// and discards it (`Stats::timeline_impossible`).
+    /// Every send may be dropped, without a budget. Always on under a
+    /// timed configuration (set by `build`); an untimed configuration
+    /// opts in with [`ConfigBuilder::with_all_sends_lossy`], so that one
+    /// program can be verified in both modes with the same network.
     #[serde(default)]
-    pub(crate) kill_dead_timeouts: bool,
+    pub(crate) all_sends_lossy: bool,
     #[serde(skip)]
     pub(crate) callbacks: Arc<Mutex<Vec<Box<dyn ExecutionObserver + Send>>>>,
 
@@ -313,6 +308,11 @@ pub struct Config {
 impl Config {
     pub fn builder() -> ConfigBuilder {
         ConfigBuilder::new()
+    }
+
+    /// Every send may be dropped, without a budget (always true when timed).
+    pub(crate) fn all_sends_lossy(&self) -> bool {
+        self.all_sends_lossy
     }
 
     pub(crate) fn rename_files(&mut self, suffix: String) {
@@ -379,7 +379,7 @@ impl ConfigBuilder {
             pretty_graph_printing: false,
             timed: None,
             prune_log_file: None,
-            kill_dead_timeouts: false,
+            all_sends_lossy: false,
             callbacks: Arc::new(Mutex::new(Vec::new())),
             #[cfg(feature = "symbolic")]
             symbolic: false,
@@ -388,7 +388,17 @@ impl ConfigBuilder {
 
     /// Checks whether the current config is valid and
     /// returns it if it is. Raises an error otherwise
-    fn check_valid(self) -> Self {
+    fn check_valid(mut self) -> Self {
+        if self.0.timed.is_some() {
+            if self.0.lossy_budget != 0 {
+                panic!(
+                    "with_lossy({}) under with_timed: a timed configuration drops any send \
+                     without a budget, remove the with_lossy call",
+                    self.0.lossy_budget
+                );
+            }
+            self.0.all_sends_lossy = true;
+        }
         if self.0.symmetry {
             panic!("Symmetry reduction is currently not supported")
         }
@@ -508,6 +518,8 @@ impl ConfigBuilder {
     }
 
     /// Consider executions where up to `budget` lossy messages are dropped.
+    /// Untimed configurations only: under [`ConfigBuilder::with_timed`]
+    /// every send may be dropped without a budget, and a budget is rejected.
     pub fn with_lossy(mut self, budget: usize) -> Self {
         self.0.lossy_budget = budget;
         self
@@ -538,16 +550,22 @@ impl ConfigBuilder {
     /// configuration, where its timing information is ignored, which is
     /// how one program is verified in both modes.
     ///
+    /// Every send may be dropped, without a budget: a timed configuration
+    /// treats every send as lossy (see
+    /// [`ConfigBuilder::with_all_sends_lossy`] for the untimed side of a
+    /// comparison) and rejects [`ConfigBuilder::with_lossy`].
+    ///
     /// Requires `l <= u`.
     pub fn with_timed(mut self, l: u64, u: u64, sd: u64) -> Self {
         self.0.timed = Some(TimedConfig::new(l, u, sd));
         self
     }
 
-    /// Enables the timeout kill (see `Config::kill_dead_timeouts`).
-    /// Only meaningful together with [`ConfigBuilder::with_timed`].
-    pub fn with_kill_dead_timeouts(mut self, b: bool) -> Self {
-        self.0.kill_dead_timeouts = b;
+    /// Every send may be dropped, without a budget. A timed
+    /// configuration always behaves this way; call this on an untimed
+    /// configuration to verify the same lossy network without timing.
+    pub fn with_all_sends_lossy(mut self) -> Self {
+        self.0.all_sends_lossy = true;
         self
     }
 
@@ -877,8 +895,11 @@ where
     let num_samples = samples;
     let mut estimate_sum: f64 = 0.0;
     let mut nb_executions = 0;
-    for _ in 0..num_samples {
-        let must = Rc::new(RefCell::new(Must::new(config.clone(), false)));
+    for i in 0..num_samples {
+        // Independent samples: each follows its own random path.
+        let mut sample_config = config.clone();
+        sample_config.seed = config.seed.wrapping_add(i as u64);
+        let must = Rc::new(RefCell::new(Must::new(sample_config, false)));
         explore(&must, &f);
         estimate_sum += must.borrow().execs_est();
         let stats = must.borrow().stats();
@@ -1247,6 +1268,7 @@ fn send_msg_with_vec_tag<T: Message + 'static>(
     let tag = normalize_vec_tag(tag);
     switch();
     ExecutionState::with(|s| {
+        let lossy = lossy || s.must.borrow().config.all_sends_lossy();
         // creating the send label for the system send
         let pos = s.next_pos();
         let sender_tid = pos.thread;

@@ -79,7 +79,8 @@
 //! ## How the protocol maps onto TraceForge
 //!
 //! Two protocol threads (sender, receiver) plus main, which spawns
-//! both, sends each an `Init` naming both ThreadIds, and joins them. The
+//! both, sends each an `Init` naming both ThreadIds, and joins them (an
+//! Init may be dropped like every send; that thread then blocks). The
 //! `Init` reads are untimed blocking receives filtered on main's id (the
 //! swim_timed.rs bootstrap idiom): an untimed receive is transparent
 //! for timing, so both protocol threads start their clocks together and
@@ -96,7 +97,8 @@
 //!                        than R retransmissions of message i so far,
 //!                        otherwise give up (GAVE_UP)
 //!   after K accepted Acks: Done{completed: true}; after giving up:
-//!   Done{completed: false}. Done is sent non-lossy.
+//!   Done{completed: false}. Done may be dropped like every send; the
+//!   receiver then blocks and the execution counts as blocked.
 //!
 //! The sender reads ANY acknowledgement from the receiver and discards a
 //! wrong bit in code. It must not select the current bit with the
@@ -126,10 +128,10 @@
 //! `with_timed(L, U, sd)`; sd is the storage lifetime (how long a
 //! message stays readable after it arrives). W is the sender's timeout,
 //! anchored at the (re)send, and dR the receiver's processing time on
-//! the new-frame path (DT-Spin's `delay(rc, dR)` at S_h). Loss:
-//! `with_lossy(B)` in BOTH modes, so at most B lossy sends (frames and
-//! acks together) are dropped per execution. The channel is TraceForge's
-//! default, order-preserving per sender and receiver pair, which is the
+//! the new-frame path (DT-Spin's `delay(rc, dR)` at S_h). Loss: every
+//! send may be dropped, with no budget, in BOTH modes (timed configs do
+//! this by default, baseline via `with_all_sends_lossy()`). The channel
+//! is TraceForge's default, order-preserving per sender and receiver pair, which is the
 //! setting in which ABP is correct at every timeout. Baseline and timed
 //! verify the identical program; the only difference is the Config.
 //!
@@ -147,23 +149,20 @@
 //!   a timed checker to decide, are explicit only in the later simplex
 //!   form (the DT-Spin PAR model and the TAPAAL/UPPAAL AlternatingBit
 //!   net).
-//! * Loss is a bounded budget of dropped sends (`with_lossy(B)`).
-//!   Detected corruption (DT-Spin's MSGerr and ACKerr branches) is folded
+//! * Any send may be dropped, with no budget, including the harness
+//!   messages Init and Done. Detected corruption (DT-Spin's MSGerr and ACKerr branches) is folded
 //!   into loss; DT-Spin's "resend at once on a corrupt ack" path is not
 //!   modelled.
 //! * No channel processes: transit is folded into the sends and both
 //!   directions share [L, U]. TraceForge channels are unbounded queues,
 //!   DT-Spin's are one-place, so more frames can be in flight here.
-//! * A frame that reaches a busy receiver can be lost here without
-//!   spending the budget B. In DT-Spin the data channel hands a frame
-//!   over by rendezvous (`chan B = [0]`), so while the receiver is in
+//! * A frame that reaches a busy receiver can also be lost here by
+//!   expiring in storage. In DT-Spin the data channel hands a frame over
+//!   by rendezvous (`chan B = [0]`), so while the receiver is in
 //!   `delay(rc, dR)` the frame waits inside channel K and is lost only
 //!   through K's explicit loss branch. Here, with dR > 0, a stored frame
 //!   can expire during the receiver's processing sleep (side effect (b)
-//!   below). The par FIREs at B = 0 with dR > 0 and L < U reported under
-//!   "Expected verdicts" are therefore not the published scenario, which
-//!   needs a frame "lost by the data channel". On the DT-Spin row
-//!   (L = U = 3, dR = 1) every B = 0 cell tried holds.
+//!   below).
 //! * K messages, then stop, with at most R retransmissions per message.
 //!   TAPAAL instead bounds in-flight tokens and DT-Spin cycles payloads
 //!   modulo MAX = 8 forever. Payloads here are 0..K-1.
@@ -214,12 +213,12 @@
 //! Two side effects of timed storage are accepted and documented. (a)
 //! A message not read within sd of its arrival expires. A timeout
 //! branch taken while an Ack was readable can therefore let that Ack
-//! expire unread: an extra Ack loss outside the budget B, harmless for
+//! expire unread: an Ack lost by expiry rather than by a drop, harmless for
 //! both properties (losing Acks only causes retransmissions), and the
 //! reason timed can explore MORE executions than baseline when sd is
 //! small. (b) With dR > 0, a frame stored while the receiver processes
 //! an earlier one can expire unread (the receiver may read a frame up
-//! to sd late and then sleep dR), an extra FRAME loss outside B; an
+//! to sd late and then sleep dR), a frame lost by expiry; an
 //! expired Done shows up as blocked executions. With dR = 0 no frame
 //! can expire: every later frame arrives no earlier than the one just
 //! read, and the receiver is ready again at once. The binary prints a
@@ -254,7 +253,7 @@
 //! ## CLI parameters (ratios are over U, like swim_timed)
 //!
 //!   --mode baseline|timed|compare   verification mode (default compare;
-//!                                   par with --lossy >= 1 FIREs in its
+//!                                   par with R >= 1 FIREs in its
 //!                                   baseline leg, so compare aborts
 //!                                   there unless --keep-going: pass
 //!                                   --mode timed to see par's timed
@@ -265,8 +264,6 @@
 //!   --retries R                     retransmissions per message before
 //!                                   the sender gives up (default 1;
 //!                                   verification scaffolding)
-//!   --lossy B                       drop budget per execution, frames
-//!                                   and acks together (default 1)
 //!   --u U                           transit upper bound (default 1)
 //!   --l-ratio LR                    L = round(LR * U) (default 0.0)
 //!   --sd-ratio SR                   sd = round(SR * U) (default 0.0)
@@ -292,91 +289,73 @@
 //! property was violated: the verdict is then p1_fails/p2_fails and the
 //! printed VIOLATION line, never the exit code.
 //!
-//! ## Expected verdicts (matrix-verified 2026-09-16)
+//! ## Expected verdicts (re-measured 2026-09-30, every send lossy)
 //!
 //! Every line below comes from a run of this binary. Unless stated:
-//! K = 2, R = 1, B = 1, L = 0, sd = 0, dR = 0. A "hold" is exit 0 with
+//! K = 2, R = 1, L = 0, sd = 0, dR = 0. A "hold" is exit 0 with
 //! end_checks > 0 and dups > 0 (both properties evaluated, duplicate
 //! frames explored); "no completion" marks exit-0 cells where no
 //! execution completed (end_checks = 0, WARNING printed), which check P1
 //! only and are NOT holds of P2.
 //!
-//!   abp, baseline: HOLD at every W tried (W = 1..4 at U = 1; W = 4 on
-//!       the DT-Spin row). execs = 54 at every W, stale = 21, dups = 64,
-//!       confused = 0. Also HOLD at W = 1 for K=3 R=2 B=1 (3176 execs),
-//!       K=2 R=2 B=2 (1015), K=3 R=1 B=2 (537), K=3 R=2 B=2 (15228).
+//!   abp, baseline: HOLD at every W tried (U = 1: execs 122, blocked 132,
+//!       stale 58, confused 0); K=3 R=2 W=3: execs 107388, blocked 107406.
 //!
-//!   abp, timed: HOLD at every W and bound tried: U = 1, W = 1..4; sd in
-//!       {1, 2, 20} at W = 1; dR = 2 at W in {1, 5}; U=2 L=1 sd=1 W=2;
-//!       DT-Spin row (L = U = 3, dR = 1) at W in {4, 7, 8, 9} (W = 3: no
-//!       completion) and K=3 R=2 at W = 4; DT-Spin rows U in {30, 300}
-//!       at W = 3U;
-//!       K=3 R=2 B=1 at W in {1, 2, 3}; K=2 R=2 B=2 and K=3 R=1 B=2 at W in
-//!       {1, 3}; K=3 R=2 B=2 at U=3 L=2 W=2 (26679 execs, 29 s). The
-//!       premature-timeout path really runs: stale > 0 in every cell with
-//!       W <= 2U + 2sd + dR where an Ack can return in time (22 at U=1
-//!       W=1; 9 on the DT-Spin row at W = 4 and 7), stale = 0 above.
+//!   abp, timed: HOLD at every cell tried: U = 1, W = 1..4 (execs/blocked
+//!       140/150, 104/114, 34/44, 34/44); sd = 1 at W = 1..3; DT-Spin row
+//!       (L = U = 3, dR = 1) at W = 4 (34/44) and U = 30 at W = 90 (25/35);
+//!       K=3 R=2 W=3 (1142/1160). The premature-timeout path really runs:
+//!       stale = 58 at U=1 W=1, 47 at sd=1 W=3, 0 at W=3 sd=0.
 //!       confused = 0 in every abp run.
 //!
-//!   par, baseline (B = 1): FIRE (exit 101) at W = 1..4 (U = 1) and at
-//!       K = 4, W = 3. The counterexample is the Bosnacki-Dams scenario
-//!       step by step: frame 0, timeout, frame 0 again, first Ack
-//!       accepted, frame 1 dropped, second Ack accepted for frame 1,
-//!       Done{completed: true} after one delivery (P2). With --keep-going
-//!       (exit 0, VIOLATION line printed), K = 2 has exactly one violating
-//!       execution (execs = 41, p2_fails = 1) and K = 4 also reaches P1
-//!       (p1_fails = 4, p2_fails = 13). HOLD with B = 0 (W in {1, 2}: execs 7, confused 2;
-//!       K=3 R=2 W=1: execs 40, confused 48, so the Ack mix-up happens but
-//!       loses nothing) and with R = 0 (execs 7).
+//!   par, baseline: FIRE (exit 101). With --keep-going: execs 105,
+//!       p2_fails 2. The counterexample (read on the 2026-09-16 witness)
+//!       is the Bosnacki-Dams scenario: frame 0, timeout, frame 0 again,
+//!       first Ack accepted, frame 1 dropped, second Ack accepted for
+//!       frame 1, Done{completed: true} after one delivery (P2). HOLD with
+//!       R = 0 (execs 7, blocked 13; timed 6/12).
 //!
-//!   par, timed: FIRE iff  W <= 2U + 2sd + dR  and  2L + dR <= (R + 1) W.
-//!       The tie W = 2U + 2sd + dR FIREs. Upper edge, measured:
+//!   par, timed: FIRE iff  W <= 2U + sd + dR  and  2L + dR <= (R + 1) W.
+//!       The tie W = 2U + sd + dR FIREs. Since the (C6b) timeout-miss rule
+//!       a timeout may not pass over a readable Ack, so the late Ack must
+//!       arrive after the deadline; one sd of the old 2U + 2sd + dR
+//!       (measured 2026-09-16) is gone. Upper edge, measured:
 //!         U=1             FIRE W=1,2    hold W=3,4
-//!         U=2             FIRE W=1..4   hold W=5,6
-//!         U=1 sd=1        FIRE W=3,4    hold W=5,6
-//!         U=2 sd=1        FIRE W=5,6    hold W=7,8
-//!         U=1 dR=1        FIRE W=2,3    hold W=4,5
-//!         U=1 dR=2        FIRE W=4      hold W=5,6  (dR=0: hold W=4,5,6)
-//!         U=2 sd=1 dR=2   FIRE W=7,8    hold W=9
-//!         U=2 L=1 sd=1    FIRE W=6      hold W=7
-//!         K=3, K=4, and R=2 B=2: FIRE W=2, hold W=3; K=3 R=2: hold W=3
+//!         U=2             FIRE W=4      hold W=5
+//!         U=1 sd=1        FIRE W=3      hold W=4
+//!         U=1 sd=2        FIRE W=3,4    hold W=5,6
+//!         U=2 sd=1        FIRE W=5      hold W=6
+//!         U=1 dR=1        FIRE W=3      hold W=4
+//!         U=2 sd=1 dR=2   FIRE W=6,7    hold W=8
+//!         U=2 L=1 sd=1    FIRE W=5      hold W=6
+//!         K=3, and R=2:   FIRE W=2      hold W=3
+//!         K=3 R=2 sd=1    FIRE W=2,3    hold W=4
 //!       Lower edge: when (R + 1) W < 2L + dR no Ack can come back before
 //!       the sender gives up, so nothing completes.
 //!         U=L=2           no completion W=1   FIRE W=2,4   hold W=5
-//!         U=3 L=2         no completion W=1   FIRE W=2,6   hold W=7
 //!       DT-Spin rows (L = U, dR = round(0.333 U)):
-//!         U=3   R=1   no completion W=1..3   FIRE W=4..7     hold W=8,9,10
-//!         U=3   R=2   no completion W=2      FIRE W=3,7      hold W=8
+//!         U=3   R=1   no completion W=3      FIRE W=4,7      hold W=8,9
+//!         U=3   R=2   no completion W=2      FIRE W=3        hold W=8
 //!         U=30  R=1   no completion W=34     FIRE W=35,70    hold W=71,90
-//!         U=300 R=1   no completion W=349    FIRE W=350,700  hold W=701,900
+//!         U=300 R=1   no completion W=349    FIRE W=350,700  hold W=701
 //!       So Bosnacki and Dams' "To > dK + dL + dR" is exactly the
 //!       measured upper edge at L = U, sd = 0 (dR on the delivery path).
 //!       Holds above the boundary are not empty: dups > 0, timeouts > 0,
-//!       end_checks > 0, confused = 0 (U=1 W=3 and the DT-Spin rows at
-//!       W = 3U: execs 29, dups 29, timeouts 40, end_checks 12). All 35
-//!       timed FIRE witnesses from these runs were checked by script (11
-//!       also read by hand): each shows the sender's first Ack read at or
-//!       after a timeout deadline, a retransmitted copy, and the next
-//!       frame dropped (expired, in the two B = 0 cells below): the
-//!       intended bug, not a harness artifact.
-//!
-//!   par, timed, B = 0: HOLD with dR = 0 (U=1 W in {1, 2}: execs 14,
-//!       confused 2; K=3 R=2 W=1: execs 380, confused 200) and on the
-//!       DT-Spin row (L = U = 3, dR = 1) at W in {4, 7} and K=3 R=2 W=4.
-//!       With dR > 0 and L < U it FIREs without any budgeted loss (U=1
-//!       dR=1 K=3 R=2 W=1, at sd = 0 and at sd = 1): the missing frames
-//!       expired in storage while the receiver was processing (side effect
-//!       (b) above); the witness still starts with a genuine premature
-//!       timeout.
+//!       end_checks > 0, confused = 0 (U=1 W=3: execs 34, blocked 44,
+//!       end_checks 12; DT-Spin rows above the edge: execs 25, blocked
+//!       35, end_checks 9). On 2026-09-16 all 35 timed FIRE witnesses
+//!       then found were checked by script (11 also read by hand): each
+//!       shows the sender's first Ack read at or after a timeout deadline,
+//!       a retransmitted copy, and the next frame dropped.
 //!
 //! Cost. Above the round trip timing prunes: at U = 1, W = 3, abp timed
-//! explores 29 execs (baseline 54); K=3 R=2 B=1: 322 (3176); K=2 R=2 B=2:
-//! 227 (1015); K=3 R=1 B=2: 173 (537). At W <= 2U + 2sd + dR with sd = 0,
-//! timed explores MORE than baseline (K=2 W=1: 78 vs 54; K=3 R=2 B=1
-//! W=1: 15500 vs 3176) because unread messages expire (side effect (a));
-//! with sd = 20 the same two cells give exactly the baseline counts (54,
-//! 3176). Scale: on the DT-Spin rows at W = 3U, both variants explore 29
-//! executions in about 20 ms at U = 3, 30 and 300. WITHDRAWN 2026-09-19:
+//! explores 34 execs + 44 blocked (baseline 122 + 132); K=3 R=2 W=3:
+//! 1142 + 1160 in 1.4 s (baseline 107388 + 107406 in 19 s). At W = 1
+//! timed explores MORE than baseline (140 + 150 vs 122 + 132) because
+//! unread messages expire (side effect (a)); with sd = 20 the gap
+//! nearly closes (125 + 135). Scale: on the DT-Spin rows above the edge
+//! both variants explore 25 executions in about 20 ms at U = 3, 30 and
+//! 300. WITHDRAWN 2026-09-19:
 //! the comparison with Table 2's 1318 / 7447 / 68737 states, even as a
 //! shape. That growth is single-tick unfolding of the 1998 prototype;
 //! DT-Spin 4.1.1 on the same listing gives 641 states at all three rows
@@ -410,7 +389,6 @@ static P2_FAILS: AtomicUsize = AtomicUsize::new(0);
 
 const DEFAULT_MESSAGES: u32 = 2;
 const DEFAULT_RETRIES: u32 = 1;
-const DEFAULT_LOSSY: usize = 1;
 const DEFAULT_U: u64 = 1;
 const DEFAULT_L_RATIO: f64 = 0.0;
 const DEFAULT_SD_RATIO: f64 = 0.0;
@@ -424,7 +402,8 @@ enum SMsg {
     /// `out!mt,sn`). Identical in both variants.
     Frame { bit: u8, payload: u32 },
     /// Verification harness, not the protocol: ends the reactive
-    /// receiver and enables the end-of-run gap check (P2). Non-lossy.
+    /// receiver and enables the end-of-run gap check (P2). May be dropped
+    /// like every send; the receiver then blocks (a blocked execution).
     Done { completed: bool },
 }
 
@@ -484,7 +463,6 @@ struct Params {
     variant: Variant,
     messages: u32,
     retries: u32,
-    lossy: usize,
     b: Bounds,
 }
 
@@ -529,6 +507,13 @@ impl Bounds {
     /// verdicts come from the checker.
     fn round_trip(self) -> u64 {
         2 * self.u + 2 * self.sd + self.proc_delay
+    }
+
+    /// 2U + sd + dR: the latest deadline at which a timeout can still be
+    /// followed by a read of the Ack (the timeout may not pass over a
+    /// readable Ack, so the Ack must arrive after it).
+    fn premature_edge(self) -> u64 {
+        2 * self.u + self.sd + self.proc_delay
     }
 }
 
@@ -669,10 +654,10 @@ fn apply_parallel(builder: traceforge::ConfigBuilder) -> traceforge::ConfigBuild
 }
 
 fn build_config(mode: Mode, p: Params, keep_going: bool) -> Config {
-    // Loss is enabled identically in both modes; with_timed is the only
-    // difference between baseline and timed.
+    // Every send may be dropped, no budget, in both modes; with_timed is
+    // the only difference between baseline and timed.
     let mut builder =
-        apply_parallel(Config::builder().with_progress_report(usize::MAX)).with_lossy(p.lossy);
+        apply_parallel(Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX));
     if keep_going {
         builder = builder.with_keep_going_after_error(true);
     }
@@ -777,11 +762,11 @@ fn warn_if_vacuous(label: &str, mode: Mode, p: Params, execs: usize, blocked: us
         );
     }
     // A premature timeout followed by a read of the late Ack is timed
-    // feasible iff W <= 2U + 2sd + dR and 2L + dR <= (R + 1) W (the
+    // feasible iff W <= 2U + sd + dR and 2L + dR <= (R + 1) W (the
     // measured par boundary, see the doc header); untimed it is always
     // feasible.
     let premature_possible = mode == Mode::Baseline
-        || (p.b.w <= p.b.round_trip()
+        || (p.b.w <= p.b.premature_edge()
             && (u64::from(p.retries) + 1) * p.b.w >= 2 * p.b.l + p.b.proc_delay);
     if p.variant == Variant::Abp
         && p.messages >= 2
@@ -797,7 +782,7 @@ fn warn_if_vacuous(label: &str, mode: Mode, p: Params, execs: usize, blocked: us
     if mode == Mode::Timed && p.b.proc_delay > 0 {
         println!(
             "NOTE ({label}): dR={} > 0: a frame (or Done) stored while the receiver processes an \
-             earlier frame can expire unread, an extra loss outside the budget B that baseline \
+             earlier frame can expire unread, a loss the network did not choose that baseline \
              does not have (an expired Done shows up as blocked executions).",
             p.b.proc_delay
         );
@@ -823,11 +808,11 @@ fn warn_if_violated(label: &str, c: Counts) {
 fn print_one(label: &str, p: Params, stats: &Stats, dur: Duration, c: Counts) {
     let b = p.b;
     println!(
-        "{label:<9} variant={v} K={k} R={r} B={lossy}  L={l} U={u} sd={sd} W={w} dR={dr} \
+        "{label:<9} variant={v} K={k} R={r}  L={l} U={u} sd={sd} W={w} dR={dr} \
          (2U+2sd+dR={rt})  execs={execs:<7} blocked={block:<6} delivered={del:<6} \
          dups={dups:<6} timeouts={to:<6} stale={stale:<6} confused={conf:<6} \
          completed={comp:<6} gave_up={gu:<6} end_checks={ec:<6} p1_fails={p1:<4} p2_fails={p2:<4} time={dur:?}",
-        v = p.variant.name(), k = p.messages, r = p.retries, lossy = p.lossy,
+        v = p.variant.name(), k = p.messages, r = p.retries,
         l = b.l, u = b.u, sd = b.sd, w = b.w, dr = b.proc_delay, rt = b.round_trip(),
         execs = stats.execs, block = stats.block, del = c.delivered, dups = c.duplicates,
         to = c.timeouts, stale = c.stale, conf = c.confused, comp = c.completed,
@@ -843,8 +828,8 @@ fn print_compare(p: Params, baseline: &(Stats, Duration), timed: &(Stats, Durati
     println!("Alternating bit / PAR: MUST vs MUST-timed");
     println!("======================================================");
     println!(
-        "variant = {}    K = {}    R = {}    B = {}    L = {}    U = {}    sd = {}    W = {}    dR = {}",
-        p.variant.name(), p.messages, p.retries, p.lossy, b.l, b.u, b.sd, b.w, b.proc_delay
+        "variant = {}    K = {}    R = {}    L = {}    U = {}    sd = {}    W = {}    dR = {}",
+        p.variant.name(), p.messages, p.retries, b.l, b.u, b.sd, b.w, b.proc_delay
     );
     println!();
     println!("{:<10} {:>10} {:>10} {:>14}", "mode", "execs", "blocked", "time");
@@ -884,7 +869,6 @@ struct Args {
     variant: Variant,
     messages: u32,
     retries: u32,
-    lossy: usize,
     u: u64,
     l_ratio: f64,
     sd_ratio: f64,
@@ -910,7 +894,6 @@ fn parse_args() -> Args {
         variant: Variant::Abp,
         messages: DEFAULT_MESSAGES,
         retries: DEFAULT_RETRIES,
-        lossy: DEFAULT_LOSSY,
         u: DEFAULT_U,
         l_ratio: DEFAULT_L_RATIO,
         sd_ratio: DEFAULT_SD_RATIO,
@@ -934,7 +917,6 @@ fn parse_args() -> Args {
             }
             "--messages" => a.messages = parse_num(next_val(&mut args, "--messages"), "--messages"),
             "--retries" => a.retries = parse_num(next_val(&mut args, "--retries"), "--retries"),
-            "--lossy" => a.lossy = parse_num(next_val(&mut args, "--lossy"), "--lossy"),
             "--u" => a.u = parse_num(next_val(&mut args, "--u"), "--u"),
             "--l-ratio" => a.l_ratio = parse_num(next_val(&mut args, "--l-ratio"), "--l-ratio"),
             "--sd-ratio" => a.sd_ratio = parse_num(next_val(&mut args, "--sd-ratio"), "--sd-ratio"),
@@ -947,13 +929,13 @@ fn parse_args() -> Args {
             "--help" | "-h" => {
                 eprintln!(
                     "Usage: alternating_bit_timed [--mode baseline|timed|compare] [--variant abp|par] \
-                     [--messages K] [--retries R] [--lossy B] [--u U] [--l-ratio LR] \
+                     [--messages K] [--retries R] [--u U] [--l-ratio LR] \
                      [--sd-ratio SR] [--w-ratio WR] [--proc-ratio PR] [--keep-going] \
                      [--parallel none|shared|partitioned]\n\
-                     Defaults: mode=compare, variant=abp, K=2, R=1, B=1, U=1, L/U=0, sd/U=0, \
+                     Defaults: mode=compare, variant=abp, K=2, R=1, U=1, L/U=0, sd/U=0, \
                      W/U=3, dR/U=0.\n\
                      abp: acks repeat the frame bit; par: acks carry no bit (the Bosnacki-Dams \
-                     premature-timeout bug). par with B >= 1 FIREs in baseline, so compare aborts \
+                     premature-timeout bug). par with R >= 1 FIREs in baseline, so compare aborts \
                      in its baseline leg unless --keep-going; pass --mode timed for par.\n\
                      --keep-going explores past a violation and reports p1_fails=/p2_fails= (and a \
                      VIOLATION line) instead of aborting; the exit code is then 0 either way.\n\
@@ -981,7 +963,6 @@ fn main() {
         variant: a.variant,
         messages: a.messages,
         retries: a.retries,
-        lossy: a.lossy,
         b,
     };
     match a.mode.as_str() {

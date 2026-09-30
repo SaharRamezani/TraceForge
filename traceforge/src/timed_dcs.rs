@@ -794,36 +794,33 @@ pub(crate) struct TimedDcs<'g> {
 }
 
 impl<'g> TimedDcs<'g> {
+    /// The full timed system `Csys` (see [`Self::build_opts`]): every
+    /// exploration decision is judged with it.
     pub(crate) fn build(
         g: &'g ExecutionGraph,
         cfg: &'g TimedConfig,
         view: Option<&VectorClock>,
         floating: Option<Event>,
     ) -> Self {
-        Self::build_opts(g, cfg, view, floating, false)
+        Self::build_opts(g, cfg, view, floating, true)
     }
 
-    /// `build` constructs the exploration system `Cexp`; with
-    /// `strict_timeouts = true` this constructs the completion system
-    /// `Csys` = `Cexp` plus (C6b): a finite-wait receive may return
-    /// `bot` only in timelines where every message pending at it missed
-    /// the whole wait window (see `push_timeout_cases`).
+    /// With `strict_timeouts = true` this constructs the full timed
+    /// system `Csys`: the base constraints plus (C6b), under which a
+    /// finite-wait receive may return `bot` only in timelines where
+    /// every message pending at it missed the whole wait window (see
+    /// `push_timeout_cases`), and the (C8) refusal edges. `false` drops
+    /// (C6b) and gives the exploration system of the pre-2026-09-29
+    /// design, which explored a timeline-impossible timeout and dropped
+    /// it at the end.
     ///
-    /// Only the completion/certification oracles (`graph_feasible`,
-    /// `graph_witness`) pass `strict_timeouts = true`. Pruning paths
-    /// must not: the timeout is the canonical launch point of backward
-    /// revisits, so removing it from the exploration tree would lose
-    /// executions whose reads are only reachable through it (design
-    /// note 2026-09-16, option A, confirmed by Sahar 2026-09-22). The
-    /// tree of graphs the exploration generates is therefore the
-    /// pre-(C6b) tree and soundness, completeness and duplicate-freedom
-    /// carry over; pruning stays exact for `Cexp`, and Must's guarantee
-    /// that no explored prefix is fruitless is not inherited: a
-    /// timeline-impossible timeout is explored and then dropped at the
-    /// end (`Stats::timeline_impossible`) instead of being cut at the
-    /// read. Run control still differs from the pre-(C6b) tool: a
-    /// spurious violation no longer stops an abort-mode run, and
-    /// iteration budgets count only counted endings.
+    /// Exploration is Must's Algorithm 1 with consistency := `Csys`
+    /// (2026-09-29): every read, timeout, refusal, wake-up, delivered
+    /// send and revisit is judged with it, so no graph without a
+    /// timeline is visited. This is safe for completeness because the
+    /// canonical outcome of every event is always consistent: a send's
+    /// is dropped (every send may be dropped), a receive's is chosen
+    /// among its outcomes that have a timeline in Must's Previous set.
     pub(crate) fn build_opts(
         g: &'g ExecutionGraph,
         cfg: &'g TimedConfig,
@@ -1501,6 +1498,55 @@ impl<'g> TimedDcs<'g> {
             }
         }
         self.probe_exact(&extra)
+    }
+
+    /// Exact feasibility of "the floating finite-wait receive (or
+    /// collector of one) `recv` times out": the clock advances by exactly
+    /// W and (C6b) holds for
+    /// every message pending at it in `view` (the view this oracle was
+    /// built on). Reads the receive currently holds count as pending,
+    /// since the floating receive's reads are hypothetical.
+    pub(crate) fn probe_recv_timeout(&mut self, recv: Event, view: &VectorClock) -> bool {
+        let Some(&e) = self.vars.ev.get(&recv) else {
+            debug_assert!(false, "probe target {recv} not in scope");
+            return true;
+        };
+        let pred = Event::new(recv.thread, recv.index - 1);
+        let Some(&p) = self.vars.ev.get(&pred) else {
+            return self.feasible;
+        };
+        // A receive, or a collector of one (the same miss rule; a
+        // min >= 2 inbox timeout carries no (C6b) group by decision).
+        let (wait, loc, anchor, groups_apply) = match self.g.label(recv) {
+            LabelEnum::RecvMsg(r) => (r.wait(), r.recv_loc(), r.as_event_label(), true),
+            LabelEnum::Inbox(i) => (i.wait(), i.recv_loc(), i.as_event_label(), i.min() <= 1),
+            _ => return false,
+        };
+        let Some(WaitTime::Finite(w)) = wait else {
+            return false;
+        };
+        let w = i128::from(w);
+        let extra: Vec<Edge> = vec![(p, e, w), (e, p, -w)];
+        let mut groups: Vec<Vec<Vec<Edge>>> = Vec::new();
+        if groups_apply {
+            push_timeout_cases(
+                &mut groups,
+                &self.vars,
+                self.g,
+                self.cfg,
+                view,
+                e,
+                p,
+                recv,
+                loc,
+                anchor,
+                Some(recv),
+            );
+        }
+        if groups.is_empty() {
+            return self.probe_exact(&extra);
+        }
+        self.probe_cases_with_skips(vec![extra], &groups)
     }
 
     /// Exact feasibility of waking the blocked receive at `block_pos`
@@ -2244,7 +2290,9 @@ fn push_refusal_edges(
         let Some(&av) = vars.arr.get(&bpos) else {
             continue;
         };
-        if b.reader().is_some_and(|r| r != pos && vars.ev.contains_key(&r)) {
+        // Consumed by a receive in the causal past of the block (the
+        // porf test keeps the exemption prefix-determined, as for Pend).
+        if b.reader().is_some_and(|r| r != pos && vars.ev.contains_key(&r) && g.in_porf(r, pos)) {
             continue;
         }
         if b.monitor_readers()
@@ -2611,9 +2659,12 @@ fn push_recv_skip_cases(
             continue;
         }
         // The floating event's reads are hypothetical (the probe decides
-        // them), so they never count as consumption here.
-        if b.reader().is_some_and(|r| Some(r) != floating && view.contains(r)) {
-            continue; // read in this view: not skipped
+        // them), so they never count as consumption here. Only a reader
+        // in the causal past of the read excuses b (as for Pend(r) in
+        // push_timeout_cases): the exemption then depends on the read's
+        // porf prefix only, which keeps Csys prefix-closed.
+        if b.reader().is_some_and(|r| Some(r) != floating && view.contains(r) && g.in_porf(r, pos)) {
+            continue; // consumed before the read: not skipped
         }
         if b
             .monitor_readers()

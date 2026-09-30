@@ -50,7 +50,9 @@ const SUPPRESSED_SPURIOUS: &str = "suppressed_spurious";
 /// count as neither exec nor block. Under the explore-then-judge design
 /// of (C6b) this is the cost of keeping the timeout branch in the tree.
 const TIMELINE_IMPOSSIBLE: &str = "timeline_impossible";
-const KILLED: &str = "killed";
+/// Children rejected by Must's consistency check before being visited
+/// (a step no timeline admits); counted as nothing.
+const PRUNED: &str = "pruned";
 
 macro_rules! cast {
     ($target: expr, $pat: path) => {{
@@ -91,12 +93,12 @@ pub struct MustState {
     /// and deserialization of pre-field replay states (serde default).
     #[serde(default = "arm_completion_check")]
     timed_completion_check: bool,
-    /// This execution was stopped at a timeout kill
-    /// (`Config::kill_dead_timeouts`): its ending is counted as nothing
-    /// and its remaining worklist is still drained. Cleared when a
-    /// revisit re-enters a live world from this state.
+    /// This execution was stopped at a step no timeline admits (Must's
+    /// consistency check rejected the child): its ending counts as
+    /// nothing and is not reported to observers; its worklist is still
+    /// drained. Cleared when a revisit installs a new graph.
     #[serde(default)]
-    killed: bool,
+    abandoned: bool,
 }
 
 fn arm_completion_check() -> bool {
@@ -115,7 +117,7 @@ impl MustState {
             graph: ExecutionGraph::new(),
             rqueue: RQueue::new(),
             timed_completion_check: true,
-            killed: false,
+            abandoned: false,
         }
     }
 }
@@ -211,6 +213,11 @@ pub(crate) struct Must {
     /// Dedup set for prune-log records: Cleared at the start of every
     /// new execution. Only used when `config.prune_log_file` is set.
     pub(crate) prune_dedup: HashSet<(&'static str, Event, Event)>,
+
+    /// Refusal canonicity verdicts per (refusal, revisiting send), valid
+    /// while one send's backward revisits are computed (the graph does
+    /// not change meanwhile); `None` outside `calc_revisits`.
+    canon_cache: std::cell::RefCell<Option<HashMap<(Event, Event), bool>>>,
 }
 
 impl Must {
@@ -226,7 +233,7 @@ impl Must {
         let _ = telemetry.register_counter(&BLOCKED.to_owned());
         let _ = telemetry.register_counter(&SUPPRESSED_SPURIOUS.to_owned());
         let _ = telemetry.register_counter(&TIMELINE_IMPOSSIBLE.to_owned());
-        let _ = telemetry.register_counter(&KILLED.to_owned());
+        let _ = telemetry.register_counter(&PRUNED.to_owned());
         let _ = telemetry.register_histogram(&EXECS_EST.to_owned());
 
         Self {
@@ -253,6 +260,7 @@ impl Must {
             global_named_choices: HashMap::new(),
             max_graph_events: 0,
             prune_dedup: HashSet::new(),
+            canon_cache: std::cell::RefCell::new(None),
         }
     }
 
@@ -274,7 +282,7 @@ impl Must {
         let _ = self.telemetry.register_counter(&BLOCKED.to_owned());
         let _ = self.telemetry.register_counter(&SUPPRESSED_SPURIOUS.to_owned());
         let _ = self.telemetry.register_counter(&TIMELINE_IMPOSSIBLE.to_owned());
-        let _ = self.telemetry.register_counter(&KILLED.to_owned());
+        let _ = self.telemetry.register_counter(&PRUNED.to_owned());
         let _ = self.telemetry.register_histogram(&EXECS_EST.to_owned());
         self.frozen_thread_index_map = None;
         self.thread_index_map.clear();
@@ -412,6 +420,9 @@ impl Must {
         // without adding a send would be counted without its final
         // timeline re-check.
         self.current.timed_completion_check = true;
+        // A foreign graph is a live world: an abandon mark left by the
+        // execution this worker handled before must not classify it.
+        self.current.abandoned = false;
         #[cfg(feature = "symbolic")]
         self.symbolic_solver.reset();
     }
@@ -435,7 +446,7 @@ impl Must {
         let _ = self.telemetry.register_counter(&BLOCKED.to_owned());
         let _ = self.telemetry.register_counter(&SUPPRESSED_SPURIOUS.to_owned());
         let _ = self.telemetry.register_counter(&TIMELINE_IMPOSSIBLE.to_owned());
-        let _ = self.telemetry.register_counter(&KILLED.to_owned());
+        let _ = self.telemetry.register_counter(&PRUNED.to_owned());
         let _ = self.telemetry.register_histogram(&EXECS_EST.to_owned());
         // Note: frozen_thread_index_map, thread_index_map, next_thread_index,
         // config, rng are intentionally NOT reset — they are either set
@@ -472,6 +483,8 @@ impl Must {
         // Foreign graph: arm the completion-time feasibility gate
         // conservatively (one re-check per branch completion).
         self.current.timed_completion_check = true;
+        // ...and it is live: drop any abandon mark of the previous state.
+        self.current.abandoned = false;
 
         // Remaining entries become saved states (moved, not cloned)
         for (graph, rqueue) in stack {
@@ -479,7 +492,7 @@ impl Must {
                 graph,
                 rqueue,
                 timed_completion_check: true,
-                killed: false,
+                abandoned: false,
             });
         }
     }
@@ -793,116 +806,46 @@ impl Must {
         // polynomial but might require some caching to do it efficiently
         // (which sends have implicitly been dropped).
         let slab = self.current.graph.send_label(pos).unwrap();
-        if slab.is_lossy() && self.dropped_messages() < self.config.lossy_budget {
-            push_worklist(
-                &mut self.current.rqueue,
-                slab.stamp(),
-                RevisitEnum::new_forward(pos, Event::new_init()),
-            )
+        if slab.is_lossy()
+            && (self.config.all_sends_lossy() || self.dropped_messages() < self.config.lossy_budget)
+        {
+            if self.config.mode == ExplorationMode::Estimation {
+                // Sample the loss like any other choice: two branches.
+                self.telemetry.histogram(EXECS_EST.to_owned(), 2.0);
+                if self.rng.random_bool(0.5) {
+                    if let LabelEnum::SendMsg(slab) = self.current.graph.label_mut(pos) {
+                        slab.set_dropped();
+                    }
+                    self.current.graph.incr_dropped_sends();
+                    // A dropped send is read by nobody: no revisits.
+                    return stuck;
+                }
+            } else {
+                push_worklist(
+                    &mut self.current.rqueue,
+                    slab.stamp(),
+                    RevisitEnum::new_forward(pos, Event::new_init()),
+                )
+            }
         }
 
-        // Timeout kill (`Config::kill_dead_timeouts`): a matching
-        // finite-wait receive that timed out, and whose timeout has no
-        // timeline left in the world `r <- s` would cut to (Csys
-        // infeasible while Cexp is feasible, so the miss obligation
-        // and not channel poison is what fails), was killed by this
-        // send. Its revisit is marked so the woken receive takes over
-        // as the launcher of later revisits, and this execution stops:
-        // its ending admits no timeline, and every world it could still
-        // launch is reachable from the woken one.
+        // The backward revisits of the send are launched from the graph
+        // before it, so they are computed whether or not the delivered
+        // graph below has a timeline.
         self.calc_revisits(pos);
         self.current.graph.register_send(&spos);
 
-        // Timeout kill (`Config::kill_dead_timeouts`). The probe runs
-        // after registration: the miss groups are collected from the
-        // sends cache, so before it this send would carry none.
-        //
-        // A matching finite-wait receive that timed out is killed by this
-        // send when, in the world `r <- s` cuts to (its prefix plus the
-        // causal past of s), Cexp is feasible and Csys is not: the miss
-        // obligation, not channel poison, is what fails. The replacement
-        // is the world a sender-first schedule produces: that cut with r
-        // visited again, reading its first candidate there (not
-        // necessarily s: on an ordered channel s may sit behind an
-        // earlier unread message). Only the earliest killed receive is
-        // replaced; every later one lies inside its cut and runs again.
-        // The replacement is launched only from the canonical parent of
-        // that cut (every deleted event in its base state), as any
-        // backward revisit; otherwise, or with no candidate in the cut,
-        // this execution continues as the reference does.
-        let mut replaced = false;
-        if self.config.kill_dead_timeouts
-            && self.config.mode == ExplorationMode::Verification
-            && !self.replay_info.replay_mode()
-        {
+        // Must's consistency check of the delivered child: a delivered
+        // send can make an earlier timeout or GC refusal impossible (or
+        // contradict FIFO arrival coupling). Such a graph is not visited;
+        // its dropped sibling (always consistent) is on the worklist.
+        if !self.replay_info.replay_mode() && self.config.mode == ExplorationMode::Verification {
             if let Some(cfg) = self.config.timed.as_ref() {
-                let g = &self.current.graph;
-                let slab = g.send_label(pos).unwrap();
-                let mut dead: Vec<(usize, Event)> = Vec::new();
-                for rl in g.rev_matching_recvs(slab) {
-                    let RecvLike::RecvMsg(r) = rl else { continue };
-                    // Mailbox receives are excluded: their channel
-                    // coherence is checked after the fact by is_consistent,
-                    // not by the timed constraint system, so the kill could
-                    // not establish that its replacement world is real.
-                    if !r.is_non_blocking()
-                        || !matches!(r.wait(), Some(crate::WaitTime::Finite(_)))
-                        || r.comm() == crate::loc::CommunicationModel::TotalOrder
-                        || r.rf().is_some()
-                        || slab.porf().contains(r.pos())
-                        || self.is_monitor(&r.pos())
-                    {
-                        continue;
-                    }
-                    let view = g.revisit_view(&Revisit::new(r.pos(), pos));
-                    let exp_ok =
-                        crate::timed_dcs::TimedDcs::build_opts(g, cfg, Some(&view), None, false)
-                            .base_feasible();
-                    if exp_ok && !crate::timed_dcs::TimedDcs::graph_feasible(g, cfg, Some(&view)) {
-                        dead.push((r.stamp(), r.pos()));
-                    }
-                }
-                if let Some(&(_, rpos)) = dead.iter().min() {
-                    let rev = Revisit::new(rpos, pos);
-                    let rlab = g.recv_label(rpos).unwrap();
-                    let canonical =
-                        self.is_maximal_recv(rlab, &rev) && self.is_maximal_extension(&rev);
-                    let view = g.revisit_view(&rev);
-                    let has_candidate = canonical
-                        && !self
-                            .checker
-                            .rfs_in_view(g, rlab, &view, self.is_monitor(&rpos), self.timed_for_views())
-                            .is_empty();
-                    if !canonical {
-                        info!("[kill] unreplaced(non-canonical) recv {} send {}", rpos, pos);
-                    } else if !has_candidate {
-                        info!("[kill] unreplaced(no-candidate) recv {} send {}", rpos, pos);
-                    } else {
-                        replaced = true;
-                        let stamp = slab.stamp();
-                        // The re-visit offers every candidate, s included
-                        // when it is one, so the plain `r <- s` goes.
-                        if let Some(items) = self.current.rqueue.get_mut(&stamp) {
-                            items.retain(|it| {
-                                !matches!(it, RevisitEnum::BackwardRevisit(b)
-                                    if b.pos == rpos && matches!(b.rev, RevisitPlacement::Default(x) if x == pos))
-                            });
-                        }
-                        let mut kill = Revisit::new(rpos, pos);
-                        kill.kill = true;
-                        push_worklist(&mut self.current.rqueue, stamp, RevisitEnum::BackwardRevisit(kill));
-                        info!(
-                            "[kill] send {} makes the timeout of {} impossible; stopping this execution",
-                            pos, rpos
-                        );
-                    }
+                if !crate::timed_dcs::TimedDcs::graph_feasible(&self.current.graph, cfg, None) {
+                    info!("| delivered {} has no timeline: pruned", pos);
+                    self.abandon();
                 }
             }
-        }
-        if replaced {
-            self.current.killed = true;
-            self.block_exec(BlockType::Assume);
-            self.stop();
         }
 
         // stuck is only used during replay
@@ -1431,9 +1374,27 @@ impl Must {
         let g = &self.current.graph;
         if let LabelEnum::Block(blab) = g.thread_last(t).unwrap() {
             if blab.refuses_matching() {
-                // GC refusal block: never wakes by design; the read
-                // worlds are the sibling branches.
+                // GC refusal block: never wakes. A later matching send
+                // reaches it as a backward revisit (calc_revisits), when
+                // the refusal is the receive's canonical outcome.
                 return false;
+            }
+            // A timed blocking receive waits only while nothing is
+            // available (structural availability, see visit_rfs); the
+            // first delivered unread match wakes it, and the re-executed
+            // receive reads or refuses. No timing test here, so the wake
+            // and the offer cannot disagree.
+            if let BlockType::Value(loc, Some(crate::WaitTime::Infinite), 1, comm, false) = blab.btype() {
+                if self.config.timed.is_some()
+                    && self.config.mode == ExplorationMode::Verification
+                    && !self.replay_info.replay_mode()
+                    && !self.is_monitor(&blab.pos())
+                    && Consistency::timed_gc_offer_arm(Some(crate::WaitTime::Infinite), *comm)
+                {
+                    return g.matching_stores(loc).any(|b| {
+                        b.can_be_read_from(loc) && !b.is_cancelled_wrt(blab.as_event_label())
+                    });
+                }
             }
             if let BlockType::Value(loc, wait, min, comm, from_inbox) = blab.btype() {
                 // Offer-path parity for an UNTIMED block in a timed
@@ -1829,6 +1790,15 @@ impl Must {
         }
     }
 
+    /// Stop the current execution at a step no timeline admits: Must's
+    /// VisitIfConsistent rejects that child. Nothing after the step runs
+    /// as part of the exploration; the ending counts as nothing.
+    fn abandon(&mut self) {
+        self.current.abandoned = true;
+        self.block_exec(BlockType::Assume);
+        self.stop();
+    }
+
     fn block_exec(&mut self, bt: BlockType) {
         self.current.graph.thread_ids().iter().for_each(|&t| {
             self.add_to_graph(LabelEnum::Block(Block::new(
@@ -1888,12 +1858,13 @@ impl Must {
     }
 
     fn record_ending_telemetry(&mut self, maybe_block: &Option<BlockType>) -> bool {
-        if self.current.killed {
-            // Stopped at a timeout kill: the ending admits no timeline
-            // and the woken world took over its launches (handle_send).
-            self.telemetry.counter(KILLED.to_owned());
+        if self.current.abandoned {
+            // Stopped at a step no timeline admits (a pruned child). It is
+            // not a behaviour: an assertion it raised is not reported.
+            self.pending_asserts.clear();
+            self.telemetry.counter(PRUNED.to_owned());
             if self.config.verbose >= 2 {
-                println!("One execution stopped at a timeout kill (not counted)");
+                println!("One pruned step with no timeline (not counted)");
                 println!("{}", self.print_graph(None));
             }
             return false;
@@ -2136,10 +2107,10 @@ impl Must {
         // generate a counterexample if they panic. OTOH, the callbacks should not.
         // A monitor provides a general solution for generating a counterexample at the end of
         // an execution.
-        // An execution stopped at a timeout kill is not a behaviour (it
+        // An execution abandoned at a pruned step is not a behaviour (it
         // admits no timeline and is counted as nothing), so observers do
         // not see its partial run; its coverage is still cleaned up.
-        let stopped_at_kill = self.current.killed;
+        let abandoned = self.current.abandoned;
         for cb in &mut self
             .config
             .callbacks
@@ -2147,7 +2118,7 @@ impl Must {
             .expect("Could not lock callbacks")
             .iter_mut()
         {
-            if stopped_at_kill {
+            if abandoned {
                 continue;
             }
             cb.after(
@@ -2175,15 +2146,21 @@ impl Must {
         // At this point, we have handled all the cases for nonblocking receive
         // so we know blocking == true
         if !blocking {
-            if !rfs.is_empty() {
-                if self.config.mode == ExplorationMode::Estimation {
-                    self.telemetry
-                        .histogram(EXECS_EST.to_owned(), (rfs.len() + 1) as f64);
-
-                    let idx = self.rng.random_range(0..=rfs.len());
-
-                    info!("| Choosing {} out of {}", idx, rfs.len());
-
+            if self.config.mode == ExplorationMode::Estimation {
+                // The timeout is a branch only when some timeline admits it.
+                let bot_ok = !(self.config.timed.is_some()
+                    && !self.is_monitor(&pos)
+                    && self.current.graph.recv_label(pos).is_some_and(|r| r.wait().is_some()))
+                    || crate::timed_dcs::TimedDcs::graph_feasible(
+                        &self.current.graph,
+                        self.config.timed.as_ref().unwrap(),
+                        None,
+                    );
+                let n = rfs.len() + usize::from(bot_ok);
+                if n > 0 {
+                    self.telemetry.histogram(EXECS_EST.to_owned(), n as f64);
+                    let idx = self.rng.random_range(0..n);
+                    info!("| Choosing {} out of {}", idx, n);
                     if idx < rfs.len() {
                         self.current.graph.change_rf(pos, Some(rfs[idx]));
                     } else {
@@ -2191,54 +2168,39 @@ impl Must {
                         self.current.graph.change_rf(pos, None);
                     }
                     return self.current.graph.val_copy(pos);
-                } else {
-                    // Timeout kill at the visit (`Config::kill_dead_timeouts`):
-                    // when no timeline lets this receive miss every
-                    // message already present (Csys infeasible while Cexp
-                    // is feasible), the first candidate is its base outcome
-                    // and the others are siblings; no timeout branch exists.
-                    let kill_at_visit = self.config.kill_dead_timeouts
-                        && !self.replay_info.replay_mode()
-                        && !self.is_monitor(&pos)
-                        && self.current.graph.recv_label(pos).unwrap().comm()
-                            != crate::loc::CommunicationModel::TotalOrder
-                        && self.config.timed.as_ref().is_some_and(|cfg| {
-                            let g = &self.current.graph;
-                            crate::timed_dcs::TimedDcs::build_opts(g, cfg, None, None, false)
-                                .base_feasible()
-                                && !crate::timed_dcs::TimedDcs::graph_feasible(g, cfg, None)
-                        });
-                    if kill_at_visit {
-                        info!(
-                            "[kill] timeout of {} impossible at its visit; base read {}",
-                            pos, rfs[0]
-                        );
-                        self.current.graph.change_rf(pos, Some(rfs[0]));
-                        if let LabelEnum::RecvMsg(rl) = self.current.graph.label_mut(pos) {
-                            rl.set_base_rf(Some(rfs[0]));
-                        }
-                        rfs.iter().skip(1).for_each(|&rf| {
-                            push_worklist(
-                                &mut self.current.rqueue,
-                                self.current.graph.label(pos).stamp(),
-                                RevisitEnum::new_forward(pos, rf),
-                            );
-                        });
-                        return self.current.graph.val_copy(pos);
-                    }
-                    rfs.iter().for_each(|&rf| {
-                        push_worklist(
-                            &mut self.current.rqueue,
-                            self.current.graph.label(pos).stamp(),
-                            RevisitEnum::new_forward(pos, rf),
-                        );
-                    });
                 }
             }
-            // The timeout is the base outcome and carries the (C6b)
-            // obligation that only the completion system judges.
+            // The timeout is offered only when some timeline lets the
+            // receive miss every pending message (C6b); at the visit the
+            // receive has no rf yet, so the committed graph decides it.
+            let bot_ok = !self.timed_judged(pos) || {
+                let cfg = self.config.timed.as_ref().unwrap();
+                crate::timed_dcs::TimedDcs::graph_feasible(&self.current.graph, cfg, None)
+            };
+            let stamp = self.current.graph.label(pos).stamp();
+            if bot_ok {
+                // Canonical outcome: the timeout; every read is a sibling.
+                rfs.iter().for_each(|&rf| {
+                    push_worklist(&mut self.current.rqueue, stamp, RevisitEnum::new_forward(pos, rf));
+                });
+                self.arm_timeout_obligation();
+                self.current.graph.change_rf(pos, None);
+                return self.current.graph.val_copy(pos);
+            }
+            if let Some((&first, rest)) = rfs.split_first() {
+                // No timeout: the first consistent candidate is canonical.
+                rest.iter().for_each(|&rf| {
+                    push_worklist(&mut self.current.rqueue, stamp, RevisitEnum::new_forward(pos, rf));
+                });
+                self.current.graph.change_rf(pos, Some(first));
+                return self.current.graph.val_copy(pos);
+            }
+            // Neither a read nor the timeout has a timeline: timed
+            // extensibility says this cannot happen for a consistent graph.
+            info!("| {} has no outcome with a timeline: pruned", pos);
             self.arm_timeout_obligation();
             self.current.graph.change_rf(pos, None);
+            self.abandon();
             return self.current.graph.val_copy(pos);
         }
 
@@ -2312,12 +2274,78 @@ impl Must {
                 let rlab = self.current.graph.recv_label(pos).unwrap();
                 (rlab.recv_loc().clone(), rlab.wait(), rlab.comm())
             };
+            // Availability is structural (Must's: a delivered, unread
+            // matching message exists). An available receive with no
+            // read that has a timeline refuses: every such message died
+            // before its wait began. Only a receive with nothing to read
+            // waits, and a later delivered match wakes it.
+            if self.timed_judged(pos)
+                && matches!(wait, Some(crate::WaitTime::Infinite))
+                && Consistency::timed_gc_offer_arm(wait, comm)
+                && self.structurally_available(pos)
+            {
+                let refusal_ok = {
+                    let cfg = self.config.timed.as_ref().unwrap();
+                    let rlab = self.current.graph.recv_label(pos).unwrap();
+                    let mut d =
+                        crate::timed_dcs::TimedDcs::build(&self.current.graph, cfg, None, Some(pos));
+                    d.base_feasible() && d.probe_gc_block(pos, rlab.as_event_label(), rlab.recv_loc())
+                };
+                if !refusal_ok {
+                    // Timed extensibility says this cannot happen.
+                    info!("| {} has no outcome with a timeline: pruned", pos);
+                    self.abandon();
+                    return None;
+                }
+                // Keep the receive in the receive index (register_recv
+                // skips blocks): a later send reaches the refusal as a
+                // revisit target, and the revisit restores the receive.
+                self.current.graph.register_recv(&pos);
+                let base = self
+                    .current
+                    .graph
+                    .recv_label(pos)
+                    .unwrap()
+                    .as_event_label()
+                    .clone();
+                *self.current.graph.label_mut(pos) = LabelEnum::Block(Block::new_refusing(
+                    base,
+                    BlockType::Value(loc, wait, 1, comm, false),
+                ));
+                self.checker.calc_views(&mut self.current.graph, pos);
+                return None;
+            }
             self.add_to_graph(LabelEnum::Block(Block::new(
                 pos,
                 BlockType::Value(loc, wait, 1, comm, false),
             )));
             None
         }
+    }
+
+    /// The receive at `pos` is subject to the timed rules of exploration:
+    /// a timed receive of a timed configuration, outside monitors and
+    /// counterexample replay, in verification mode.
+    fn timed_judged(&self, pos: Event) -> bool {
+        self.config.mode == ExplorationMode::Verification
+            && !self.replay_info.replay_mode()
+            && self.config.timed.is_some()
+            && !self.is_monitor(&pos)
+            && self
+                .current
+                .graph
+                .recv_label(pos)
+                .is_some_and(|r| r.wait().is_some())
+    }
+
+    /// Must's availability for the blocking receive at `pos`: some
+    /// delivered, unread matching message exists (timing aside).
+    fn structurally_available(&self, pos: Event) -> bool {
+        let g = &self.current.graph;
+        let rlab = g.recv_label(pos).unwrap();
+        let loc = rlab.recv_loc();
+        g.matching_stores(loc)
+            .any(|b| b.can_be_read_from(loc) && !b.is_cancelled_wrt(rlab.as_event_label()))
     }
 
     fn visit_inbox_rfs(&mut self, pos: Event) -> Vec<Option<Val>> {
@@ -2440,7 +2468,15 @@ impl Must {
             // calc_revisits) and GC refusal classes carry no factor
             // (blocked worlds; the recv convention), so the estimator
             // stays a documented underestimate in those directions.
-            let extra_empty = min == 0 || finite;
+            // The timeout empty is a branch only when some timeline admits
+            // it (a collector of one obeys (C6b); a min >= 2 timeout is
+            // unconstrained by decision).
+            let extra_empty = min == 0
+                || (finite
+                    && (min > 1
+                        || timed_cfg.as_ref().is_none_or(|cfg| {
+                            crate::timed_dcs::TimedDcs::graph_feasible(&self.current.graph, cfg, None)
+                        })));
             if combinations.is_empty() && !extra_empty {
                 self.add_to_graph(LabelEnum::Block(Block::new(
                     pos,
@@ -2485,17 +2521,50 @@ impl Must {
             }
             Some(Vec::new())
         } else if finite {
-            // min >= 1, finite wait: the timeout `None` is the single canonical
-            // (maximal) base and EVERY feasible non-empty subset is a forward
-            // revisit - mirroring a non-blocking timed recv, whose timeout is
-            // the maximal base and whose reads are all revisits. This pairs with
-            // `inbox_reads_tiebreaker` treating only the timeout as maximal, so
-            // the base execution holds the inbox in its maximal state and each
-            // outcome has exactly one launch point (no duplicate executions).
-            for subset in combinations.drain(..) {
-                revisits.push(Some(subset));
+            // min >= 1, finite wait: the timeout `None` is the canonical
+            // base and EVERY feasible non-empty subset is a forward revisit,
+            // mirroring a finite-wait recv. For a collector of one the
+            // timeout is offered only when some timeline lets it miss every
+            // pending message (C6b; the inbox is born with no rfs, so the
+            // committed graph decides it); otherwise the canonical set of
+            // the blocking arm below is the base. A min >= 2 timeout carries
+            // no (C6b) group by decision, so it is always offered.
+            let bot_ok = min > 1
+                || !(self.config.mode == ExplorationMode::Verification
+                    && !self.replay_info.replay_mode()
+                    && timed_cfg.is_some())
+                || crate::timed_dcs::TimedDcs::graph_feasible(
+                    &self.current.graph,
+                    timed_cfg.as_ref().unwrap(),
+                    None,
+                );
+            if bot_ok {
+                for subset in combinations.drain(..) {
+                    revisits.push(Some(subset));
+                }
+                None
+            } else {
+                let default: Vec<Event> = rfs.iter().take(min).cloned().collect();
+                let base = if combinations.iter().any(|s| *s == default) {
+                    Some(default)
+                } else {
+                    combinations.first().cloned()
+                };
+                let Some(base) = base else {
+                    // Neither a batch nor the timeout has a timeline.
+                    info!("| {} has no outcome with a timeline: pruned", pos);
+                    self.arm_timeout_obligation();
+                    self.current.graph.change_inbox_rfs(pos, None);
+                    self.abandon();
+                    return self.inbox_vals_copy(pos);
+                };
+                for subset in combinations.drain(..) {
+                    if subset != base {
+                        revisits.push(Some(subset));
+                    }
+                }
+                Some(base)
             }
-            None
         } else {
             // min >= 1, infinite / untimed: no timeout fallback, so the base is
             // the first `min` coherent sends when available, else the first
@@ -2638,6 +2707,11 @@ impl Must {
             }
         }
 
+        // Refusal canonicity is a function of (refusal, send) while this
+        // send's revisits are computed: cache it for this call only.
+        *self.canon_cache.borrow_mut() = Some(HashMap::new());
+        let g = &self.current.graph;
+        let slab = g.send_label(pos).unwrap();
         let send_porf = slab.porf();
         // With inbox targets in the list, a non-canonical target must be
         // skipped rather than stop the scan (see below); without them the
@@ -2839,6 +2913,63 @@ impl Must {
             }
         }
 
+        // Must line 10 ranges over every receive the send could be read
+        // by. A GC refusal is one: it stands for its blocking receive
+        // reading nothing, and a later match turns it back into that
+        // receive. The revisit is launched from the refusal world exactly
+        // when the refusal is canonical there (no read of the receive has
+        // a timeline in Previous); otherwise the read world launches it.
+        if let Some(cfg) = self.timed_for_views() {
+            if self.config.mode == ExplorationMode::Verification {
+                let g = &self.current.graph;
+                let slab = g.send_label(pos).unwrap();
+                let targets: Vec<Event> = g
+                    .threads
+                    .iter()
+                    .filter_map(|t| t.labels.last())
+                    .filter_map(|l| match l {
+                        LabelEnum::Block(b) if b.refuses_matching() => RecvMsg::from_refusal(b)
+                            .filter(|rl| rl.matches(slab))
+                            .map(|_| b.pos()),
+                        _ => None,
+                    })
+                    .filter(|&bp| !slab.porf().contains(bp))
+                    .collect();
+                for bp in targets {
+                    let rev = Revisit::new(bp, pos);
+                    if !self.refusal_canonical(bp, &rev) || !self.is_maximal_extension(&rev) {
+                        continue;
+                    }
+                    // Consistency of the result, as for any revisit: the
+                    // cut graph with the receive reading the send.
+                    let mut h = g.copy_to_view(&g.revisit_view(&rev));
+                    let LabelEnum::Block(b) = h.label(bp) else {
+                        continue;
+                    };
+                    let rl = RecvMsg::from_refusal(b).unwrap();
+                    *h.label_mut(bp) = LabelEnum::RecvMsg(rl);
+                    self.checker.calc_views(&mut h, bp);
+                    let coherent = self.checker.is_revisit_consistent(
+                        &h,
+                        h.recv_label(bp).unwrap(),
+                        h.send_label(pos).unwrap(),
+                        false,
+                        Some(cfg),
+                    );
+                    if !coherent {
+                        continue;
+                    }
+                    h.change_rf(bp, Some(pos));
+                    self.checker.calc_views(&mut h, bp);
+                    if crate::timed_dcs::TimedDcs::graph_feasible(&h, cfg, None) {
+                        info!("  [revisit/backward] refusal {} <= {}", bp, pos);
+                        revs.push(RevisitEnum::BackwardRevisit(rev));
+                    }
+                }
+            }
+        }
+        *self.canon_cache.borrow_mut() = None;
+
         // Estimation mode currently samples backward revisits for plain receives only
         if self.config.mode == ExplorationMode::Estimation {
             let recv_revs: Vec<Event> = revs
@@ -2945,6 +3076,56 @@ impl Must {
         )
     }
 
+    /// Must's revisit condition for a GC refusal at `bpos` and the
+    /// revisiting `send`: the refusal is its blocking receive's canonical
+    /// outcome iff no read of that receive has a timeline in Previous
+    /// (the blocking tiebreaker: first consistent candidate, else refuse).
+    fn refusal_canonical(&self, bpos: Event, rev: &Revisit) -> bool {
+        let Some(cfg) = self.timed_for_views() else {
+            return false;
+        };
+        let g = &self.current.graph;
+        let Some((pview, send)) = Consistency::previous_view_of(g, bpos, rev) else {
+            return false;
+        };
+        let (set_last, cacheable): (Vec<Event>, bool) = match &rev.rev {
+            RevisitPlacement::Inbox(Some(sends)) => (sends.clone(), false),
+            _ => (Vec::new(), true),
+        };
+        if cacheable {
+            if let Some(v) = self
+                .canon_cache
+                .borrow()
+                .as_ref()
+                .and_then(|c| c.get(&(bpos, send)).copied())
+            {
+                return v;
+            }
+        }
+        let LabelEnum::Block(b) = g.label(bpos) else {
+            return false;
+        };
+        let Some(rl) = RecvMsg::from_refusal(b) else {
+            return false;
+        };
+        // The candidates are those of the receive the refusal stands for:
+        // judge them on a copy where the block is that receive again.
+        let mut h = g.clone();
+        *h.label_mut(bpos) = LabelEnum::RecvMsg(rl);
+        self.checker.calc_views(&mut h, bpos);
+        let rl = h.recv_label(bpos).unwrap().clone();
+        let canonical = self
+            .checker
+            .first_read_in_previous(&h, &rl, &pview, send, &set_last, cfg)
+            .is_none();
+        if cacheable {
+            if let Some(c) = self.canon_cache.borrow_mut().as_mut() {
+                c.insert((bpos, send), canonical);
+            }
+        }
+        canonical
+    }
+
     fn inbox_reads_tiebreaker(&self, ilab: &Inbox, rev: &Revisit) -> bool {
         self.checker.inbox_reads_tiebreaker(
             &self.current.graph,
@@ -2996,23 +3177,29 @@ impl Must {
             }
             // Instead of checking if a send is read by a stamp-earlier receive,
             // we handle this via the revisitable flag on the corresponding receive.
-            LabelEnum::SendMsg(slab) => !slab.is_dropped(),
+            // When every send may be dropped, the canonical outcome of a
+            // send is DROPPED: a dropped send enters no constraint, so it
+            // can always be added (Must's extensibility), whereas a
+            // delivered one can make an earlier timeout or refusal
+            // impossible and leave a launcher with no timeline.
+            LabelEnum::SendMsg(slab) => {
+                if self.config.all_sends_lossy() {
+                    slab.is_dropped()
+                } else {
+                    !slab.is_dropped()
+                }
+            }
             LabelEnum::Choice(chlab) => chlab.result() == *chlab.range().end(),
             #[cfg(feature = "symbolic")]
             LabelEnum::ConstraintEval(c) => self.is_maximal_constraint(c, rev),
             #[cfg(feature = "symbolic")]
             LabelEnum::SymbolicVar(_) => true,
-            // A GC refusal ending is a second outcome of its receive or
-            // inbox (the sibling of its canonical read, pushed as a
-            // forward revisit), never the canonical one: a revisit that
-            // deletes the refused event is launched from the world in
-            // which that event holds its canonical read, which exists
-            // whenever the refusal does (the refusal is only offered
-            // beside a non-empty candidate list). Treating the refusal
-            // as canonical too gave every such revisit two launch points
-            // and installed the same graph twice (receive-only fuzz,
-            // program 108, 2026-09-14).
-            LabelEnum::Block(b) if b.refuses_matching() => false,
+            // A GC refusal is canonical exactly when no read of its
+            // receive has a timeline in Previous (see refusal_canonical);
+            // otherwise the read world is the launcher. Exactly one of
+            // the two is canonical, so no revisit has two launch points
+            // (the duplicate of 2026-09-14 came from counting both).
+            LabelEnum::Block(b) if b.refuses_matching() => self.refusal_canonical(b.pos(), rev),
             _ => true,
         }
     }
@@ -3357,9 +3544,24 @@ impl Must {
                 RevisitEnum::ForwardRevisit(r) => self.forward_revisit(r),
                 RevisitEnum::BackwardRevisit(r) => self.backward_revisit(r),
             } {
-                // A revisit re-enters a live world; the kill mark
+                // A revisit installs a new graph; the abandon mark
                 // belonged to the ending just discarded.
-                self.current.killed = false;
+                self.current.abandoned = false;
+                // Must's VisitIfConsistent on the installed graph. The
+                // offers, the refusal probe and the revisit pre-pass are
+                // all judged with the full timed system, so this only
+                // guards against a probe looser than the encoding.
+                if self.config.mode == ExplorationMode::Verification
+                    && !self.replay_info.replay_mode()
+                {
+                    if let Some(cfg) = self.config.timed.as_ref() {
+                        if !crate::timed_dcs::TimedDcs::graph_feasible(&self.current.graph, cfg, None) {
+                            info!("| revisit {} <= {} has no timeline: pruned", rev.pos(), rev.rev());
+                            self.current.abandoned = true;
+                            self.stop();
+                        }
+                    }
+                }
                 return true;
             }
         }
@@ -3535,54 +3737,6 @@ impl Must {
             rev
         );
         let v = self.current.graph.revisit_view(rev);
-        // Timeout kill: the stopped timeout world is replaced by the
-        // world a sender-first schedule would have produced (killer
-        // before the receive), and the replacement inherits the stopped
-        // world's WHOLE worklist, so a later kill that cuts below this
-        // receive can still take over what is pending. Items below the
-        // receive apply to the same world either way (the new world keeps
-        // every event up to the receive). Above it, items of events the
-        // cut keeps (the killer's causal prefix) move over; items of
-        // events the cut deletes are regenerated when the events are
-        // re-added, and the receive's own siblings are re-pushed at its
-        // re-visit below: both are dropped, or a world would have two
-        // parents.
-        let moved: RQueue = if rev.kill {
-            let r_stamp = self.current.graph.label(rev.pos).stamp();
-            let survives = |it: &RevisitEnum| match it {
-                RevisitEnum::ForwardRevisit(f) => v.contains(f.pos),
-                RevisitEnum::BackwardRevisit(b) => {
-                    // The target must survive the cut too: a deleted
-                    // receive is re-executed and asks again.
-                    b.pos != rev.pos
-                        && v.contains(b.pos)
-                        && match &b.rev {
-                            RevisitPlacement::Default(s) => v.contains(*s),
-                            RevisitPlacement::Inbox(Some(ss)) => ss.iter().all(|s| v.contains(*s)),
-                            _ => false,
-                        }
-                }
-            };
-            std::mem::take(&mut self.current.rqueue)
-                .into_iter()
-                .filter_map(|(stamp, items)| {
-                    if stamp < r_stamp {
-                        return Some((stamp, items));
-                    }
-                    if stamp == r_stamp {
-                        return None;
-                    }
-                    let kept: Vec<RevisitEnum> = items.into_iter().filter(survives).collect();
-                    if kept.is_empty() {
-                        None
-                    } else {
-                        Some((stamp, kept))
-                    }
-                })
-                .collect()
-        } else {
-            RQueue::new()
-        };
         let mut ng = self.current.graph.copy_to_view(&v);
         // If any send's reader was set to the revisited receive via
         // cancelled_recv_readers fallback, update it before change_rf.
@@ -3591,70 +3745,20 @@ impl Must {
         self.push_state();
         self.current.graph = ng;
 
-        // The re-visit's candidate list, computed while the receive still
-        // holds its timeout (the killer is one candidate, the rest are
-        // pushed as siblings once the killer is committed).
-        let siblings: Vec<Event> = if rev.kill {
-            let mut rfs = self.checker.rfs(
-                &self.current.graph,
-                self.current.graph.recv_label(rev.pos).unwrap(),
-                self.is_monitor(&rev.pos),
-                self.timed_for_views(),
-            );
-            self.filter_symmetric_rfs(&mut rfs, rev.pos);
-            self.filter_timed_consistent_rfs(&mut rfs, rev.pos);
-            rfs
-        } else {
-            Vec::new()
-        };
-
-        if rev.kill {
-            // The killer's prefix stays revisitable: the receive is
-            // re-inserted after the killer, so a revisit there removes
-            // the receive too, and no read is left dangling.
-            self.current.rqueue = moved;
-        } else {
-            self.mark_prefix_non_revisitable(rev.rev.clone());
+        // A revisited GC refusal becomes its blocking receive again,
+        // reading the revisiting send (see calc_revisits).
+        if let LabelEnum::Block(b) = self.current.graph.label(rev.pos) {
+            if let Some(rl) = RecvMsg::from_refusal(b) {
+                *self.current.graph.label_mut(rev.pos) = LabelEnum::RecvMsg(rl);
+                self.checker.calc_views(&mut self.current.graph, rev.pos);
+            }
         }
+
+        self.mark_prefix_non_revisitable(rev.rev.clone());
 
         // println!("After marking prefix");
 
-        if rev.kill {
-            // Re-visit in the cut world: the first candidate is the base
-            // (the timeout is impossible there by construction).
-            debug_assert!(!siblings.is_empty(), "kill without a candidate in its cut");
-            let RevisitPlacement::Default(killer) = rev.rev else { unreachable!() };
-            let base = siblings.first().copied().unwrap_or(killer);
-            self.current.graph.change_rf(rev.pos, Some(base));
-        } else {
-            self.change_rf(rev);
-        }
-
-        if rev.kill {
-            // The woken receive reads its killer as its base outcome and
-            // is re-inserted after it (fresh stamp, as a woken block gets
-            // from re-execution); its other candidates are its siblings,
-            // exactly as at a visit where the timeout is impossible.
-            let (base, pos) = {
-                let r = self.current.graph.recv_label(rev.pos).unwrap();
-                (r.rf(), r.pos())
-            };
-            self.current.graph.restamp_last(pos);
-            if let LabelEnum::RecvMsg(rl) = self.current.graph.label_mut(pos) {
-                rl.set_base_rf(base);
-            }
-            let new_stamp = self.current.graph.label(pos).stamp();
-            for rf in siblings {
-                if Some(rf) != base {
-                    push_worklist(
-                        &mut self.current.rqueue,
-                        new_stamp,
-                        RevisitEnum::new_forward(pos, rf),
-                    );
-                }
-            }
-            info!("[kill] {} woken by {:?}, re-inserted last", pos, base);
-        }
+        self.change_rf(rev);
 
         // println!("After change rf");
 
@@ -3791,7 +3895,7 @@ impl Must {
                 .telemetry
                 .read_counter(TIMELINE_IMPOSSIBLE.into())
                 .unwrap_or(0) as usize,
-            killed: self.telemetry.read_counter(KILLED.into()).unwrap_or(0) as usize,
+            pruned: self.telemetry.read_counter(PRUNED.into()).unwrap_or(0) as usize,
             coverage: self.telemetry.coverage.export_aggregate().into(),
             max_graph_events: self.max_graph_events,
         }
@@ -4205,16 +4309,7 @@ fn pop_worklist(worklist: &mut RQueue, is_arbitrary: bool, rng: &mut Pcg64Mcg) -
             .iter_mut()
             .next_back()
             .expect("worklist is not empty");
-        // A timeout kill replaces the world it was enqueued from and
-        // takes over the other alternatives at its stamp (see
-        // backward_revisit), so it pops before them under every policy.
-        let kill_idx = revs
-            .iter()
-            .position(|r| matches!(r, RevisitEnum::BackwardRevisit(b) if b.kill));
-        if let Some(idx) = kill_idx {
-            let rev = revs.remove(idx);
-            (*stamp, rev, revs.is_empty())
-        } else if !is_arbitrary {
+        if !is_arbitrary {
             let rev = revs.pop().unwrap();
             (*stamp, rev, revs.is_empty())
         } else {

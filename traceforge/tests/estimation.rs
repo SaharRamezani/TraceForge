@@ -219,39 +219,48 @@ fn estimate_a_nstepsb() {
 // committed before the inbox visit: the estimate is then exact.
 // =====================================================================
 
-// k=1 over three committed senders: 3 singleton subsets + timeout = 4.
-// (Was 7 when the inbox still took a [min, max] range: the 3 size-2
-// subsets are no longer outcomes now that k is exact.)
-// Pre-fix this returned 1.0 (no factor) while each "sample" re-ran the
-// whole subtree via pushed revisits.
+// k=1 over three committed senders, every send lossy (timed): the loss
+// of each send is a sampled 2-way choice, and the inbox's timeout counts
+// as a branch only when some timeline admits it (none of the delivered
+// messages is readable). Exhaustively: go-token lost, 8 blocked endings;
+// token delivered with d data messages delivered, max(d, 1) outcomes,
+// 13 executions. Knuth's estimate over independent samples converges to
+// the 21 endings.
+fn timed_inbox_k1_program() {
+    let c = thread::spawn(|| {
+        let _: u32 = traceforge::recv_tagged_msg_block_timed(|_, t| t == Some(9));
+        let _ = traceforge::inbox_with_tag_timed(
+            |_, t| t == Some(1),
+            1,
+            traceforge::WaitTime::Finite(10),
+        );
+    });
+    let cid = c.thread().id();
+    let senders: Vec<_> = (0u32..3)
+        .map(|v| {
+            let cid = cid.clone();
+            thread::spawn(move || traceforge::send_tagged_msg(cid, 1, v))
+        })
+        .collect();
+    for s in senders {
+        let _ = s.join();
+    }
+    traceforge::send_tagged_msg(cid, 9, 0u32);
+}
+
 #[test]
 fn estimate_timed_inbox_k1() {
-    let est = traceforge::estimate_execs_with_config(
+    let stats = traceforge::verify(
         Config::builder().with_timed(0, 0, 1000).build(),
-        || {
-            let c = thread::spawn(|| {
-                let _: u32 = traceforge::recv_tagged_msg_block_timed(|_, t| t == Some(9));
-                let _ = traceforge::inbox_with_tag_timed(
-                    |_, t| t == Some(1),
-                    1,
-                    traceforge::WaitTime::Finite(10),
-                );
-            });
-            let cid = c.thread().id();
-            let senders: Vec<_> = (0u32..3)
-                .map(|v| {
-                    let cid = cid.clone();
-                    thread::spawn(move || traceforge::send_tagged_msg(cid, 1, v))
-                })
-                .collect();
-            for s in senders {
-                let _ = s.join();
-            }
-            traceforge::send_tagged_msg(cid, 9, 0u32);
-        },
-        5,
+        timed_inbox_k1_program,
     );
-    assert!((est - 4.0).abs() < 1e-9, "estimate {est} != 4.0");
+    assert_eq!((stats.execs, stats.block), (13, 8));
+    let est = traceforge::estimate_execs_with_config(
+        Config::builder().with_timed(0, 0, 1000).with_seed(7).build(),
+        timed_inbox_k1_program,
+        20_000,
+    );
+    assert!((est - 21.0).abs() < 0.5, "estimate {est} is not close to the 21 endings");
 }
 
 // Untimed non-blocking (min=0) inbox over one committed sender:

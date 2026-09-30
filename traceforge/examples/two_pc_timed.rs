@@ -142,11 +142,11 @@ fn participant(mode: Mode, delta: u64, index: u32) {
 
 fn build_config(mode: Mode) -> Config {
     match mode {
-        Mode::Baseline => Config::builder().build(),
+        Mode::Baseline => Config::builder().with_all_sends_lossy().build(),
         // (L=0, U=1, sd=0): tightest non-trivial transit window.
         // Combined with delta >= 2 in the protocol code, this forces a
         // unique rf-mapping for the coordinator's vote-collection.
-        Mode::Timed => Config::builder().with_timed(0, 1, 0).build(),
+        Mode::Timed => Config::builder().with_all_sends_lossy().with_timed(0, 1, 0).build(),
     }
 }
 

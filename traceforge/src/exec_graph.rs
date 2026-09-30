@@ -88,7 +88,7 @@ impl ExecutionGraph {
             // }
             debug!("[DEBUG initialize] thread {} has task_id={:?} and num_labels={}", t.tid, t.task_id, t.labels.len());
             // A thread gets its task id only when its task starts. An
-            // execution stopped early (a timeout kill, or estimation's
+            // execution stopped early (a pruned step, or estimation's
             // block-and-stop) can end before some replayed thread ran,
             // leaving it without one: then there is no stale mapping.
             if let Some(id) = t.task_id {
@@ -276,23 +276,6 @@ impl ExecutionGraph {
     pub(crate) fn next_stamp(&mut self) -> usize {
         self.stamp += 1;
         self.stamp
-    }
-
-    /// Re-insert the last event of its thread at the current end of the
-    /// stamp order (timeout kill: a woken receive comes after its
-    /// killer, as a woken block does after re-execution). The thread's
-    /// label vector stays stamp-sorted because the event is its last
-    /// label; the receive caches are re-sorted by hand.
-    pub(crate) fn restamp_last(&mut self, pos: Event) {
-        debug_assert_eq!(self.thread_last(pos.thread).unwrap().pos(), pos);
-        let s = self.next_stamp();
-        self.label_mut(pos).set_stamp(s);
-        for vec in self.recvs.values_mut() {
-            if let Some(i) = vec.iter().position(|&e| e == pos) {
-                vec.remove(i);
-                vec.push(pos);
-            }
-        }
     }
 
     pub(crate) fn add_new_thread(&mut self, tclab: TCreate, task_id: TaskId) {
