@@ -1,0 +1,19 @@
+source: TraceForge commit e5f9d36 plus unstaged changes of 2026-09-30 (W = 0 timeout needs arrival strictly after tau in timed_dcs.rs; lease_timed.rs TAG_GRANT/TAG_ROUND fix for rounds >= 2; lib.rs TF_PRINT_STATS and TF_PROGRESS env hooks; 3 test pins), rsynced from the local tree 13:42, built 13:42 with cargo 1.97.1
+30d7127288c80116dabc3e10a9ae3c36  /local/sramezani/target-v8/release/examples/alternating_bit_timed
+02edac35215c330570e3e9d587dc21c0  /local/sramezani/target-v8/release/examples/brp_timed
+074ec687745a355c506b9b4f154609b9  /local/sramezani/target-v8/release/examples/chandra_toueg_timed
+c0e38cdf3e91a52cd7e5b358efc4bc6e  /local/sramezani/target-v8/release/examples/lease_timed
+378fa3af7003a2d9c942c068c209916a  /local/sramezani/target-v8/release/examples/nisshi_txn_timed
+bd3598c20376595709fa79c199973f40  /local/sramezani/target-v8/release/examples/nrp_failure_detector_timed
+e994a7fdbc417d5b1b84d250214f43a2  /local/sramezani/target-v8/release/examples/par_timed
+63d60fe5692444a5ea759b1ef4b40086  /local/sramezani/target-v8/release/examples/retail_saga_timed
+7c06a769bae9803608aba4821712782d  /local/sramezani/target-v8/release/examples/sensor_network_timed
+cfb4ecc7df281329db5181b1bcff6b22  /local/sramezani/target-v8/release/examples/spanning_tree_timed
+dd99f27ea14fd0a034dc03aaa0775893  /local/sramezani/target-v8/release/examples/swim_timed
+7115e92984ffc726935bfd2cccce5227  /local/sramezani/target-v8/release/examples/three_pc_timed
+df039a9d7870d06a142c9b4acbebed61  /local/sramezani/target-v8/release/examples/two_pc_timed
+a7ff82be0b0b7e835536356773dfa6e1  /local/sramezani/target-v8/release/examples/yarn_scheduler_timed
+2b9b6aad9d6906de6284e7bd3b59efce  /local/sramezani/target-v8/release/examples/raft_leader_election
+02e914995e722a1e623d7a7600893412  /local/sramezani/target-v8/release/examples/comm_closed_leader_election
+launch 2026-09-30 13:44:27
+2026-09-30 16:40:13: rebuilt with timed_dcs.rs reverted to commit e5f9d36 (W = 0 tie restored: rule A). Jobs that executed a W = 0 receive before this under rule B are rerun as <id>-A (results_v8_w0A.csv).

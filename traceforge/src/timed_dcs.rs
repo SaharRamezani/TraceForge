@@ -1635,7 +1635,14 @@ impl<'g> TimedDcs<'g> {
         }
         extra.push((e, av, 0)); // a_cand <= t_e
         extra.push((av, e, sd)); // t_e <= a_cand + sd
-        let mut cases: Vec<Vec<Edge>> = vec![Vec::new()];
+        // One two-option group per dodgeable front. probe_cases_with_skips
+        // folds them into explicit cases up to EXCLUSION_FOLD_CAP and
+        // searches the selections exactly beyond it. (Dropping the fronts
+        // past the cap, as before, made the candidate list looser than
+        // (C7): the first candidate is installed unchecked, so an
+        // inconsistent graph could be visited, and the canonical read
+        // judged on the same list could be one no timeline admits.)
+        let mut groups: Vec<Vec<Vec<Edge>>> = Vec::new();
         for &b in fronts {
             if b == cand {
                 continue;
@@ -1643,26 +1650,13 @@ impl<'g> TimedDcs<'g> {
             let Some(&bav) = self.vars.arr.get(&b) else {
                 continue;
             };
-            if cases.len() * 2 > EXCLUSION_FOLD_CAP {
-                break; // drop remaining fronts: looser only
-            }
-            let opts: [Edge; 2] = [(bav, e, -1), (p, bav, -(sd + 1))];
-            let mut next = Vec::with_capacity(cases.len() * 2);
-            for c in &cases {
-                for &o in &opts {
-                    let mut cc = c.clone();
-                    cc.push(o);
-                    next.push(cc);
-                }
-            }
-            cases = next;
+            groups.push(vec![vec![(bav, e, -1)], vec![(p, bav, -(sd + 1))]]);
         }
-        if cases.len() == 1 {
+        if groups.is_empty() {
             // No dodgeable front carried an arrival variable.
-            extra.extend_from_slice(&cases[0]);
             return self.probe_exact(&extra);
         }
-        self.probe_exact_with_set(&extra, &cases)
+        self.probe_cases_with_skips(vec![extra], &groups)
     }
 
     /// Joint wake-up probe for a blocked value read: can all of

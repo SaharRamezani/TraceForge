@@ -1,0 +1,257 @@
+{
+ "time": "2026-10-01 10:03:36",
+ "deadline": "2026-10-02 08:00",
+ "free": {
+  "lease": 24,
+  "swim": 29,
+  "sensor": 0,
+  "brp": 8,
+  "abp": 5,
+  "par": 0,
+  "ct": 10,
+  "nrp": 3,
+  "nisshi": 0,
+  "stp": 1,
+  "opt": 1,
+  "legacy": 4
+ },
+ "queued": 0,
+ "queued_by_group": {
+  "lease": 0,
+  "swim": 0,
+  "sensor": 0,
+  "brp": 0,
+  "abp": 0,
+  "par": 0,
+  "ct": 0,
+  "nrp": 0,
+  "nisshi": 0,
+  "stp": 0,
+  "opt": 0,
+  "legacy": 0
+ },
+ "running": [
+  {
+   "id": "par-001",
+   "cpus": 4,
+   "elapsed_s": 73149,
+   "pred_s": 111500
+  },
+  {
+   "id": "brp-004",
+   "cpus": 1,
+   "elapsed_s": 73149,
+   "pred_s": 45000
+  },
+  {
+   "id": "swim-027",
+   "cpus": 8,
+   "elapsed_s": 73149,
+   "pred_s": 130000
+  },
+  {
+   "id": "swim-025",
+   "cpus": 1,
+   "elapsed_s": 73149,
+   "pred_s": 118800
+  },
+  {
+   "id": "swim-029",
+   "cpus": 8,
+   "elapsed_s": 73149,
+   "pred_s": 105000
+  },
+  {
+   "id": "swim-026",
+   "cpus": 8,
+   "elapsed_s": 73149,
+   "pred_s": 85540
+  },
+  {
+   "id": "abp-017",
+   "cpus": 1,
+   "elapsed_s": 73149,
+   "pred_s": 80000
+  },
+  {
+   "id": "swim-030",
+   "cpus": 8,
+   "elapsed_s": 73149,
+   "pred_s": 75000
+  },
+  {
+   "id": "swim-093",
+   "cpus": 1,
+   "elapsed_s": 72813,
+   "pred_s": 4521854
+  },
+  {
+   "id": "swim-094",
+   "cpus": 1,
+   "elapsed_s": 72813,
+   "pred_s": 353200
+  },
+  {
+   "id": "legacy-014",
+   "cpus": 1,
+   "elapsed_s": 72445,
+   "pred_s": 1100000
+  },
+  {
+   "id": "sensor-052",
+   "cpus": 8,
+   "elapsed_s": 72068,
+   "pred_s": 100000
+  },
+  {
+   "id": "sensor-055",
+   "cpus": 8,
+   "elapsed_s": 71969,
+   "pred_s": 30000
+  },
+  {
+   "id": "swim-031",
+   "cpus": 8,
+   "elapsed_s": 71055,
+   "pred_s": 58543
+  },
+  {
+   "id": "brp-043",
+   "cpus": 1,
+   "elapsed_s": 68699,
+   "pred_s": 3000000
+  },
+  {
+   "id": "brp-044",
+   "cpus": 1,
+   "elapsed_s": 68696,
+   "pred_s": 1250000
+  },
+  {
+   "id": "stp-009",
+   "cpus": 1,
+   "elapsed_s": 68223,
+   "pred_s": 133000
+  },
+  {
+   "id": "nisshi-089",
+   "cpus": 4,
+   "elapsed_s": 64279,
+   "pred_s": 48000
+  },
+  {
+   "id": "nrp-023",
+   "cpus": 1,
+   "elapsed_s": 63141,
+   "pred_s": 22000
+  },
+  {
+   "id": "lease-063",
+   "cpus": 8,
+   "elapsed_s": 62434,
+   "pred_s": 880000
+  },
+  {
+   "id": "lease-081",
+   "cpus": 8,
+   "elapsed_s": 62432,
+   "pred_s": 500000
+  },
+  {
+   "id": "lease-083",
+   "cpus": 8,
+   "elapsed_s": 62127,
+   "pred_s": 500000
+  },
+  {
+   "id": "abp-037",
+   "cpus": 1,
+   "elapsed_s": 61708,
+   "pred_s": 1700000
+  },
+  {
+   "id": "abp-036",
+   "cpus": 1,
+   "elapsed_s": 61691,
+   "pred_s": 1250000
+  },
+  {
+   "id": "lease-084",
+   "cpus": 8,
+   "elapsed_s": 59570,
+   "pred_s": 500000
+  },
+  {
+   "id": "sensor-057",
+   "cpus": 8,
+   "elapsed_s": 59113,
+   "pred_s": 15000
+  },
+  {
+   "id": "opt-036",
+   "cpus": 1,
+   "elapsed_s": 50073,
+   "pred_s": 2800000
+  },
+  {
+   "id": "opt-035",
+   "cpus": 1,
+   "elapsed_s": 50064,
+   "pred_s": 436000
+  },
+  {
+   "id": "nrp-076",
+   "cpus": 1,
+   "elapsed_s": 42061,
+   "pred_s": 300000
+  },
+  {
+   "id": "nrp-075",
+   "cpus": 1,
+   "elapsed_s": 42061,
+   "pred_s": 40000
+  },
+  {
+   "id": "lease-064",
+   "cpus": 8,
+   "elapsed_s": 40269,
+   "pred_s": 370000
+  },
+  {
+   "id": "sensor-059",
+   "cpus": 8,
+   "elapsed_s": 35368,
+   "pred_s": 15000
+  },
+  {
+   "id": "par-042",
+   "cpus": 4,
+   "elapsed_s": 16743,
+   "pred_s": 134000
+  },
+  {
+   "id": "nisshi-090",
+   "cpus": 4,
+   "elapsed_s": 16509,
+   "pred_s": 200000
+  },
+  {
+   "id": "sensor-064",
+   "cpus": 8,
+   "elapsed_s": 14622,
+   "pred_s": 1000000
+  },
+  {
+   "id": "ct-036",
+   "cpus": 7,
+   "elapsed_s": 14509,
+   "pred_s": 200000
+  },
+  {
+   "id": "sensor-063",
+   "cpus": 8,
+   "elapsed_s": 14341,
+   "pred_s": 350000
+  }
+ ]
+}
