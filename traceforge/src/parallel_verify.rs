@@ -137,7 +137,13 @@ where
 
     println!("\n=== Rayon Exploration Results ===");
     println!("Total time: {:?}", elapsed);
-    println!("Number of workers: {}", worker_results.len());
+    println!(
+        "Number of workers: {}",
+        worker_results
+            .iter()
+            .filter(|(label, stats)| label == "rayon-root" || stats.execs + stats.block > 0)
+            .count()
+    );
     println!(
         "Total executions: {} ({} complete, {} blocked)",
         total_execs, total_stats.execs, total_stats.block
@@ -147,6 +153,11 @@ where
 
     // Re-raise the first panic after cleanup so CI sees a non-zero exit code.
     if let Some(payload) = first_panic.lock().unwrap().take() {
+        std::panic::resume_unwind(payload);
+    }
+    // The root worker explores inside the scope itself, not in a rayon
+    // task: its panic (a violation it found) is the scope's panic.
+    if let Err(payload) = scope_result {
         std::panic::resume_unwind(payload);
     }
 
@@ -453,14 +464,16 @@ fn rayon_queue_task<'scope, F>(
 
     let worker_stats = must.borrow().stats();
     let total_execs = worker_stats.execs + worker_stats.block;
+    let label = format!("rt{}", task_id);
     if total_execs > 0 {
-        let label = format!("rt{}", task_id);
         println!(
             "  {}: {} execs, max_graph_events={}",
             label, total_execs, worker_stats.max_graph_events,
         );
-        results.lock().unwrap().push((label, worker_stats));
     }
+    // A task whose revisits were all rejected counts no execution, but its
+    // other counters (the pruned children) belong to the totals.
+    results.lock().unwrap().push((label, worker_stats));
     RAYON_CACHED_MUST.with(|cached| {
         *cached.borrow_mut() = Some(must);
     });
