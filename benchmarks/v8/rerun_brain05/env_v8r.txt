@@ -1,0 +1,14 @@
+v8 rerun, launched 2026-10-08 01:07:28 on brain05, cargo 1.97.1 (c980f4866 2026-06-30)
+old = commit bc296a7; new = commit e96fe7a; vsend = bc296a7 + send change only; vrest = e96fe7a with the send change reverted
+d0bc4d8e265540d4c19847329a034b57  /home/sramezani/traceforge-v8r/old/traceforge/src/must.rs
+0cf6a69d07323020eea06ed6f2e7564c  /home/sramezani/traceforge-v8r/old/traceforge/src/parallel_verify.rs
+8dbae56cccd8b92d4da80a1aa5ce0c67  /local/sramezani/target-v8r/old/release/examples/lease_timed
+18bd5ab9b5525ad9d873e27f6f54e34f  /home/sramezani/traceforge-v8r/new/traceforge/src/must.rs
+97a3220eb052828c1556d6fe38b7aa3e  /home/sramezani/traceforge-v8r/new/traceforge/src/parallel_verify.rs
+e3d8c469bddfaeeab819464827882bda  /local/sramezani/target-v8r/new/release/examples/lease_timed
+51608143c49219db933e21bb06461291  /home/sramezani/traceforge-v8r/vsend/traceforge/src/must.rs
+0cf6a69d07323020eea06ed6f2e7564c  /home/sramezani/traceforge-v8r/vsend/traceforge/src/parallel_verify.rs
+54eeb97dd357be0a9cbd2715bc57fac9  /local/sramezani/target-v8r/vsend/release/examples/lease_timed
+9a565d364d8930a775a33d5c8c2a431c  /home/sramezani/traceforge-v8r/vrest/traceforge/src/must.rs
+97a3220eb052828c1556d6fe38b7aa3e  /home/sramezani/traceforge-v8r/vrest/traceforge/src/parallel_verify.rs
+fafd60ccda8e1f1c84bbe9a03e290d85  /local/sramezani/target-v8r/vrest/release/examples/lease_timed

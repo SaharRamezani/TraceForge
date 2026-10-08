@@ -1,0 +1,187 @@
+--- bc296a7/traceforge/src/must.rs
++++ v_send/traceforge/src/must.rs
+@@ -806,26 +806,20 @@
+         // polynomial but might require some caching to do it efficiently
+         // (which sends have implicitly been dropped).
+         let slab = self.current.graph.send_label(pos).unwrap();
+-        if slab.is_lossy()
+-            && (self.config.all_sends_lossy() || self.dropped_messages() < self.config.lossy_budget)
+-        {
+-            if self.config.mode == ExplorationMode::Estimation {
+-                // Sample the loss like any other choice: two branches.
+-                self.telemetry.histogram(EXECS_EST.to_owned(), 2.0);
+-                if self.rng.random_bool(0.5) {
+-                    if let LabelEnum::SendMsg(slab) = self.current.graph.label_mut(pos) {
+-                        slab.set_dropped();
+-                    }
+-                    self.current.graph.incr_dropped_sends();
+-                    // A dropped send is read by nobody: no revisits.
+-                    return stuck;
++        let stamp = slab.stamp();
++        let droppable = slab.is_lossy()
++            && (self.config.all_sends_lossy() || self.dropped_messages() < self.config.lossy_budget);
++        let sampled = self.config.mode == ExplorationMode::Estimation;
++        if droppable && sampled {
++            // Sample the loss like any other choice: two branches.
++            self.telemetry.histogram(EXECS_EST.to_owned(), 2.0);
++            if self.rng.random_bool(0.5) {
++                if let LabelEnum::SendMsg(slab) = self.current.graph.label_mut(pos) {
++                    slab.set_dropped();
+                 }
+-            } else {
+-                push_worklist(
+-                    &mut self.current.rqueue,
+-                    slab.stamp(),
+-                    RevisitEnum::new_forward(pos, Event::new_init()),
+-                )
++                self.current.graph.incr_dropped_sends();
++                // A dropped send is read by nobody: no revisits.
++                return stuck;
+             }
+         }
+ 
+@@ -837,15 +831,31 @@
+ 
+         // Must's consistency check of the delivered child: a delivered
+         // send can make an earlier timeout or GC refusal impossible (or
+-        // contradict FIFO arrival coupling). Such a graph is not visited;
+-        // its dropped sibling (always consistent) is on the worklist.
+-        if !self.replay_info.replay_mode() && self.config.mode == ExplorationMode::Verification {
+-            if let Some(cfg) = self.config.timed.as_ref() {
+-                if !crate::timed_dcs::TimedDcs::graph_feasible(&self.current.graph, cfg, None) {
+-                    info!("| delivered {} has no timeline: pruned", pos);
+-                    self.abandon();
+-                }
++        // contradict FIFO arrival coupling). It is made here, before the
++        // sending thread runs on, and decides which child this execution
++        // is: the delivered one when it has a timeline, with the dropped
++        // one as an alternative of the same stamp; otherwise the dropped
++        // one, which always has a timeline. Program code never runs in a
++        // graph without one.
++        let delivered = self.current_graph_has_timeline();
++        if droppable && !sampled {
++            if delivered {
++                // Taken after the backward revisits of this stamp, which
++                // are cut from the graph where the send is delivered.
++                push_worklist_first(
++                    &mut self.current.rqueue,
++                    stamp,
++                    RevisitEnum::new_forward(pos, Event::new_init()),
++                );
++            } else {
++                info!("| delivered {} has no timeline: pruned", pos);
++                self.continue_as_dropped(pos);
+             }
++        } else if !delivered {
++            // A send that cannot be dropped has no other child. Under a
++            // timed configuration every send can be.
++            info!("| delivered {} has no timeline: pruned", pos);
++            self.abandon();
+         }
+ 
+         // stuck is only used during replay
+@@ -853,6 +863,44 @@
+         stuck
+     }
+ 
++    /// The delivered child of the send at `pos` was rejected: the running
++    /// execution becomes its dropped child (a dropped send enters no
++    /// constraint, so that child always has a timeline). When the send
++    /// launched backward revisits, they sit at its stamp and are cut from
++    /// the graph where it is delivered: that graph then stays behind on
++    /// the state stack with the worklist.
++    fn continue_as_dropped(&mut self, pos: Event) {
++        self.count_pruned_child();
++        let stamp = self.current.graph.label(pos).stamp();
++        if self.current.rqueue.contains_key(&stamp) {
++            let rqueue = std::mem::take(&mut self.current.rqueue);
++            self.states.push(MustState {
++                graph: self.current.graph.clone(),
++                rqueue,
++                timed_completion_check: true,
++                abandoned: false,
++            });
++        }
++        if let LabelEnum::SendMsg(slab) = self.current.graph.label_mut(pos) {
++            slab.set_dropped();
++        }
++        self.current.graph.incr_dropped_sends();
++        debug_assert!(
++            self.current_graph_has_timeline(),
++            "the dropped child of {pos} has no timeline: the graph before the send had none"
++        );
++    }
++
++    /// A child that Must's VisitIfConsistent rejected: it is counted,
++    /// shown at verbosity 2 like the other endings, and never run.
++    fn count_pruned_child(&mut self) {
++        self.telemetry.counter(PRUNED.to_owned());
++        if self.config.verbose >= 2 {
++            println!("One pruned step with no timeline (not counted)");
++            println!("{}", self.print_graph(None));
++        }
++    }
++
+     /// Returns the next thread id to use in thread creation.
+     pub(crate) fn next_thread_id(&self, pos: &Event) -> ThreadId {
+         let parent_tclab: TCreate = self.current.graph.get_thread_tclab(pos.thread);
+@@ -1791,8 +1839,12 @@
+     }
+ 
+     /// Stop the current execution at a step no timeline admits: Must's
+-    /// VisitIfConsistent rejects that child. Nothing after the step runs
+-    /// as part of the exploration; the ending counts as nothing.
++    /// VisitIfConsistent rejects that child, and the ending counts as
++    /// nothing. The stop takes effect at the next scheduling decision, so
++    /// the running thread still executes its code up to there. It is
++    /// only called where a consistent graph is left with no consistent
++    /// outcome, which the timed system rules out; sends and revisits are
++    /// tested before anything runs (handle_send, try_revisit).
+     fn abandon(&mut self) {
+         self.current.abandoned = true;
+         self.block_exec(BlockType::Assume);
+@@ -1862,11 +1914,7 @@
+             // Stopped at a step no timeline admits (a pruned child). It is
+             // not a behaviour: an assertion it raised is not reported.
+             self.pending_asserts.clear();
+-            self.telemetry.counter(PRUNED.to_owned());
+-            if self.config.verbose >= 2 {
+-                println!("One pruned step with no timeline (not counted)");
+-                println!("{}", self.print_graph(None));
+-            }
++            self.count_pruned_child();
+             return false;
+         }
+         // Deferred assert certification: the graph is complete now, so
+@@ -3567,6 +3615,18 @@
+         }
+     }
+ 
++    /// Must's VisitIfConsistent on the current graph, asked before any
++    /// program code runs in it: it has a timeline under the full timed
++    /// system. Always true outside a timed verification run.
++    fn current_graph_has_timeline(&self) -> bool {
++        if self.config.mode != ExplorationMode::Verification || self.replay_info.replay_mode() {
++            return true;
++        }
++        self.config.timed.as_ref().is_none_or(|cfg| {
++            crate::timed_dcs::TimedDcs::graph_feasible(&self.current.graph, cfg, None)
++        })
++    }
++
+     fn forward_revisit(&mut self, rev: &Revisit) -> bool {
+         let placement = self.fmt_revisit_placement(&rev.rev);
+         info!("[revisit/forward] start {} <= {}", rev.pos, placement);
+@@ -4303,6 +4363,12 @@
+     alts.push(r);
+ }
+ 
++/// Queues `r` ahead of the alternatives already queued at `stamp`: the
++/// LTR policy takes the last one first, so `r` is taken after them.
++fn push_worklist_first(worklist: &mut RQueue, stamp: usize, r: RevisitEnum) {
++    worklist.entry(stamp).or_default().insert(0, r);
++}
++
+ fn pop_worklist(worklist: &mut RQueue, is_arbitrary: bool, rng: &mut Pcg64Mcg) -> RevisitEnum {
+     let (stamp, rev, is_empty) = {
+         let (stamp, revs) = worklist

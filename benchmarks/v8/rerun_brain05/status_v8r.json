@@ -1,0 +1,19 @@
+{
+ "time": "2026-10-08 07:22:55",
+ "deadline": "2026-10-09 12:00",
+ "free": {
+  "all": 233
+ },
+ "queued": 0,
+ "queued_by_group": {
+  "all": 0
+ },
+ "running": [
+  {
+   "id": "ct-022@new",
+   "cpus": 7,
+   "elapsed_s": 3530,
+   "pred_s": 1793
+  }
+ ]
+}

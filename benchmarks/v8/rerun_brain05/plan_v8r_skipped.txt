@@ -1,0 +1,88 @@
+abp-002	longer than cap (39475 s)	baseline	1	alternating_bit_timed	abp K=5 R=2 W=3 (U=1)
+abp-007	longer than cap (47532 s)	timed	1	alternating_bit_timed	abp K=8 R=2 W=3 (U=1)
+abp-017	longer than cap (92558 s)	baseline	1	alternating_bit_timed	abp K=2 R=6 W=3
+abp-021	longer than cap (58570 s)	timed	1	alternating_bit_timed	abp K=2 R=10 W=3
+abp-029	longer than cap (37723 s)	baseline	1	alternating_bit_timed	abp premature K=5 R=2 W=2 (=edge)
+abp-036	DNF (did not finish; killed af	baseline	1	alternating_bit_timed	abp K=6 R=2 W=3
+abp-037	DNF (did not finish; killed af	baseline	1	alternating_bit_timed	abp K=2 R=7 W=3
+brp-004	longer than cap (105730 s)	baseline	1	brp_timed	A MAX=4 n=2 F=1 all w1 (headline, both >=1 min)
+brp-007-A	longer than cap (22540 s)	timed	4	brp_timed	A MAX=8 n=2 F=1 all w6 (biggest comfortable timed) [rerun, rule A] [4 cores, not 6]
+brp-022-A	longer than cap (99904 s)	timed	4	brp_timed	A MAX=9 n=2 F=1 all w6 (top of the timed ladder) [rerun, rule A] [4 cores, not 6]
+brp-042	longer than cap (22958 s)	baseline	1	brp_timed	E n=3 MAX=2 TR=15 F=1 all w1 (n x MAX compound, both >=1 min)
+brp-043	DNF (did not finish; killed af	baseline	1	brp_timed	C2 DKRT cell F=2 MAX=2 TR=15 SYNC=13 p2 w1 (ceiling)
+brp-044	DNF (did not finish; killed af	baseline	1	brp_timed	A MAX=5 n=2 F=1 all w1 (ceiling)
+ct-005	longer than cap (48022 s)	timed	7	chandra_toueg_timed	D2 P4 to=13 H=31 kg w7 (largest timed that finishes)
+ct-036	DNF (did not finish; killed af	timed	7	chandra_toueg_timed	D2 P4 to=13 H=34 kg w7 (ceiling)
+lease-008	longer than cap (45011 s)	baseline	8	lease_timed	fenced A PAUSE=4 C=6 R=1
+lease-040	longer than cap (60744 s)	baseline	8	lease_timed	fenced E PAUSE=10 C=6 R=1
+lease-063	DNF (did not finish; killed af	timed	8	lease_timed	unfenced A PAUSE=3 keep-going CEILING C=7 R=1
+lease-064	DNF (did not finish; killed af	baseline	8	lease_timed	unfenced A PAUSE=3 keep-going CEILING C=7 R=1
+lease-081	longer than cap (81071 s)	timed	8	lease_timed	C=2 R=6 unfenced (rounds ladder)
+lease-083	DNF (did not finish; killed af	timed	8	lease_timed	C=2 R=6 fenced (rounds ladder)
+lease-084	longer than cap (91324 s)	baseline	8	lease_timed	C=2 R=6 fenced (rounds ladder)
+lease-085	longer than cap (15008 s)	timed	8	lease_timed	C=3 R=3 unfenced (rounds ladder)
+lease-087	longer than cap (35113 s)	timed	8	lease_timed	C=3 R=3 fenced (rounds ladder)
+lease-088	longer than cap (41862 s)	baseline	8	lease_timed	C=3 R=3 fenced (rounds ladder)
+lease-089	longer than cap (18559 s)	timed	8	lease_timed	C=4 R=2 unfenced (rounds ladder)
+legacy-014	DNF (did not finish; killed af	baseline	1	three_pc_timed	N=2 R=3 U=20 W/U=3 sd/U=0.25 (biggest R)
+nisshi-004	longer than cap (48516 s)	baseline	4	nisshi_txn_timed	T=2 R=5 L=1 U=5 W=1 B=0 shared4
+nisshi-020	longer than cap (24417 s)	baseline	4	nisshi_txn_timed	T=32 R=2 L=1 U=5 W=1 B=0 shared4
+nisshi-027	longer than cap (15882 s)	baseline	4	nisshi_txn_timed	T=4 R=4 L=1 U=5 W=1 B=0 shared4
+nisshi-089	longer than cap (115685 s)	baseline	4	nisshi_txn_timed	T=16 R=3 L=1 U=5 W=1 B=0 shared4
+nisshi-090	DNF (did not finish; killed af	baseline	4	nisshi_txn_timed	T=8 R=4 L=1 U=5 W=1 B=0 shared4
+nrp-008	longer than cap (14459 s)	baseline	1	nrp_failure_detector_timed	case7 switch failure, DCN2 phase 11, R=4 kg
+nrp-011	longer than cap (34617 s)	timed	1	nrp_failure_detector_timed	case8 published leasing R=6 no-kg (biggest timed)
+nrp-013	longer than cap (35449 s)	timed	1	nrp_failure_detector_timed	lease-not-enough boundary (header cell M=2 cut 50 R=5) phase 1
+nrp-015	longer than cap (34398 s)	timed	1	nrp_failure_detector_timed	lease-not-enough boundary (header cell M=2 cut 50 R=5) phase -3
+nrp-021	longer than cap (23639 s)	timed	1	nrp_failure_detector_timed	selftest R=10 no-kg
+nrp-023	longer than cap (64555 s)	timed	1	nrp_failure_detector_timed	case7 phase 11 R=8 no-kg
+nrp-026	longer than cap (25456 s)	baseline	1	nrp_failure_detector_timed	selftest R=6 kg
+nrp-075	longer than cap (106294 s)	baseline	1	nrp_failure_detector_timed	selftest R=7 kg (baseline = ceiling)
+nrp-076	longer than cap (103483 s)	baseline	1	nrp_failure_detector_timed	case8 R=4 kg (baseline = ceiling)
+opt-001	longer than cap (20224 s)	timed	1	retail_saga_timed	v2 C=2 N=2 R=5 S=20 U=1 D=7 (hold side, biggest)
+opt-002	longer than cap (43205 s)	baseline	1	yarn_scheduler_timed	K=2 QS=3 DD=8 U=0 H=10 (hold side, biggest two-sided)
+opt-011	longer than cap (48338 s)	timed	1	yarn_scheduler_timed	K=2 QS=3 DD=8 U=0 H=16 (timed-only ladder top)
+opt-035	DNF (did not finish; killed af	baseline	1	yarn_scheduler_timed	K=2 QS=3 DD=8 U=0 H=12
+opt-036	DNF (did not finish; killed af	baseline	1	yarn_scheduler_timed	K=3 QS=4 DD=8 U=0 H=7
+par-001	longer than cap (109144 s)	baseline	4	par_timed	K=8 R=1 To=9 errs (biggest paired size)
+par-007	longer than cap (43086 s)	timed	4	par_timed	K=10 R=1 To=9 errs 4c (biggest timed comfortably; baseline ~1e4 h)
+par-017	longer than cap (15724 s)	baseline	4	par_timed	no-errs K=9 R=1 To=9 4c
+par-020	longer than cap (20352 s)	timed	4	par_timed	no-errs K=14 R=1 To=9 4c (timed only)
+par-041	longer than cap (15884 s)	baseline	4	par_timed	K=4 R=2 To=9 errs 4c (retry dimension)
+par-042	longer than cap (82440 s)	baseline	4	par_timed	no-errs K=10 R=1 To=9 4c
+sensor-046	longer than cap (16853 s)	baseline	8	sensor_network_timed	published timers, sensor property, S=2 R=4 kg, p8
+sensor-048	longer than cap (33546 s)	baseline	8	sensor_network_timed	T3 row4 (paper success) danger S=2 R=1 kg, p8
+sensor-052	longer than cap (105398 s)	baseline	8	sensor_network_timed	published model, P=3 (7 readings/sensor), S=2 R=1 danger, both properties, kg, p8 (REVIEW: top of PUB ladder)
+sensor-054	longer than cap (15279 s)	baseline	8	sensor_network_timed	T3 row4 R=1: baseline random (random-relevant refused), no keep-going, p8
+sensor-055	longer than cap (80358 s)	timed	8	sensor_network_timed	T3 row2 R=2 exact: timed random-relevant kg, p8
+sensor-057	longer than cap (94838 s)	timed	8	sensor_network_timed	T3 row3-6 R=3 exact HOLD bound: timed random-relevant kg, p8
+sensor-059	longer than cap (70528 s)	timed	8	sensor_network_timed	T3 row3-7 R=3 exact HOLD bound: timed random-relevant kg, p8
+sensor-062	longer than cap (18527 s)	timed	8	sensor_network_timed	published timers, sensor property, S=2 R=5 kg, p8 (top of timed ladder)
+sensor-063	DNF (did not finish; killed af	baseline	8	sensor_network_timed	published timers, sensor property, S=2 R=5 kg, p8 (baseline ceiling)
+sensor-064	DNF (did not finish; killed af	baseline	8	sensor_network_timed	T3 row2 danger S=2 R=2 kg, p8 (baseline ceiling)
+stp-001	longer than cap (27089 s)	timed	1	spanning_tree_timed	link-up R=14 Fd=43 (tight hold, bound 42)
+stp-003	longer than cap (58864 s)	timed	1	spanning_tree_timed	lost-hellos R=14 MA=3 Fd=26 (tight hold, bound MA+Fd<=28)
+stp-009	longer than cap (74553 s)	timed	1	spanning_tree_timed	link-up R=15 Fd=45 (tight hold, bound 44)
+stp-011	longer than cap (52548 s)	timed	1	spanning_tree_timed	lost-hellos L=U=1 R=15 MA=3 Fd=26 (tight hold, bound MA+Fd<=28)
+stp-012	longer than cap (24559 s)	baseline	1	spanning_tree_timed	lost-hellos L=U=1 R=15 MA=3 Fd=26 (tight hold, bound MA+Fd<=28)
+stp-013	longer than cap (23710 s)	timed	1	spanning_tree_timed	lost-hellos L=U=1 R=14 MA=3 Fd=24 (tight hold, bound MA+Fd<=26) [REVIEW: added]
+stp-015	longer than cap (20755 s)	timed	1	spanning_tree_timed	lost-hellos R=13 MA=3 Fd=24 (tight hold, bound MA+Fd<=26)
+swim-009	longer than cap (15236 s)	timed	8	swim_timed	L0 N=3 R=9 Ws=6
+swim-025	longer than cap (107700 s)	timed	1	swim_timed	L0 N=8 R=1 Ws=6
+swim-026	longer than cap (91162 s)	timed	8	swim_timed	L0 N=3 R=10 Ws=6
+swim-027	longer than cap (79486 s)	timed	8	swim_timed	L0 N=4 R=5 Ws=6
+swim-028	longer than cap (63680 s)	timed	8	swim_timed	L1 N=4 R=5 Ws=6
+swim-029	longer than cap (85294 s)	timed	8	swim_timed	L0 N=5 R=3 Ws=6
+swim-030	longer than cap (89371 s)	timed	8	swim_timed	L0 N=6 R=2 Ws=6
+swim-031	longer than cap (71242 s)	timed	8	swim_timed	L1 N=3 R=10 Ws=6
+swim-032	longer than cap (60835 s)	timed	1	swim_timed	L1 N=8 R=1 Ws=6
+swim-033	longer than cap (66615 s)	timed	1	swim_timed	L1 N=5 R=3 Ws=6
+swim-034	longer than cap (51881 s)	timed	1	swim_timed	L1 N=6 R=2 Ws=6
+swim-035	longer than cap (17478 s)	baseline	8	swim_timed	L0 N=4 R=5 Ws=6
+swim-037	longer than cap (15774 s)	baseline	8	swim_timed	L0 N=5 R=3 Ws=6
+swim-038	longer than cap (14651 s)	baseline	1	swim_timed	L0 N=8 R=1 Ws=6
+swim-039	longer than cap (15240 s)	baseline	8	swim_timed	L0 N=6 R=2 Ws=6
+swim-073	longer than cap (19762 s)	baseline	1	swim_timed	L1 N=5 R=3 Ws=6
+swim-074	longer than cap (16442 s)	baseline	1	swim_timed	L1 N=6 R=2 Ws=6
+swim-093	DNF (did not finish; killed af	timed	1	swim_timed	L0 N=9 R=1 Ws=6
+swim-094	DNF (did not finish; killed af	baseline	1	swim_timed	L0 N=9 R=1 Ws=6
