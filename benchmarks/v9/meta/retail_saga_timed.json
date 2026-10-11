@@ -1,0 +1,435 @@
+{
+ "family": "opt",
+ "example": "retail_saga_timed",
+ "title": "Online retail order saga (Rebeca micro-service model) with a checkout deadline",
+ "source": "Protocol: Ehsan Khamespanah and Mohammad Mahdi Jaghoori, '20 Years of Actor Model Checking with Rebeca: From Dining Philosophers to Micro-services', in Rebeca for Actor Analysis in Action (Sirjani Festschrift), LNCS 15560, pp. 26-43, Springer 2025, doi 10.1007/978-3-031-85134-6_2: Listings 4.1 to 4.4 (Kafka variants v1 = 'Kafka + Non-Atomic' and v2 = 'Kafka + Atomic') and Table 1 on p. 40 (configurations 1O 2C, 1O 3C and 2O 2C: number of order services O and of customers C; property: the stock never falls below zero). The published retail model has no time. The checkout deadline D, the bounded-response property that every campaign cell measures, and its timing rule are this example's own addition (own model), not taken from the paper.",
+ "property": "No customer can read the reply to an order at or after its checkout deadline D, counted from the moment it sent the order (bounded response; a lost reply is not counted, that execution ends blocked). The example also asserts that no stock count goes below zero, which cannot fail in these cells: S = 20 covers the largest possible demand C*R*Q.",
+ "citable": "with caveats",
+ "citable_note": "Reliable (three repetitions identical, complete and blocked counts equal to v8, both sides of the deadline boundary measured), but precision only: the timed side removes the baseline's spurious late replies while exploring about as many executions (baseline / timed explored 0.69 to 1.10) and taking 2.7 to 3.9 times the baseline's wall time. The deadline property is the example's own addition: the source paper has no time and its own stock property has no timing boundary. The 2026-09-17 benchmark survey ranks the example WEAK (B110, 'not a timed result'); the 2026-09-18 citability audit gives it no verdict of its own.",
+ "config_timed": "build_config (traceforge/examples/retail_saga_timed.rs, lines 864 to 874): Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX) (line 865); with_keep_going_after_error(true) because every cell passes --keep-going (lines 866 to 868); then with_timed(L, U, sd) (line 871), which is with_timed(0, 1, 0) in every campaign cell. Consistency model: FIFO per channel (the ConfigBuilder default, traceforge/src/lib.rs line 355; the example sets none). Every send is lossy with no budget. Scheduling policy LTR (default). No parallel option: traceforge::verify on one core (line 903; plan: cores=1, parallel=none). One per-send bound: the folded shipping round trip is a self-addressed message sent with send_msg_timed over [2L, 2U + sd] = [0, 2] (lines 598 to 600 and 732); every other send uses the global [L, U] = [0, 1]. Every receive is a timed variant: blocking everywhere except the customer's wait for the reply, recv_tagged_msg_timed with WaitTime::Finite(D) (lines 658 to 661). The search seed is random per process (default); exhaustive counts do not depend on it.",
+ "config_baseline": "Same builder without with_timed (line 870, builder.build()): FIFO per channel, every send lossy with no budget, keep-going, LTR, one core. There is no clock, so L, U, sd, the per-send bound of the shipping message and the value of D carry no information: send_msg_timed is an ordinary send and the customer's finite wait keeps both outcomes (reply read, timeout) at every D. The D=6 and D=7 baseline runs of one instance are therefore the same search and report identical counts.",
+ "program_differs_between_modes": "no (customer, order service and inventory never read the mode: Mode is used only in build_config, run and the report code; the timed sends and receives are the same calls in both modes and the library ignores their timing when there is no clock. Report only: a baseline run WITHOUT a deadline that ends with blocked > 0 prints DEADLOCK and exits 3, lines 1048 to 1056; no campaign cell runs without a deadline)",
+ "failing_tasks": "Only customer threads fail in the campaign cells: a customer whose reply was validated late calls traceforge::assert(false) (line 672). Threads have no custom names, so the line is task-N with N the spawn order (lines 906 to 919): inventory = task-1, order services = task-2 to task-(N+1), customers = task-(N+2) to task-(N+C+1). That is task-4 and task-5 for C=2 N=2, and task-5, task-6, task-7 for C=3 N=3 (checked on local runs). The inventory (task-1) holds the stock assertion (line 811), which cannot fail with S=20. The main thread asserts nothing, so no main-thread-ThreadId(N) line appears. Under keep-going a failed assertion stops only the failing thread; the tool prints at most ONE line per execution (the first failing customer), and in the timed mode only after the execution is complete and has a timeline (certified).",
+ "counters": [
+  {
+   "key": "late",
+   "counts": "events",
+   "meaning": "late replies: incremented once for every customer whose wait expired and who could then still read the reply (line 670, just before the failing assertion). It is the counter of the measured property, but it counts customers, not executions: a customer stops after its first late reply, the other customers keep running, so one execution adds between 1 and C. Relation found in v9: late = 0 exactly when violating executions = 0 (every timed safe side); otherwise late > violating executions by 6% to 13%: 37368 vs 35168 and 17544 vs 16008 (timed, D=6), 34424 vs 32224, 13560 vs 12216, 489560 vs 458240, 1956936 vs 1733736, 24440 vs 23056 (baseline). Use the tool's violating executions as the count."
+  },
+  {
+   "key": "oversold",
+   "counts": "events",
+   "meaning": "decrements that took a stock count below zero (line 808, counted just before the stock assertion). 0 in every campaign row: S=20 is never exhausted, so the stock race cannot show here."
+  },
+  {
+   "key": "in_time",
+   "counts": "events",
+   "meaning": "replies read before the deadline, summed over all explored executions (summary line only). In a safe cell in_time > 0 is the evidence that the hold is not empty."
+  },
+  {
+   "key": "accepted",
+   "counts": "events",
+   "meaning": "availability answers 'yes' given by the inventory, summed over all explored executions (summary line only)"
+  },
+  {
+   "key": "rejected",
+   "counts": "events",
+   "meaning": "availability answers 'no' (stock too low); 0 in every campaign row because S=20 (summary line only)"
+  },
+  {
+   "key": "overlap",
+   "counts": "events",
+   "meaning": "availability checks handled while another order was open at some service: evidence that orders met at the inventory (summary line only)"
+  },
+  {
+   "key": "race_window",
+   "counts": "events",
+   "meaning": "v1 only: availability checks answered while another approved order of the same product was not yet taken off the count (the check-then-take gap was open). Always 0 for v2. Above 0 in the v1 cell, where it is harmless because the stock never runs out (summary line only)"
+  },
+  {
+   "key": "contended_reject",
+   "counts": "events",
+   "meaning": "orders rejected while another order was open; 0 in every campaign row, no order is rejected (summary line only)"
+  }
+ ],
+ "violation_counter": null,
+ "violation_counter_note": "null on purpose. 'late' is the counter of the violated property but it counts late replies (one per late customer), not executions, so it is larger than the tool's violating executions on every violating side (equal only at 0). 'oversold' is 0 everywhere. No summary counter equals the number of violating executions.",
+ "param_columns": [
+  {
+   "key": "variant",
+   "header": "Variant",
+   "size": false,
+   "meaning": "v1 = the inventory is asked 'is there enough?' and then, in a second request, 'take it off' (paper Listing 4.3, 8 messages per accepted order); v2 = the repaired version, check and take in one request (Listing 4.4, 6 messages). Flag --variant."
+  },
+  {
+   "key": "C",
+   "header": "Customers C",
+   "size": true,
+   "meaning": "number of customers; each places R orders, one at a time, and waits for the reply before the next (--customers, default 2)"
+  },
+  {
+   "key": "N",
+   "header": "Order services N",
+   "size": true,
+   "meaning": "number of order-service instances that take orders and see them through with the inventory and the shipping desk (--order-services, default 2 for v1 and v2)"
+  },
+  {
+   "key": "R",
+   "header": "Rounds R",
+   "size": true,
+   "meaning": "orders placed by every customer (--rounds)"
+  },
+  {
+   "key": "S",
+   "header": "Stock S",
+   "size": false,
+   "meaning": "initial stock count of every product (--stock). 20 in every cell, chosen so that no order is ever rejected: the cells measure the response time, not the stock race"
+  },
+  {
+   "key": "P",
+   "header": "Products P",
+   "size": false,
+   "meaning": "number of products a customer chooses from (--products). No cell sets it: default 1"
+  },
+  {
+   "key": "Q",
+   "header": "Max quantity Q",
+   "size": false,
+   "meaning": "every order picks an amount in 1..Q (--max-qty), a choice the checker explores every way. No cell sets it: default 2"
+  },
+  {
+   "key": "assign",
+   "header": "Assignment",
+   "size": false,
+   "meaning": "fixed: customer c always uses order service c mod N (default; with C = N every customer has its own service and no order waits). The other value, any, is not used"
+  },
+  {
+   "key": "L",
+   "header": "L (ticks)",
+   "size": false,
+   "meaning": "shortest travel time of a message, L = round(l-ratio * U); no cell passes --l-ratio, so L = 0. Timed side only"
+  },
+  {
+   "key": "U",
+   "header": "U (ticks)",
+   "size": false,
+   "meaning": "longest travel time of a message (--u). Timed side only"
+  },
+  {
+   "key": "sd",
+   "header": "sd (ticks)",
+   "size": false,
+   "meaning": "how long a message that has arrived stays readable, sd = round(sd-ratio * U); no cell passes --sd-ratio, so sd = 0: a message is read when it arrives or not at all. Timed side only"
+  },
+  {
+   "key": "D",
+   "header": "Deadline D (ticks)",
+   "size": false,
+   "meaning": "checkout deadline: how long a customer waits for the reply after sending an order, D = round(deadline-ratio * U) (--deadline-ratio; with U = 1 the ratio is D itself)"
+  },
+  {
+   "key": "bound",
+   "header": "Bound (ticks)",
+   "size": false,
+   "meaning": "derived, not a flag: the latest instant after the order was sent at which its reply can arrive, h*U + (h-1)*sd with h = 6 hops (v2) or 8 hops (v1). The timed side reports a late reply iff D <= bound"
+  }
+ ],
+ "boundary_law": "Rule in the source (customer, lines 643 to 676): right after sending an order the customer waits for the reply with a finite wait D. If the wait expires, the order counts as late only if the customer can then still read that reply (blocking validation read assume_reply_was_late, lines 612 to 618); then the assertion fails. With the clock this is possible exactly when the reply can arrive at or after the instant D after the order was sent: a reply that arrives exactly at that instant may lose to the timeout (the tie counts as late), a reply that arrived earlier must be read in time. Boundary, timed side: a late reply exists iff D <= bound, with bound = h*U + (h-1)*sd and h the number of hops of an accepted order: Order, Check, Status, (Confirm, Confirmed: v1 only), shipping out, shipping back, Reply; h = 6 for v2 and h = 8 for v1. Each of the first h-1 hops costs at most U in transit plus sd waiting to be read; the reply itself only has to arrive (at most U). Every campaign cell has U=1, sd=0: v2 violates iff D <= 6 and holds from D=7; v1 violates iff D <= 8 and holds from D=9. The bound does not depend on L, nor on R and C while assignment is fixed and C = N (no order waits for a busy service). The baseline has no clock and reports late replies at every D. Origin: the example's own rule (the paper has no time). How well it is checked: v9 measures both sides for v2 (D=6 violates, D=7 holds, at C=2 R=3 and at C=3 R=1) and only the safe side for v1 (D=9). Local first-violation runs of one-round cells on the current tool code agree with the formula at (U, sd, L) = (1,0,0), (2,0,0), (2,0,2), (1,1,0), (2,1,0), (2,1,1) for v2 and (1,0,0), (2,1,0) for v1. The header comment of the example still gives h*(U + sd), one sd more: that is stale for sd > 0 and identical at sd = 0.",
+ "regimes": [
+  {
+   "id": "A-safe",
+   "name": "repaired version (v2), deadline one tick above the bound",
+   "params": "U=1, L=0, sd=0 (shipping round trip [0, 2]), v2 (6 hops), D=7",
+   "rule": "D = bound + 1, with bound = 6U + 5sd = 6: the reply always arrives strictly before the wait expires, so a timeout followed by a read of the reply has no timeline. Smallest deadline that holds.",
+   "expect_timed": "0 violations (late=0, in_time > 0), exit code 0",
+   "expect_baseline": "spurious violations: without a clock the wait can expire and the reply still be read afterwards at every deadline (late > 0; exit code 0 because of keep-going)",
+   "verdict_check": {
+    "timed": "zero",
+    "baseline": "nonzero",
+    "exit_timed": 0,
+    "exit_baseline": 0
+   }
+  },
+  {
+   "id": "A-edge",
+   "name": "repaired version (v2), deadline exactly on the bound: the tool puts it on the VIOLATING side",
+   "params": "U=1, L=0, sd=0 (shipping round trip [0, 2]), v2 (6 hops), D=6",
+   "rule": "D = bound = 6U + 5sd = 6: when every hop takes the full U the reply arrives exactly when the wait expires. The tie may go to the timeout, the reply is then read at the deadline and counts as late (witness timeline printed by a first-violation run: order read at 1, check at 2, status at 3, shipping message at 5, reply arrives and is read at 6). Largest violating deadline; smaller D violate too by the rule (not in the campaign).",
+   "expect_timed": "violations: late > 0 with certified violating executions, exit code 0 because of keep-going",
+   "expect_baseline": "violations, with the same counts as in A-safe for the same instance (the baseline does not see D), exit code 0",
+   "verdict_check": {
+    "timed": "nonzero",
+    "baseline": "nonzero",
+    "exit_timed": 0,
+    "exit_baseline": 0
+   }
+  },
+  {
+   "id": "B-safe",
+   "name": "first version (v1, two more messages per order), deadline one tick above the bound",
+   "params": "U=1, L=0, sd=0 (shipping round trip [0, 2]), v1 (8 hops), D=9",
+   "rule": "D = bound + 1, with bound = 8U + 7sd = 8: the two extra hops (Confirm, Confirmed) move the bound from 6 to 8. Smallest deadline that holds for v1; the violating side D=8 is not in the campaign (a local one-round run stops there with a certified violation).",
+   "expect_timed": "0 violations (late=0, in_time > 0), exit code 0",
+   "expect_baseline": "spurious violations (late > 0; exit code 0 because of keep-going)",
+   "verdict_check": {
+    "timed": "zero",
+    "baseline": "nonzero",
+    "exit_timed": 0,
+    "exit_baseline": 0
+   }
+  }
+ ],
+ "glossary": [
+  {
+   "term": "Order saga (the hops)",
+   "meaning": "the message chain of one accepted order: customer sends Order to its order service; the service sends Check to the inventory; the inventory answers Status; in v1 only, the service sends Confirm and the inventory answers Confirmed; the service books the delivery (shipping out and back); the service sends Reply to the customer. 6 hops in v2, 8 in v1."
+  },
+  {
+   "term": "Reply",
+   "meaning": "the order service's answer to the customer ('on its way' or 'sorry'); the customer places its next order only after reading it"
+  },
+  {
+   "term": "Late reply",
+   "meaning": "a reply the customer could only read at or after its deadline D. The harness proves lateness by a second, blocking read of the same reply after the timeout (timeout validation); if that read is impossible the execution ends blocked instead of failing. A reply that is lost is therefore never counted as late."
+  },
+  {
+   "term": "Timeout validation",
+   "meaning": "checker scaffolding, not protocol: after its wait expires the customer must still read the reply before the assertion fails. With the clock this read has a timeline only if the reply really can arrive at or after the deadline, so a timeout that real time rules out becomes a blocked execution. Without the clock the read succeeds whenever the reply was delivered, hence the baseline's spurious violations."
+  },
+  {
+   "term": "Shipping round trip",
+   "meaning": "the booking at the shipping desk, folded into one message the order service sends to itself with travel time in [2L, 2U + sd] (two hops and the desk's read slack); [0, 2] in every cell. In the baseline it is an ordinary self-message."
+  },
+  {
+   "term": "Tie at the deadline",
+   "meaning": "a reply that arrives exactly when the wait expires may be read or missed; the missed case counts as late. This is why D = bound (regime A-edge) is on the violating side and D = bound + 1 is the first safe deadline."
+  },
+  {
+   "term": "Stock race (not measured here)",
+   "meaning": "the paper's own bug: in v1 two order services can both be told 'enough stock' before either takes the items, and the count goes below zero; v2 repairs it. It has no timing boundary (it occurs at every L, U, sd) and needs a small stock; the campaign cells use S=20 and measure the deadline only."
+  },
+  {
+   "term": "Lossy sends in this example",
+   "meaning": "every send may be dropped in both modes. A dropped message leaves its receiver waiting forever and that execution ends blocked: one reason why blocked executions far outnumber complete ones (for example 118672 against 4480 in the headline cell, timed side). Blocked also contains the timeouts discarded by the timeout validation and, on a violating side, the executions stopped at the failed assertion."
+  },
+  {
+   "term": "Baseline without a deadline (not in the campaign)",
+   "meaning": "with every send lossy, a baseline run without --deadline-ratio always has blocked executions, which the binary reports as DEADLOCK with exit code 3. For this reason every campaign cell has a deadline."
+  },
+  {
+   "term": "Paper's 3 customers",
+   "meaning": "cells with C=3. The paper's Table 1 has three-customer rows only with ONE order service (1O 3C). The cells pair the three customers with N=3 order services so that every customer has its own service and no order waits; that configuration is not a row of Table 1."
+  }
+ ],
+ "cells": [
+  {
+   "cell": "v2 C=2 N=2 R=3 S=20 U=1 D=7 (hold side)",
+   "regime": "A-safe",
+   "label": "repaired version, safe deadline: headline instance",
+   "params": {
+    "variant": "v2",
+    "C": 2,
+    "N": 2,
+    "R": 3,
+    "S": 20,
+    "P": 1,
+    "Q": 2,
+    "assign": "fixed",
+    "L": 0,
+    "U": 1,
+    "sd": 0,
+    "D": 7,
+    "bound": 6
+   },
+   "kind": "exhaustive",
+   "expect_timed": "0 violations (late=0), exit code 0; execs=4480 blocked=118672 (explored 123152). v9: three repetitions identical, same counts as v8.",
+   "expect_baseline": "spurious violations: 32224 violating executions (late=34424), exit code 0; execs=4480 blocked=130692 (explored 135172). v9: three repetitions identical, same counts as v8.",
+   "note": "Pair with the A-edge row of the same instance: one tick less (D=6) and the timed side reports 35168 violating executions."
+  },
+  {
+   "cell": "v2 C=2 N=2 R=4 S=20 U=1 D=7",
+   "regime": "A-safe",
+   "label": "repaired version, safe deadline: one more round",
+   "params": {
+    "variant": "v2",
+    "C": 2,
+    "N": 2,
+    "R": 4,
+    "S": 20,
+    "P": 1,
+    "Q": 2,
+    "assign": "fixed",
+    "L": 0,
+    "U": 1,
+    "sd": 0,
+    "D": 7,
+    "bound": 6
+   },
+   "kind": "exhaustive",
+   "expect_timed": "0 violations (late=0), exit code 0; execs=64512 blocked=1674800 (explored 1739312). v9: three repetitions identical, same counts as v8.",
+   "expect_baseline": "spurious violations: 458240 violating executions (late=489560), exit code 0; execs=64512 blocked=1854436 (explored 1918948). v9: three repetitions identical, same counts as v8.",
+   "note": ""
+  },
+  {
+   "cell": "v2 C=2 N=2 R=5 S=20 U=1 D=7 (hold side, biggest)",
+   "regime": "A-safe",
+   "label": "repaired version, safe deadline: largest instance",
+   "params": {
+    "variant": "v2",
+    "C": 2,
+    "N": 2,
+    "R": 5,
+    "S": 20,
+    "P": 1,
+    "Q": 2,
+    "assign": "fixed",
+    "L": 0,
+    "U": 1,
+    "sd": 0,
+    "D": 7,
+    "bound": 6
+   },
+   "kind": "exhaustive",
+   "expect_timed": "0 violations (late=0), exit code 0; execs=946176 blocked=24326960 (explored 25273136). v9 first run (opt-001-r1), same counts as v8; the second run was not finished on 2026-10-11.",
+   "expect_baseline": "no v9 result on 2026-10-11 (opt-003-r1 and opt-003-r2 queued or running). v8, and its rerun on commit e96fe7a: spurious violations, 6651776 violating executions (late=7104984), exit code 0; execs=946176 blocked=26973860 (explored 27920036).",
+   "note": "Reach-grade cell: one or two runs per side, hours long. S=20 is exactly the largest possible demand here (2 customers x 5 orders x 2 items), still never exceeded."
+  },
+  {
+   "cell": "v2 C=3 N=3 R=1 S=20 U=1 D=7 (paper's 3 customers, hold side)",
+   "regime": "A-safe",
+   "label": "repaired version, safe deadline: three customers, one order each",
+   "params": {
+    "variant": "v2",
+    "C": 3,
+    "N": 3,
+    "R": 1,
+    "S": 20,
+    "P": 1,
+    "Q": 2,
+    "assign": "fixed",
+    "L": 0,
+    "U": 1,
+    "sd": 0,
+    "D": 7,
+    "bound": 6
+   },
+   "kind": "exhaustive",
+   "expect_timed": "0 violations (late=0), exit code 0; execs=720 blocked=47904 (explored 48624). v9: three repetitions identical, same counts as v8.",
+   "expect_baseline": "spurious violations: 12216 violating executions (late=13560), exit code 0; execs=720 blocked=43936 (explored 44656). v9: three repetitions identical, same counts as v8.",
+   "note": "The timed side explores slightly MORE than the baseline here (48624 against 44656). Pair with the A-edge row of the same instance."
+  },
+  {
+   "cell": "v2 C=3 N=3 R=2 S=20 U=1 D=7 (paper's 3 customers)",
+   "regime": "A-safe",
+   "label": "repaired version, safe deadline: three customers, two orders each",
+   "params": {
+    "variant": "v2",
+    "C": 3,
+    "N": 3,
+    "R": 2,
+    "S": 20,
+    "P": 1,
+    "Q": 2,
+    "assign": "fixed",
+    "L": 0,
+    "U": 1,
+    "sd": 0,
+    "D": 7,
+    "bound": 6
+   },
+   "kind": "exhaustive",
+   "expect_timed": "no v9 result on 2026-10-11 (opt-013-r1 and opt-013-r2 queued or running). v8, and its rerun on commit e96fe7a: 0 violations (late=0, no failing-task line), exit code 0; execs=107520 blocked=5107176 (explored 5214696).",
+   "expect_baseline": "spurious violations: 1733736 violating executions (late=1956936), exit code 0; execs=107520 blocked=5422840 (explored 5530360). v9: three repetitions identical, same counts as v8.",
+   "note": "The timed side is reach-grade (about 70 minutes in v8), the baseline side timing-grade."
+  },
+  {
+   "cell": "v2 C=2 N=2 R=3 S=20 U=1 D=6 (boundary FIRE side)",
+   "regime": "A-edge",
+   "label": "repaired version, deadline exactly on the bound (violating side): headline instance",
+   "params": {
+    "variant": "v2",
+    "C": 2,
+    "N": 2,
+    "R": 3,
+    "S": 20,
+    "P": 1,
+    "Q": 2,
+    "assign": "fixed",
+    "L": 0,
+    "U": 1,
+    "sd": 0,
+    "D": 6,
+    "bound": 6
+   },
+   "kind": "exhaustive",
+   "expect_timed": "violations: 35168 violating executions (late=37368), exit code 0 (keep-going); execs=4480 blocked=153840 (explored 158320). v9: three repetitions identical, same counts as v8.",
+   "expect_baseline": "violations: 32224 violating executions (late=34424), exit code 0; execs=4480 blocked=130692 (explored 135172): identical to the baseline of the D=7 row, the baseline does not see D.",
+   "note": "The timed side explores MORE than the baseline (158320 against 135172): the late branches are real here and each is followed to its end."
+  },
+  {
+   "cell": "v2 C=3 N=3 R=1 S=20 U=1 D=6 (boundary FIRE side)",
+   "regime": "A-edge",
+   "label": "repaired version, deadline exactly on the bound (violating side): three customers, one order each",
+   "params": {
+    "variant": "v2",
+    "C": 3,
+    "N": 3,
+    "R": 1,
+    "S": 20,
+    "P": 1,
+    "Q": 2,
+    "assign": "fixed",
+    "L": 0,
+    "U": 1,
+    "sd": 0,
+    "D": 6,
+    "bound": 6
+   },
+   "kind": "exhaustive",
+   "expect_timed": "violations: 16008 violating executions (late=17544), exit code 0 (keep-going); execs=720 blocked=63912 (explored 64632). v9: three repetitions identical; complete and blocked counts as in v8.",
+   "expect_baseline": "violations: 12216 violating executions (late=13560), exit code 0; execs=720 blocked=43936 (explored 44656): identical to the baseline of the D=7 row.",
+   "note": "The plan's expectation text still says late=17608, the value of the v8 campaign binary. On the current code the counter is 17544 (v9, and the reruns of 2026-10-07 and 2026-10-08); the 16008 violating executions never changed."
+  },
+  {
+   "cell": "v1 C=2 N=2 R=2 S=20 U=1 D=9",
+   "regime": "B-safe",
+   "label": "first version (two more messages per order), safe deadline",
+   "params": {
+    "variant": "v1",
+    "C": 2,
+    "N": 2,
+    "R": 2,
+    "S": 20,
+    "P": 1,
+    "Q": 2,
+    "assign": "fixed",
+    "L": 0,
+    "U": 1,
+    "sd": 0,
+    "D": 9,
+    "bound": 8
+   },
+   "kind": "exhaustive",
+   "expect_timed": "0 violations (late=0), exit code 0; execs=4032 blocked=99840 (explored 103872). v9: three repetitions identical, same counts as v8.",
+   "expect_baseline": "spurious violations: 23056 violating executions (late=24440), exit code 0; execs=4032 blocked=104164 (explored 108196). v9: three repetitions identical, same counts as v8.",
+   "note": "The only v1 cell. race_window is above 0 on both sides (the check-then-take gap opens) but nothing is oversold because S=20."
+  }
+ ],
+ "notes": [
+  "Regime letters are new: v8 used none for this example. All eight cells share one network setting (U=1, L=0, sd=0). The letter separates the two message chains, which have different bounds: A = v2 (6 hops, bound 6), B = v1 (8 hops, bound 8). There is no -viol and no -ctrl regime in the cells that were run.",
+  "The two D=6 cells are classed A-edge, not A-viol: D equals the bound, the reply arrives exactly when the wait expires, and the verdict rests on the tie rule (a reply arriving exactly at the deadline may lose to the timeout). The tool puts them on the VIOLATING side (35168 and 16008 violating executions in v9). build_v9_xlsx.py checks only -safe and -viol regimes automatically, so these two rows are covered by the hand check recorded here, not by its 'Timed verdict matches the regime' line. Renaming the regime to A-viol would be consistent with the measurements if that check should cover them.",
+  "violation_counter is null: no summary counter equals the tool's violating executions. 'late' counts late replies (customers), and one execution can contain up to C of them because a failed assertion stops only the failing customer under keep-going (traceforge/src/lib.rs lines 2373 to 2400 and must.rs lines 1386 to 1403: the other threads stay runnable) while the tool prints one failing-task line per execution (runtime/failure.rs lines 31 to 37; the print guard is set once per execution, runtime/execution.rs line 49). Measured in v9: late exceeds violating executions on all 9 violating sides (2 timed, 7 baseline; by 6.0% to 12.9%) and both are 0 on the 5 timed safe sides that have a v9 result. A local run with a single customer gives late equal to the number of lines, as this explanation predicts.",
+  "Disagreement between the example's header comment and the code, the code wins: (1) the header says message loss is not modelled, but build_config makes every send lossy (line 865, commit 60f262f of 2026-09-30, the decision of 2026-09-29); the header's 'matrix-verified' lists and counts predate that. (2) The header gives the boundary as D <= 8(U + sd) for v1 and D <= 6(U + sd) for v2; local first-violation runs on the current tool code give 8U + 7sd and 6U + 5sd (for example U=2, sd=1, v2: D=17 violates and D=18 holds, where the header predicts 18 violates). Under the rule that a message which arrived before the deadline must be read, the storage time sd of the last hop no longer counts. Every campaign cell has sd=0, where the two formulas coincide, so no campaign number is affected.",
+  "Memory note project_v8_campaign: 'retail baseline without deadline exits DEADLOCK under universal loss'. Consistent with the source (lines 1048 to 1056: baseline, no deadline, blocked > 0 gives exit code 3). Consequence: the paper's own properties (the stock race without a deadline, deadlock freedom) are not in the campaign. Every cell has a deadline and S=20; with S=20 no order is rejected (rejected=0, oversold=0 in every row), so the stock assertion is never at risk and the cells measure bounded response only.",
+  "The baseline does not see D: the D=6 and D=7 baseline sides of one instance (opt-023 and opt-009; opt-034 and opt-032) have identical complete, blocked, late and violating-execution counts. They are the same search run twice under two cell names.",
+  "Precision-only example. The result is timed 0 against baseline above 0 in the six safe cells (v9 for ten of their twelve sides, v8 for the other two). Efficiency goes the other way: baseline / timed explored is 1.04 to 1.10 on the two-customer safe cells, 0.92 at C=3 R=1, 1.06 at C=3 R=2 (timed side from v8), and 0.85 and 0.69 on the two edge cells; the timed wall time is 2.7 to 3.9 times the baseline's on all six pairs measured in v9 (for example 934 s against 277 s at C=2 R=4).",
+  "Which side each cell is on: D=6 (the two cells of purpose 'boundary', v2) is exactly on the bound 6 and violates; D=7 (the five other v2 cells) is bound + 1 and holds; D=9 (the v1 cell) is bound + 1 = 8 + 1 and holds. No cell lies below a bound and no v1 cell lies on its bound.",
+  "Ratio flags: the cells pass only --u 1 and --deadline-ratio; --l-ratio and --sd-ratio keep their default 0.0. Resolution (lines 580 to 590): L = round(0.0 * 1) = 0, sd = round(0.0 * 1) = 0, D = round(ratio * 1) = 6, 7 or 9. N=2, C=2, P=1, Q=2 and assign=fixed are defaults where the arguments do not set them. All 40 v9 summary lines print exactly the values of the parameter columns (checked by script). The column 'bound' is derived from the rule, it is not printed by the binary.",
+  "No v9 result on 2026-10-11 (results_v9.csv of 11:09) for: the baseline side of the largest cell (opt-003-r1, opt-003-r2), the timed side of C=3 N=3 R=2 (opt-013-r1, opt-013-r2), and the second run of the timed largest cell (opt-001-r2). Their expectations above come from v8 and from the 2026-10-08 rerun on commit e96fe7a (benchmarks/v8/rerun_brain05/results_v8r.csv, column tasklines).",
+  "Memory note v8_vs_unstaged_must_edits: the counter 'late' of opt-033 changed from 17608 (v8 campaign binary) to 17544 on the current code. v9 confirms 17544 with 16008 violating executions; plan_v9.csv still carries 17608 in its expect text for that row. The other counters of the summary line (accepted, overlap, in_time) are also lower than in v8 on timed sides for the same reason (the old binary counted the prefix of an abandoned run twice); complete and blocked counts are unchanged. Treat these counters as zero or nonzero evidence only.",
+  "Memory note counter_based_verdicts_hazard (program counters also count endings without a timeline): no exposure here. timeline_impossible is 0 in every v9 row of this example, and the workbook's violating executions come from the tool's certified failing-task lines, not from 'late'.",
+  "Timed sides report pruned > 0 (for example 20516 in the headline cell): continuations of a send or of a revisit that have no timeline and are dropped before any code runs on them. They are not executions and are not part of explored.",
+  "Cell names against the paper (Table 1, p. 40, read in the local copy docs/research/ta_problems/need-from-user-papers/978-3-031-85134-6.pdf): v2 C=2 N=2 is the configuration of the row 'Kafka + Atomic, 2O 2C' and v1 C=2 N=2 of 'Kafka + Non-Atomic, 2O 2C' (the one row the paper reports as violated), but the paper's property (stock never below zero, 2 products with 5 items) is not what these cells measure (1 product, S=20, deadline). The cells named 'paper's 3 customers' use C=3 with N=3: Table 1 has three customers only with one order service (1O 3C), so C = N = 3 is the harness's choice (no order waits for a busy service). The boundary rule was only measured where no order waits.",
+  "Local runs used for this file: the release binary target/release/examples/retail_saga_timed built on 2026-10-07 (not the campaign binary). They were used only for failing-task names, resolved parameter values and first-violation verdicts of one-round cells. No count in this file comes from a local run."
+ ]
+}

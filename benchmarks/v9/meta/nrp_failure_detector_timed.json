@@ -1,0 +1,1498 @@
+{
+ "family": "nrp",
+ "example": "nrp_failure_detector_timed",
+ "title": "Redundant controllers with a network reference point (NRP failure detector): can both be in charge?",
+ "source": "Algorithm: B. Johansson, M. Ragberger, A. V. Papadopoulos, T. Nolte, 'Consistency Before Availability: Network Reference Point based Failure Detection for Controller Redundancy', IEEE ETFA 2023 (the backup of every cell is its Algorithm 3, --promote-rule takeover). Models and scenarios: B. Johansson, B. Pourvatan, Z. Moezkarimi, A. Papadopoulos, M. Sirjani, 'Formal Verification of Consistency for Systems with Redundant Controllers', MARS 2024, EPTCS 399, pp. 169-191 (Timed Rebeca models NRPFD.rebeca and LeasingNRPFD.rebeca, Table 1 cases 7 and 8, the leasing fix, Appendix C). Failure spacing: M. Sirjani et al., 'Actors for Timing Analysis of Distributed Redundant Controllers', Gul Agha Festschrift, LNCS 16120, Springer 2025 (a different node, its Eq. 5 and Eq. 6 are not reproduced here). Timing constants: one hop is Rebeca's networkDelay = 1 (the default L = U = 1, sd = 0); the round length H = 20U and the answer wait P = 10U are the defaults the source takes from the GulFest file. The timing rules of the regimes C, E and F are this example's own measurements on its Rust model of the MARS node (source header, runs of 2026-09-16), not published bounds.",
+ "property": "NoDualPrimary, verbatim from NRPFD.property (!(DCN1Primary && DCN2Primary)): there is no instant, same-instant orders included, at which both controllers are PRIMARY. The monitor (the main thread) replays the role reports and asserts it once per execution, at the end, after both controllers have drained their channels (source line 1205).",
+ "citable": "with caveats",
+ "citable_note": "The 2026-09-18 audit lists this example (B01) as citable after the --promote-rule fidelity fix, and the current source has that fix. Caveats that are newer than the audit: (1) since every send is lossy (2026-09-30) both sides are dominated by blocked executions produced by the harness guard (timed self test at R = 4: 1 complete execution against 51,806 blocked), so quote verdicts, violating executions and wall times, and present the explored ratio as search cost, not as behaviours checked; (2) the boundaries are measured at a few points each on this model, they are not published bounds, and the lease-not-enough scenario (regimes F1, F2) is new and not cross-checked in Afra; (3) most baseline sides stop at their first violation and carry no count.",
+ "config_timed": "build_config, source lines 1116-1129: Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX) (line 1117); with_keep_going_after_error(true) only when --keep-going is given (lines 1118-1120); then .with_timed(L, U, sd).with_node_sd(main thread, 0).build() (lines 1124-1127). So: consistency model FIFO (library default, never set), every send lossy, storage lifetime sd at every thread except 0 at the monitor, scheduling policy LTR (library default), no parallel option (1 core per run). Every send gives its own transit bounds with send_msg_timed (lines 766-776): [L, U] for a DCN1 to switch hop, [3L, 3U] for a switch to DCN2 leg, exact [d, d] for timers, failure notices and role reports; every receive is the blocking recv_msg_block_timed (line 782). In the v9 cells (L, U, sd) is (1, 1, 0), (1, 2, 0) or (0, 1, 0).",
+ "config_baseline": "build_config, source lines 1116-1122: Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX), with_keep_going_after_error(true) only when --keep-going is given, then .build(): no clock (the transit bounds of send_msg_timed, the storage lifetime and the monitor override are ignored), consistency model FIFO (library default), every send lossy, scheduling policy LTR (library default), no parallel option (1 core per run).",
+ "program_differs_between_modes": "no: the mode is read only in build_config (lines 1121-1128) and for the label of the summary line; the same send_msg_timed and recv_msg_block_timed calls run in both modes and their timing information is ignored without the clock",
+ "failing_tasks": "Only the main thread (the monitor) asserts: traceforge::assert(!dual) at source line 1205. Under keep-going every violating execution prints the line main-thread-ThreadId(1) (checked with a local run). No controller or switch thread asserts, so no task-N line is expected. The panics at lines 774, 957, 994, 1102 and 1182 (unexpected message, unknown actor) are harness sanity checks; no v9 run ended with an error. The assume at line 784 (sequence check of the harness guard) blocks an execution, it is not an assertion.",
+ "counters": [
+  {
+   "key": "violations",
+   "counts": "executions",
+   "meaning": "executions in which the monitor saw both controllers PRIMARY at some instant (the DUAL_PRIMARY static, bumped once per execution just before the assertion, line 1202). Equal to the violating executions of the tool on every finished v9 run. Not printed when the run stops at the first violation (the binary panics before the summary line)."
+  },
+  {
+   "key": "dual",
+   "counts": "executions",
+   "meaning": "the same static as violations, printed twice in the summary line"
+  },
+  {
+   "key": "completed",
+   "counts": "executions",
+   "meaning": "executions in which the monitor reached the end with every channel drained (no lost and no skipped message). completed = execs + violations, because a violating execution is aborted by the assertion and filed under blocked"
+  },
+  {
+   "key": "stepdowns",
+   "counts": "events",
+   "meaning": "times DCN1 gave up being primary (at most once per execution); stepdowns = completed means DCN1 was fully isolated in every execution"
+  },
+  {
+   "key": "promotions",
+   "counts": "events",
+   "meaning": "times DCN2 took over (at most once per execution), by the shortcut or after an answered takeover question"
+  },
+  {
+   "key": "shortcut",
+   "counts": "events",
+   "meaning": "promotions made by the shortcut (both counts over the limit in the same round, variant nrp only)"
+  },
+  {
+   "key": "takeover_pings",
+   "counts": "events",
+   "meaning": "questions the backup sent to the landmark because both of its counts were over the limit"
+  },
+  {
+   "key": "backup_replies",
+   "counts": "events",
+   "meaning": "landmark answers the backup read; 0 in a leasing cell means the lease was never consulted"
+  },
+  {
+   "key": "lease_resets",
+   "counts": "events",
+   "meaning": "landmark answers that said a primary question came just before, which puts the backup's lease count back to zero (variant leasing)"
+  },
+  {
+   "key": "lease_chances",
+   "counts": "executions",
+   "meaning": "completed executions in which the backup read at least 3 landmark answers, the fewest after which the lease can grant the role; lease_chances below completed means the hold is vacuous for the lease there"
+  },
+  {
+   "key": "nrp_changes",
+   "counts": "events",
+   "meaning": "times the primary moved to the second landmark B1 (at most once per execution)"
+  },
+  {
+   "key": "sw_drops",
+   "counts": "events",
+   "meaning": "messages the switch thread dropped because of a failure, a cut or the attack (not the losses of the lossy sends)"
+  }
+ ],
+ "violation_counter": "violations",
+ "param_columns": [
+  {
+   "key": "variant",
+   "header": "Variant",
+   "meaning": "which controller code runs (--variant): nrp = NRPFD.rebeca, the backup has the shortcut (takes over at once when both networks go silent in the same round) and no lease; noopt = the shortcut removed, no lease; leasing = LeasingNRPFD.rebeca, no shortcut and the lease memory at the landmark",
+   "size": false
+  },
+  {
+   "key": "fault",
+   "header": "Fault",
+   "meaning": "what breaks at the instants tA and tB (--fault): none; switch = DCN1's switch on that network dies and drops everything, the landmark included; link = DCN1's cable on that network is cut, DCN1's traffic is dropped but the switch and the landmark stay alive for DCN2",
+   "size": false
+  },
+  {
+   "key": "attack",
+   "header": "Attack window",
+   "meaning": "[0,-) = every heartbeat on both networks is dropped at the switch from tick 0 to the end of the run (--attack-from-ratio 0, no --attack-until-ratio); - = no attack (the binary prints [-,-))",
+   "size": false
+  },
+  {
+   "key": "hb_on_change",
+   "header": "Heartbeat on landmark change",
+   "meaning": "--hb-on-nrp-change: off = the primary sends no heartbeat in the round in which it moves to the second landmark (NRPFD.rebeca); on = it does",
+   "size": false
+  },
+  {
+   "key": "R",
+   "header": "Rounds R",
+   "meaning": "ticks each controller handles (--rounds); the run ends at R*H (plus the phase offset)",
+   "size": true
+  },
+  {
+   "key": "max",
+   "header": "Patience limit max",
+   "meaning": "the backup starts to worry when a network's count of rounds without news goes above this (--max-missed, default 2)",
+   "size": false
+  },
+  {
+   "key": "U",
+   "header": "U (ticks)",
+   "meaning": "upper bound of one network hop (--u); every ratio flag is multiplied by U and rounded",
+   "size": false
+  },
+  {
+   "key": "L",
+   "header": "L (ticks)",
+   "meaning": "lower bound of one network hop, round(--l-ratio * U), default L = U",
+   "size": false
+  },
+  {
+   "key": "sd",
+   "header": "sd (ticks)",
+   "meaning": "storage lifetime: how long a message may wait at its receiver before it is handled, round(--sd-ratio * U), default 0; always 0 at the monitor",
+   "size": false
+  },
+  {
+   "key": "H",
+   "header": "H (ticks)",
+   "meaning": "round length (heartbeat period), round(--h-ratio * U), default 20U",
+   "size": false
+  },
+  {
+   "key": "P",
+   "header": "P (ticks)",
+   "meaning": "answer wait (ping timeout), round(--pt-ratio * U), default 10U",
+   "size": false
+  },
+  {
+   "key": "phase",
+   "header": "Phase (ticks)",
+   "meaning": "round(--phase-ratio * U): positive = DCN2 (the backup) starts its round timer that many ticks after DCN1; negative = DCN1 (the primary) starts that many ticks after DCN2; 0 = both tick together",
+   "size": false
+  },
+  {
+   "key": "tA",
+   "header": "tA (ticks)",
+   "meaning": "instant at which network A fails (DCN1's switch A1, or DCN1's cable to it): round(--fail-a-ratio * U), default H + P; - when fault is none",
+   "size": false
+  },
+  {
+   "key": "tB",
+   "header": "tB (ticks)",
+   "meaning": "instant at which network B fails: tA + sep; - when fault is none",
+   "size": false
+  },
+  {
+   "key": "sep",
+   "header": "sep = tB - tA (ticks)",
+   "meaning": "round(--sep-ratio * U), default 0 (both networks fail together); negative = network B fails first. Derived: the binary prints tA and tB",
+   "size": false
+  }
+ ],
+ "boundary_law": "Four rules, all from the header of the example (measured there on 2026-09-16, before every send became lossy; none is a published bound). (1) Case 7 with the backup's timer offset (regimes C1, C2, C3): a dual primary is reachable iff phase <= P or phase >= P + 4L, for 0 <= phase < H; v9 checks 9 points: L = U = 1: 10 violation, 11 and 13 safe, 14 violation; U = 2, L = 1: 20 violation, 21 and 23 safe, 24 violation; L = 0: 11 violation. (2) Two switch failures sep ticks apart, MARS node only (regimes E1, E2), J = U - L: over all failure instants a dual primary is reachable iff -(H + J) <= sep <= 2H + J without a heartbeat in the landmark-change round, and iff -(H + J) <= sep <= P + J with it; v9 checks 6 points at J = 0, each at the failure instant that witnesses the end: 40 violation, 41 safe, -20 violation, -21 safe; 10 violation, 11 safe. The violating set is not monotone in sep at a fixed tA and is not comparable with GulFest Eq. 5 / Eq. 6. (3) The lease is not enough (regimes F1, F2): with delta = -phase the lag of DCN1's timers, a dual primary is reachable iff 0 <= delta <= 3U - L; 9 points at L = U = 1 (phase +1 safe, 0, -1, -2 violation, -3 safe), from v9 where the run has finished and from v8 for the rest (state of 2026-10-11). (4) Case 8 with the lease (regime B): the lease holds because a primary question reaches the landmark before the backup's question of the same round whenever U < 3L; no cell crosses this bound. Every tested point agrees with its rule; the rules are not checked beyond these points in this campaign.",
+ "regimes": [
+  {
+   "id": "A-safe",
+   "name": "Self test: nothing fails and nobody attacks",
+   "params": "variant nrp, fault none, no attack; U=1, L=1, sd=0, H=20, P=10, max=2, phase=0; R = 4 to 11",
+   "rule": "No timing boundary is crossed: this is the self test of the harness (source header, 'Self test'). Variant nrp = the controller of NRPFD.rebeca, whose backup has the shortcut. Fault none = no switch dies and no cable is cut. With the clock every 'I am alive' note is sent at k*H + P and reaches the backup 4 hops (4 ticks) later, inside its own round of H = 20 ticks, so the backup's two counts never pass the patience limit and the backup never has to decide (the binary prints its vacuity warning: expected). A dual primary reported here would mean the harness loses messages. Without the clock a timer is only one more message: three backup ticks can pass before a heartbeat is delivered (source header, paragraph on the baseline with no failure), and the primary's answer wait can end before the landmark's answer is read (the v9 baseline rows count landmark changes and step-downs although nothing fails).",
+   "expect_timed": "0 violations and exactly 1 complete execution at every R; every other execution is blocked",
+   "expect_baseline": "spurious violations: 34,707 (R=4), 253,953 (R=5), 1,559,235 (R=6), 8,872,170 (R=7) violating executions under keep-going; without keep-going (R=8, 10) the run stops at the first one in 0.02 s (exit 101)"
+  },
+  {
+   "id": "B-ctrl",
+   "name": "Case 8 (attacker only), leasing variant, run too short for the lease to grant: R = 3 or 4",
+   "params": "variant leasing, fault none, attack [0,-); U=1, L=1, sd=0, H=20, P=10, max=2, phase=0; R in {3, 4}",
+   "rule": "Control, lease-vacuous. Variant leasing = the controller of LeasingNRPFD.rebeca (no shortcut; the backup takes over only after the landmark answered three of its questions in a row with no question of the primary in between). Fault none + attack [0,-) = nothing breaks, but every 'I am alive' note is dropped at the switch from tick 0 on; the landmark stays reachable and the primary is healthy. The lease needs 3 landmark answers to the backup (LEASE_MIN_ANSWERS = 3, source line 528) and the backup asks for the first time at its third tick, so only R - 2 takeover questions fit in the run: 1 at R = 3, 2 at R = 4. No execution, with or without the clock, can promote the backup (lease_chances = 0, the binary warns). These cells measure cost only.",
+   "expect_timed": "0 violations, 1 complete execution, lease_chances = 0",
+   "expect_baseline": "0 violations as well: 320,909 complete executions at R = 3, 22,274,505 at R = 4"
+  },
+  {
+   "id": "B-safe",
+   "name": "Case 8 (attacker only), leasing variant: the published Leasing NRP FD scenario, R = 5 and more",
+   "params": "variant leasing, fault none, attack [0,-); U=1, L=1, sd=0, H=20, P=10, max=2, phase=0; R = 5 to 7",
+   "rule": "MARS 2024 Table 1 case 8 with the leasing fix (the model of MARS Appendix C). Same variant, fault and attack as B-ctrl; from R = 5 three takeover questions fit in the run, so the lease could grant the role (lease_chances = completed, the hold is not vacuous). With the clock the primary's question reaches the landmark after 1 hop (at most U) and the backup's question of the same round after 3 hops (at least 3L); U < 3L, so a primary question precedes every backup question, every answer to the backup resets the lease (lease_resets = backup_replies) and the backup never takes over. Without the clock nothing orders the two questions at the landmark, so three answers in a row with no primary question in between are possible.",
+   "expect_timed": "0 violations, 1 complete execution, lease_chances = 1",
+   "expect_baseline": "spurious violations; these cells run without keep-going, so the baseline stops at the first one (exit 101) after about 2 s (R = 5) and 7 s (R = 6)"
+  },
+  {
+   "id": "C1-safe",
+   "name": "Case 7 (both switches of DCN1 die together), backup's round timer offset inside the safe window, L = U = 1",
+   "params": "variant nrp, fault switch, tA = tB = H + P = 30, no attack; U=1, L=1, sd=0, H=20, P=10, max=2; P < phase < P + 4L: phase 11 (R = 4 to 8) and 13 (R = 4)",
+   "rule": "MARS 2024 Table 1 case 7 with the backup's timer shifted. Fault switch = the two switches DCN1 is plugged into (A1, which is the landmark, and B1) die at tA and tB and from then on drop everything, the backup's questions to the landmark included. Phase = DCN2 (the backup) starts its round timer that many ticks after DCN1. Source header: a dual primary is reachable iff phase <= P or phase >= P + 4L (0 <= phase < H). Here P + 1 = 11 <= phase <= P + 4L - 1 = 13: the backup's shortcut fires only after DCN1 has stepped down (promotions = stepdowns = completed = 2).",
+   "expect_timed": "0 violations, 2 complete executions",
+   "expect_baseline": "spurious violations: 1,322,526 violating executions under keep-going at phase 11, R = 4 (v8; the v9 run has no row yet); without keep-going the run stops at the first one in under 0.01 s (exit 101)"
+  },
+  {
+   "id": "C1-edge",
+   "name": "Case 7, backup's round timer offset exactly on an end of the safe window, L = U = 1",
+   "params": "as C1-safe, R = 4, with phase = P = 10 (lower end) or phase = P + 4L = 14 (upper end)",
+   "rule": "Both ends of the window belong to the violating side (the rule is phase <= P or phase >= P + 4L). At phase = P the dual window [3H + phase, 3H + P] is the single instant 70 (a same-instant tie); at phase = P + 4L the heartbeat of round 0 can reach DCN2 exactly at its first tick, so DCN2 counts one round early.",
+   "expect_timed": "a violation: the tool puts both ends on the violating side (run without keep-going: exit 101 after about 2 s, with a certified witness timeline)",
+   "expect_baseline": "a violation (exit 101 at the first one, under 0.01 s)"
+  },
+  {
+   "id": "C2-safe",
+   "name": "Case 7, backup's round timer offset inside the safe window, jitter of one tick (U = 2, L = 1)",
+   "params": "variant nrp, fault switch, tA = tB = H + P = 60, no attack; U=2, L=1, sd=0, H=40, P=20, max=2, R=4; P < phase < P + 4L: phase 21 and 23 (--phase-ratio 10.5 and 11.5)",
+   "rule": "Same scenario and same rule as C1 with every ratio flag doubled by U = 2 and a transit that may take 1 or 2 ticks per hop: the safe window is P + 1 = 21 <= phase <= P + 4L - 1 = 23.",
+   "expect_timed": "0 violations, 2 complete executions",
+   "expect_baseline": "spurious violations (exit 101 at the first one, under 0.01 s)"
+  },
+  {
+   "id": "C2-edge",
+   "name": "Case 7, backup's round timer offset exactly on an end of the safe window, U = 2, L = 1",
+   "params": "as C2-safe with phase = P = 20 (--phase-ratio 10) or phase = P + 4L = 24 (--phase-ratio 12)",
+   "rule": "Both ends belong to the violating side, as in C1-edge.",
+   "expect_timed": "a violation: the tool puts both ends on the violating side (exit 101 after about 2 s)",
+   "expect_baseline": "a violation (exit 101 at the first one, under 0.01 s)"
+  },
+  {
+   "id": "C3-viol",
+   "name": "Case 7 with a transit that may take no time (U = 1, L = 0): the safe window is empty",
+   "params": "variant nrp, fault switch, tA = tB = 30, no attack; U=1, L=0, sd=0, H=20, P=10, max=2, R=4; phase 11",
+   "rule": "Same rule: phase <= P or phase >= P + 4L. With L = 0 the upper end P + 4L = 10 meets the lower end, so every phase is violating; phase 11, safe at L = 1, is one tick inside the violating side here (the cell name says 'edge moves with L').",
+   "expect_timed": "a violation (run without keep-going: exit 101 after about 2 s)",
+   "expect_baseline": "a violation (exit 101 at the first one, under 0.01 s)"
+  },
+  {
+   "id": "D-safe",
+   "name": "Case 7 with the shortcut removed (variant noopt): the MARS Table 1 row",
+   "params": "variant noopt, fault switch, tA = tB = H + P = 30, no attack; U=1, L=1, sd=0, H=20, P=10, max=2, phase=0, R=4",
+   "rule": "No timing boundary in the cells that were run. Variant noopt = the nrp controller without the shortcut and without the lease (MARS 4.1, first step): the backup must ask the landmark before it takes over. Fault switch kills the landmark's switch, so with the clock no takeover question is ever answered (takeover_pings = 2, backup_replies = 0, promotions = 0) and DCN1 steps down in every execution (stepdowns = completed). Without the clock three backup ticks can pass before a heartbeat is delivered and a failure notice is one more message without an instant (source header: baseline noopt FIREs with the default switch failure at R = 4).",
+   "expect_timed": "0 violations, 2 complete executions",
+   "expect_baseline": "spurious violations; run without keep-going: stops at the first one (exit 101) after about 18 s"
+  },
+  {
+   "id": "E1-safe",
+   "name": "Two switch failures some time apart, one tick outside the vulnerable window (no heartbeat in the landmark-change round)",
+   "params": "variant nrp, fault switch, hb_on_change off, no attack; U=1, L=1 (J = U - L = 0), sd=0, H=20, P=10, max=2, phase=0; (tA, sep) = (11, 41) at R = 5 and (31, -21) at R = 4",
+   "rule": "Network A's switch dies at tA and network B's at tB = tA + sep (sep < 0: B first). hb_on_change off = in the round in which the primary moves to the second landmark it sends no 'I am alive' note (NRPFD.rebeca). Source header, for the MARS node only: over all failure instants a dual primary is reachable iff -(H + J) <= sep <= 2H + J, here -20 <= sep <= 40. These cells sit one tick outside an end, at the failure instant tA that witnesses that end. Not comparable with GulFest Eq. 5 / Eq. 6 (that node also resets the count when it hears of a new landmark).",
+   "expect_timed": "0 violations, 2 complete executions, stepdowns = completed",
+   "expect_baseline": "spurious violations (exit 101 at the first one, under 0.01 s)"
+  },
+  {
+   "id": "E1-edge",
+   "name": "Two switch failures some time apart, exactly on an end of the vulnerable window (no heartbeat in the landmark-change round)",
+   "params": "as E1-safe with (tA, sep) = (11, 40) at R = 5 (upper end 2H + J) and (31, -20) at R = 4 (lower end -(H + J))",
+   "rule": "Both ends belong to the violating side (the rule is -(H + J) <= sep <= 2H + J). Each end is reached at one failure instant only (sep 40 at tA = 11, sep -20 at tA = 31, source header).",
+   "expect_timed": "a violation: the tool puts both ends on the violating side (run without keep-going: exit 101 after about 86 s at (11, 40) and 20 s at (31, -20))",
+   "expect_baseline": "a violation (exit 101 at the first one, under 0.01 s)"
+  },
+  {
+   "id": "E2-safe",
+   "name": "Two switch failures some time apart, one tick outside the vulnerable window (heartbeat also sent in the landmark-change round)",
+   "params": "variant nrp, fault switch, hb_on_change on, no attack; U=1, L=1 (J = 0), sd=0, H=20, P=10, max=2, phase=0, R=4; (tA, sep) = (1, 11)",
+   "rule": "hb_on_change on = the primary sends its 'I am alive' notes also in the round in which it moves to the second landmark (the change GulFest describes for its modified implementation, applied here to the MARS node). Source header: dual primary reachable iff -(H + J) <= sep <= P + J, here -20 <= sep <= 10; the cell is one tick above the upper end. Only the upper end is probed in this campaign.",
+   "expect_timed": "0 violations, 2 complete executions, stepdowns = completed",
+   "expect_baseline": "spurious violations (exit 101 at the first one, under 0.01 s)"
+  },
+  {
+   "id": "E2-edge",
+   "name": "Two switch failures some time apart, exactly on the upper end of the vulnerable window (heartbeat also sent in the landmark-change round)",
+   "params": "as E2-safe with (tA, sep) = (1, 10): sep = P + J",
+   "rule": "The end belongs to the violating side (sep <= P + J); it is reached at tA = 1 only (source header).",
+   "expect_timed": "a violation: the tool puts the end on the violating side (run without keep-going: exit 101 after about 0.4 s)",
+   "expect_baseline": "a violation (exit 101 at the first one, under 0.01 s)"
+  },
+  {
+   "id": "F1-safe",
+   "name": "The lease is not enough: DCN1's two uplinks cut while the heartbeats are wiped out; timers one tick outside the vulnerable window (patience limit 2)",
+   "params": "variant leasing, fault link, tA = tB = 50, attack [0,-); U=1, L=1, sd=0, H=20, P=10, max=2, R=5; phase +1 (delta = -1) and phase -3 (delta = 3)",
+   "rule": "New scenario of this example (not in the papers, not cross-checked in Afra). Fault link = at tA and tB the two cables of DCN1 are cut: DCN1's traffic is dropped, but the switches and the landmark stay alive and keep answering the backup. Attack [0,-) wipes out every heartbeat from tick 0. Phase < 0 = DCN1 starts its round timer |phase| ticks after DCN2; delta = -phase is how far DCN1's timers lag the backup's. The lease grants the role after two rounds without a primary question, which is exactly the primary's own give-up time. Source header: dual primary iff 0 <= delta <= 3U - L, here 0 <= delta <= 2 (phase 0, -1, -2). At phase +1 the backup promotes one tick after the step-down; at phase -3 one more primary question reaches the landmark and resets the lease.",
+   "expect_timed": "0 violations, 2 complete executions, stepdowns = lease_chances = completed (not vacuous)",
+   "expect_baseline": "spurious violations (exit 101 at the first one, about 0.3 s)"
+  },
+  {
+   "id": "F1-edge",
+   "name": "The lease is not enough: timers exactly on an end of the vulnerable window (patience limit 2)",
+   "params": "as F1-safe with phase 0 (delta = 0) or phase -2 (delta = 3U - L = 2)",
+   "rule": "Both ends belong to the violating side (0 <= delta <= 3U - L). At delta = 0 the backup promotes at 90, the very instant DCN1 steps down (a same-instant tie, explored in both orders).",
+   "expect_timed": "a violation: the tool puts both ends on the violating side (run without keep-going: exit 101 after about 27 min at phase 0; phase -2 took 87 min in v8)",
+   "expect_baseline": "a violation (exit 101 at the first one, about 0.3 s)"
+  },
+  {
+   "id": "F2-safe",
+   "name": "The lease is not enough, same scenario one round earlier (patience limit 1); timers one tick outside the vulnerable window",
+   "params": "variant leasing, fault link, tA = tB = 30, attack [0,-); U=1, L=1, sd=0, H=20, P=10, max=1, R=4; phase +1 and phase -3",
+   "rule": "The F1 scenario translated by one round: with max = 1 the backup worries one round earlier, so the cut is at 30 instead of 50 and R = 4 instead of 5 (the dual instant moves from 90 to 70). These cells are not in the source header: they were derived by hand for the v8 plan, and the measured verdicts follow the same rule 0 <= delta <= 3U - L = 2.",
+   "expect_timed": "0 violations, 2 complete executions (v8; the v9 runs have no row yet)",
+   "expect_baseline": "spurious violations (exit 101 at the first one, about 0.3 s)"
+  },
+  {
+   "id": "F2-edge",
+   "name": "The lease is not enough, one round earlier (patience limit 1); timers exactly on an end of the vulnerable window",
+   "params": "as F2-safe with phase 0 (delta = 0) or phase -2 (delta = 3U - L = 2)",
+   "rule": "Both ends belong to the violating side, as in F1-edge.",
+   "expect_timed": "a violation: the tool puts both ends on the violating side (run without keep-going: exit 101 after about 11 min at phase 0 and 20 min at phase -2)",
+   "expect_baseline": "a violation (exit 101 at the first one, about 0.3 s)"
+  },
+  {
+   "id": "F2-viol",
+   "name": "The lease is not enough, one round earlier (patience limit 1); timers inside the vulnerable window",
+   "params": "as F2-safe with phase -1 (delta = 1)",
+   "rule": "0 < delta < 3U - L: strictly inside the window, both controllers are in charge for a strict interval, not only at one instant.",
+   "expect_timed": "a violation (run without keep-going: exit 101 after about 11 min)",
+   "expect_baseline": "a violation (exit 101 at the first one, about 0.3 s)"
+  }
+ ],
+ "glossary": [
+  {
+   "term": "DCN1, DCN2",
+   "meaning": "the two controllers (distributed controller nodes). DCN1 starts as the primary (in charge), DCN2 as the backup"
+  },
+  {
+   "term": "dual primary",
+   "meaning": "both controllers in charge at the same instant: the violation this example looks for"
+  },
+  {
+   "term": "landmark (NRP)",
+   "meaning": "the network reference point: the switch the primary uses as a landmark, A1 at the start, B1 after a change. Only a controller that still reaches the landmark may be in charge"
+  },
+  {
+   "term": "networks A and B, switches",
+   "meaning": "two separate networks join the controllers, each a chain of three switches (A1, A2, A3 and B1, B2, B3). DCN1 is plugged into A1 and B1, DCN2 into A3 and B3. One thread (SW) plays A1 and B1; the other switches are folded into transit"
+  },
+  {
+   "term": "hop",
+   "meaning": "one switch-to-switch or node-to-switch step, between L and U ticks. DCN1 to its switch is 1 hop, the switch to DCN2 is 3 hops, a heartbeat travels 4 hops"
+  },
+  {
+   "term": "heartbeat",
+   "meaning": "the 'I am alive' note the primary sends to the backup on each network every round, at the end of its answer wait and only if the landmark answered"
+  },
+  {
+   "term": "ping, takeover ping",
+   "meaning": "the 'are you there?' question a controller sends to the landmark. A takeover ping is the backup's question sent because both networks have gone silent"
+  },
+  {
+   "term": "H, round",
+   "meaning": "the heartbeat period: both controllers wake up once per round"
+  },
+  {
+   "term": "P, answer wait",
+   "meaning": "the ping timeout: how long a controller waits for the landmark's answer"
+  },
+  {
+   "term": "patience limit (max)",
+   "meaning": "the backup keeps one count of rounds without news per network and starts to worry when a count goes above max (default 2: on the third silent round)"
+  },
+  {
+   "term": "shortcut",
+   "meaning": "variant nrp only: when both counts go over the limit in the same round the backup takes over at once, without asking the landmark"
+  },
+  {
+   "term": "lease",
+   "meaning": "variant leasing only: with every answer the landmark says whether the question before came from the primary; the backup takes over only after three answers in a row with no primary question in between"
+  },
+  {
+   "term": "lease-vacuous",
+   "meaning": "a hold in which the lease could never have granted the role (fewer than 3 landmark answers to the backup: lease_chances below completed), so it is no evidence for the lease"
+  },
+  {
+   "term": "step-down",
+   "meaning": "DCN1 gives up being primary after neither landmark answered; it never returns in this model"
+  },
+  {
+   "term": "promotion",
+   "meaning": "DCN2 takes over as primary"
+  },
+  {
+   "term": "case 7, case 8",
+   "meaning": "rows of MARS 2024 Table 1. Case 7: both switches of DCN1 fail at the same instant H + P. Case 8: something wipes out the heartbeats while the landmark stays reachable (here an attack window at the switch)"
+  },
+  {
+   "term": "phase, delta",
+   "meaning": "the offset between the two round timers (see the Phase column); delta = -phase is how many ticks DCN1's timers lag DCN2's"
+  },
+  {
+   "term": "J",
+   "meaning": "jitter of one hop, U - L"
+  },
+  {
+   "term": "promote rule",
+   "meaning": "--promote-rule: takeover (default, ETFA Algorithm 3: only an answered takeover ping promotes) or any (the MARS node verbatim: any answered ping promotes). Every v9 cell runs takeover"
+  },
+  {
+   "term": "harness guard",
+   "meaning": "every message carries a sequence number and every receive assumes the expected one; every channel ends with a Done message. An execution in which a message was lost, or skipped by a later one, blocks instead of acting on a silence that never happened. It is scaffolding, not protocol"
+  },
+  {
+   "term": "blocked (in this example)",
+   "meaning": "executions stopped by the harness guard (a lost or skipped message) plus, under keep-going, the violating executions. Almost every explored execution is blocked: a completed execution is one without any loss"
+  },
+  {
+   "term": "vacuity warning",
+   "meaning": "a line the binary prints after a hold in which the scenario did not bite (the backup never had to decide, DCN1 was not fully isolated, or the lease was never consulted)"
+  },
+  {
+   "term": "certified witness timeline",
+   "meaning": "the timed side prints, with a violation, an assignment of instants to every event of the violating execution"
+  },
+  {
+   "term": "MARS node, GulFest node",
+   "meaning": "the controller code of the MARS 2024 Rebeca files (modelled here) and of the Gul Agha Festschrift timing-analysis file (not modelled: it also resets a count when it hears of a new landmark)"
+  },
+  {
+   "term": "FIRE, hold",
+   "meaning": "the example's own words: FIRE = the run found a dual primary (exit code 101 when it runs without keep-going); hold = the run explored everything and found none (exit code 0)"
+  },
+  {
+   "term": "kg, no-kg (in cell names)",
+   "meaning": "kg = run with --keep-going: the search goes on after a violation, explores everything and counts every violating execution (exhaustive). no-kg = run without it: the run stops at the first certified violation with exit code 101 (first-violation); a side that meets no violation still explores everything"
+  },
+  {
+   "term": "M, cut (in cell names)",
+   "meaning": "M = the patience limit max; cut = the instant tA = tB at which both cables of DCN1 are cut"
+  },
+  {
+   "term": "header cell, translated (in cell names)",
+   "meaning": "header cell = the lease-not-enough scenario exactly as written in the header of the source file (max 2, cut at 50, R = 5); translated = the same scenario moved one round earlier by max 1 (cut at 30, R = 4)"
+  },
+  {
+   "term": "hb-off, hb-on (in cell names)",
+   "meaning": "the value of the column 'Heartbeat on landmark change'"
+  },
+  {
+   "term": "published leasing (in cell names)",
+   "meaning": "the Leasing NRP FD model printed in MARS 2024 Appendix C: attacker only, no switch failure"
+  },
+  {
+   "term": "baseline = ceiling, edge rung (in cell names)",
+   "meaning": "baseline = ceiling: the baseline side of this cell is the largest exhaustive baseline run of its ladder (more than a day). Edge rung: one rung above the top of a ladder, added on 2026-10-11, timed side only"
+  }
+ ],
+ "cells": [
+  {
+   "cell": "selftest nrp no-failure R=4 kg",
+   "regime": "A-safe",
+   "label": "Self test (no failure, no attack): exhaustive (keep-going)",
+   "params": {
+    "variant": "nrp",
+    "fault": "none",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": "-",
+    "tB": "-",
+    "sep": "-"
+   },
+   "kind": "exhaustive",
+   "expect_timed": "0 violations (exit 0); execs=1 blocked=51,806 (explored 51,807)",
+   "expect_baseline": "34,707 violating executions (exit 0); execs=31,436 blocked=2,519,989 (explored 2,551,425; the violating executions are counted inside blocked)",
+   "note": "Timed: the backup never has to decide (vacuity warning of the binary, expected for the self test)."
+  },
+  {
+   "cell": "selftest nrp no-failure R=5 kg",
+   "regime": "A-safe",
+   "label": "Self test (no failure, no attack): exhaustive (keep-going)",
+   "params": {
+    "variant": "nrp",
+    "fault": "none",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 5,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": "-",
+    "tB": "-",
+    "sep": "-"
+   },
+   "kind": "exhaustive",
+   "expect_timed": "0 violations (exit 0); execs=1 blocked=146,066 (explored 146,067)",
+   "expect_baseline": "253,953 violating executions (exit 0); execs=197,064 blocked=19,457,264 (explored 19,654,328; the violating executions are counted inside blocked)",
+   "note": "Timed: the backup never has to decide (vacuity warning of the binary, expected for the self test)."
+  },
+  {
+   "cell": "case8 published leasing (attacker only) R=3 kg",
+   "regime": "B-ctrl",
+   "label": "Case 8: heartbeats wiped out, landmark reachable, leasing controller: lease cannot grant yet, exhaustive (keep-going)",
+   "params": {
+    "variant": "leasing",
+    "fault": "none",
+    "attack": "[0,-)",
+    "hb_on_change": "off",
+    "R": 3,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": "-",
+    "tB": "-",
+    "sep": "-"
+   },
+   "kind": "exhaustive",
+   "expect_timed": "0 violations (exit 0); execs=1 blocked=90,564 (explored 90,565)",
+   "expect_baseline": "0 violations (exit 0); execs=320,909 blocked=9,461,836 (explored 9,782,745)",
+   "note": "Lease-vacuous in both modes (lease_chances = 0, warning of the binary): a cost comparison only."
+  },
+  {
+   "cell": "case7 switch failure, DCN2 phase 11, R=4 kg",
+   "regime": "C1-safe",
+   "label": "Case 7: both switches of DCN1 die together, backup timer offset: inside the safe window, exhaustive (keep-going)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 11,
+    "tA": 30,
+    "tB": 30,
+    "sep": 0
+   },
+   "kind": "exhaustive",
+   "expect_timed": "0 violations (exit 0); execs=2 blocked=595,483 (explored 595,485)",
+   "expect_baseline": "1,322,526 violating executions (exit 0); execs=1,480,338 blocked=89,897,939 (explored 91,378,277; the violating executions are counted inside blocked) (v8 result; the v9 run has no row yet)",
+   "note": "No v9 row yet for the baseline side: the expectation quotes v8."
+  },
+  {
+   "cell": "case8 published leasing R=5 (first non-vacuous size) no-kg",
+   "regime": "B-safe",
+   "label": "Case 8: heartbeats wiped out, landmark reachable, leasing controller: no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "leasing",
+    "fault": "none",
+    "attack": "[0,-)",
+    "hb_on_change": "off",
+    "R": 5,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": "-",
+    "tB": "-",
+    "sep": "-"
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=1 blocked=4,354,107 (explored 4,354,108) (v8 result; the v9 run has no row yet)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after 1.78 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration. No v9 row yet for the timed side: the expectation quotes v8."
+  },
+  {
+   "cell": "case8 published leasing R=6 no-kg (biggest timed)",
+   "regime": "B-safe",
+   "label": "Case 8: heartbeats wiped out, landmark reachable, leasing controller: no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "leasing",
+    "fault": "none",
+    "attack": "[0,-)",
+    "hb_on_change": "off",
+    "R": 6,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": "-",
+    "tB": "-",
+    "sep": "-"
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=1 blocked=23,150,560 (explored 23,150,561)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after 7.47 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration."
+  },
+  {
+   "cell": "lease-not-enough boundary (header cell M=2 cut 50 R=5) phase 1",
+   "regime": "F1-safe",
+   "label": "Lease not enough: uplinks cut and heartbeats wiped out (header cell): one tick before the window (backup timer late), no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "leasing",
+    "fault": "link",
+    "attack": "[0,-)",
+    "hb_on_change": "off",
+    "R": 5,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 1,
+    "tA": 50,
+    "tB": 50,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=2 blocked=43,367,381 (explored 43,367,383)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after 0.30 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration."
+  },
+  {
+   "cell": "lease-not-enough boundary (header cell M=2 cut 50 R=5) phase -3",
+   "regime": "F1-safe",
+   "label": "Lease not enough: uplinks cut and heartbeats wiped out (header cell): one tick past the window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "leasing",
+    "fault": "link",
+    "attack": "[0,-)",
+    "hb_on_change": "off",
+    "R": 5,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": -3,
+    "tA": 50,
+    "tB": 50,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=2 blocked=43,909,669 (explored 43,909,671) (v8 result; the v9 run has no row yet)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after 0.30 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration. No v9 row yet for the timed side: the expectation quotes v8."
+  },
+  {
+   "cell": "lease-not-enough boundary (translated M=1 cut 30 R=4) phase 1",
+   "regime": "F2-safe",
+   "label": "Lease not enough, translated one round earlier (patience limit 1): one tick before the window (backup timer late), no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "leasing",
+    "fault": "link",
+    "attack": "[0,-)",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 1,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 1,
+    "tA": 30,
+    "tB": 30,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=2 blocked=21,902,010 (explored 21,902,012) (v8 result; the v9 run has no row yet)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after 0.29 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration. No v9 row yet for the timed side: the expectation quotes v8. Cell derived by hand for the v8 plan, not listed in the source header."
+  },
+  {
+   "cell": "lease-not-enough boundary (translated M=1 cut 30 R=4) phase -3",
+   "regime": "F2-safe",
+   "label": "Lease not enough, translated one round earlier (patience limit 1): one tick past the window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "leasing",
+    "fault": "link",
+    "attack": "[0,-)",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 1,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": -3,
+    "tA": 30,
+    "tB": 30,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=2 blocked=22,195,738 (explored 22,195,740) (v8 result; the v9 run has no row yet)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after 0.29 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration. No v9 row yet for the timed side: the expectation quotes v8. Cell derived by hand for the v8 plan, not listed in the source header."
+  },
+  {
+   "cell": "selftest R=10 no-kg",
+   "regime": "A-safe",
+   "label": "Self test (no failure, no attack): no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "none",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 10,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": "-",
+    "tB": "-",
+    "sep": "-"
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=1 blocked=11,947,026 (explored 11,947,027)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after 0.02 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration. Timed: the backup never has to decide (vacuity warning of the binary, expected for the self test)."
+  },
+  {
+   "cell": "case7 phase 11 R=8 no-kg",
+   "regime": "C1-safe",
+   "label": "Case 7: both switches of DCN1 die together, backup timer offset: inside the safe window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 8,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 11,
+    "tA": 30,
+    "tB": 30,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=2 blocked=43,313,067 (explored 43,313,069)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration."
+  },
+  {
+   "cell": "selftest R=6 kg",
+   "regime": "A-safe",
+   "label": "Self test (no failure, no attack): exhaustive (keep-going)",
+   "params": {
+    "variant": "nrp",
+    "fault": "none",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 6,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": "-",
+    "tB": "-",
+    "sep": "-"
+   },
+   "kind": "exhaustive",
+   "expect_timed": "0 violations (exit 0); execs=1 blocked=379,722 (explored 379,723)",
+   "expect_baseline": "1,559,235 violating executions (exit 0); execs=1,153,984 blocked=129,161,446 (explored 130,315,430; the violating executions are counted inside blocked)",
+   "note": "Timed: the backup never has to decide (vacuity warning of the binary, expected for the self test)."
+  },
+  {
+   "cell": "lease-not-enough boundary (header cell M=2 cut 50 R=5) phase 0",
+   "regime": "F1-edge",
+   "label": "Lease not enough: uplinks cut and heartbeats wiped out (header cell): lower end of the window (same-instant tie), no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "leasing",
+    "fault": "link",
+    "attack": "[0,-)",
+    "hb_on_change": "off",
+    "R": 5,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": 50,
+    "tB": 50,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "a violation: the run stops at the first one (exit 101) after 27 min, no execs or blocked totals",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after 0.30 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side also stops at its first violation (with a certified witness timeline): its count is not exhaustive either."
+  },
+  {
+   "cell": "lease-not-enough boundary (header cell M=2 cut 50 R=5) phase -2",
+   "regime": "F1-edge",
+   "label": "Lease not enough: uplinks cut and heartbeats wiped out (header cell): upper end of the window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "leasing",
+    "fault": "link",
+    "attack": "[0,-)",
+    "hb_on_change": "off",
+    "R": 5,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": -2,
+    "tA": 50,
+    "tB": 50,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "a violation: the run stops at the first one (exit 101) after 87 min, no execs or blocked totals (v8 result; the v9 run has no row yet)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after 0.30 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side also stops at its first violation (with a certified witness timeline): its count is not exhaustive either. No v9 row yet for the timed side: the expectation quotes v8."
+  },
+  {
+   "cell": "lease-not-enough boundary (translated M=1 cut 30 R=4) phase -2",
+   "regime": "F2-edge",
+   "label": "Lease not enough, translated one round earlier (patience limit 1): upper end of the window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "leasing",
+    "fault": "link",
+    "attack": "[0,-)",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 1,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": -2,
+    "tA": 30,
+    "tB": 30,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "a violation: the run stops at the first one (exit 101) after 20 min, no execs or blocked totals",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after 0.29 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side also stops at its first violation (with a certified witness timeline): its count is not exhaustive either. Cell derived by hand for the v8 plan, not listed in the source header."
+  },
+  {
+   "cell": "MARS Table 1 case 7 noopt R=4",
+   "regime": "D-safe",
+   "label": "MARS Table 1 case 7, shortcut removed: no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "noopt",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": 30,
+    "tB": 30,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=2 blocked=3,109,609 (explored 3,109,611)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after 18 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration."
+  },
+  {
+   "cell": "selftest R=8 no-kg",
+   "regime": "A-safe",
+   "label": "Self test (no failure, no attack): no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "none",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 8,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": "-",
+    "tB": "-",
+    "sep": "-"
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=1 blocked=2,243,358 (explored 2,243,359)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after 0.02 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration. Timed: the backup never has to decide (vacuity warning of the binary, expected for the self test)."
+  },
+  {
+   "cell": "case7 phase 11 R=6 no-kg",
+   "regime": "C1-safe",
+   "label": "Case 7: both switches of DCN1 die together, backup timer offset: inside the safe window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 6,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 11,
+    "tA": 30,
+    "tB": 30,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=2 blocked=4,420,411 (explored 4,420,413) (v8 result; the v9 run has no row yet)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration. No v9 row yet for the timed side: the expectation quotes v8."
+  },
+  {
+   "cell": "lease-not-enough boundary (translated M=1 cut 30 R=4) phase -1",
+   "regime": "F2-viol",
+   "label": "Lease not enough, translated one round earlier (patience limit 1): inside the window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "leasing",
+    "fault": "link",
+    "attack": "[0,-)",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 1,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": -1,
+    "tA": 30,
+    "tB": 30,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "a violation: the run stops at the first one (exit 101) after 11 min, no execs or blocked totals",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after 0.29 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side also stops at its first violation (with a certified witness timeline): its count is not exhaustive either. Cell derived by hand for the v8 plan, not listed in the source header."
+  },
+  {
+   "cell": "lease-not-enough boundary (translated M=1 cut 30 R=4) phase 0",
+   "regime": "F2-edge",
+   "label": "Lease not enough, translated one round earlier (patience limit 1): lower end of the window (same-instant tie), no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "leasing",
+    "fault": "link",
+    "attack": "[0,-)",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 1,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": 30,
+    "tB": 30,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "a violation: the run stops at the first one (exit 101) after 11 min, no execs or blocked totals",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after 0.28 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side also stops at its first violation (with a certified witness timeline): its count is not exhaustive either. Cell derived by hand for the v8 plan, not listed in the source header."
+  },
+  {
+   "cell": "case7 phase 11 R=5 no-kg",
+   "regime": "C1-safe",
+   "label": "Case 7: both switches of DCN1 die together, backup timer offset: inside the safe window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 5,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 11,
+    "tA": 30,
+    "tB": 30,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=2 blocked=1,604,057 (explored 1,604,059)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration."
+  },
+  {
+   "cell": "selftest R=7 kg (baseline = ceiling)",
+   "regime": "A-safe",
+   "label": "Self test (no failure, no attack): exhaustive (keep-going)",
+   "params": {
+    "variant": "nrp",
+    "fault": "none",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 7,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": "-",
+    "tB": "-",
+    "sep": "-"
+   },
+   "kind": "exhaustive",
+   "expect_timed": "0 violations (exit 0); execs=1 blocked=938,938 (explored 938,939)",
+   "expect_baseline": "8,872,170 violating executions (exit 0); execs=6,354,804 blocked=791,307,864 (explored 797,662,668; the violating executions are counted inside blocked)",
+   "note": "Timed: the backup never has to decide (vacuity warning of the binary, expected for the self test). Baseline: the largest exhaustive baseline run of the self test (about 28 h)."
+  },
+  {
+   "cell": "separation hb-off tA=11 sep=41 R=5",
+   "regime": "E1-safe",
+   "label": "Two switch failures apart, no heartbeat in the landmark-change round: one tick above the window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 5,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": 11,
+    "tB": 52,
+    "sep": 41
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=2 blocked=1,200,256 (explored 1,200,258)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration."
+  },
+  {
+   "cell": "case7 boundary U=1 L=1 phase 13 R=4",
+   "regime": "C1-safe",
+   "label": "Case 7: both switches of DCN1 die together, backup timer offset: inside the safe window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 13,
+    "tA": 30,
+    "tB": 30,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=2 blocked=595,483 (explored 595,485)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration."
+  },
+  {
+   "cell": "case8 R=4 kg (baseline = ceiling)",
+   "regime": "B-ctrl",
+   "label": "Case 8: heartbeats wiped out, landmark reachable, leasing controller: lease cannot grant yet, exhaustive (keep-going)",
+   "params": {
+    "variant": "leasing",
+    "fault": "none",
+    "attack": "[0,-)",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": "-",
+    "tB": "-",
+    "sep": "-"
+   },
+   "kind": "exhaustive",
+   "expect_timed": "0 violations (exit 0); execs=1 blocked=714,689 (explored 714,690)",
+   "expect_baseline": "0 violations (exit 0); execs=22,274,505 blocked=942,855,442 (explored 965,129,947)",
+   "note": "Lease-vacuous in both modes (lease_chances = 0, warning of the binary): a cost comparison only. Baseline: about 27 h for 0 violations."
+  },
+  {
+   "cell": "separation hb-on tA=1 sep=11 R=4",
+   "regime": "E2-safe",
+   "label": "Two switch failures apart, heartbeat in the landmark-change round: one tick above the window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "on",
+    "R": 4,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": 1,
+    "tB": 12,
+    "sep": 11
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=2 blocked=775,409 (explored 775,411)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration."
+  },
+  {
+   "cell": "case7 boundary U=2 L=1 phase 10.5 R=4",
+   "regime": "C2-safe",
+   "label": "Case 7 with one tick of jitter, backup timer offset: inside the safe window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 2,
+    "U": 2,
+    "L": 1,
+    "sd": 0,
+    "H": 40,
+    "P": 20,
+    "phase": 21,
+    "tA": 60,
+    "tB": 60,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=2 blocked=595,483 (explored 595,485)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration. The cell name gives the phase as a ratio over U; the phase column is in ticks (ratio times U = 2)."
+  },
+  {
+   "cell": "case7 boundary U=2 L=1 phase 11.5 R=4",
+   "regime": "C2-safe",
+   "label": "Case 7 with one tick of jitter, backup timer offset: inside the safe window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 2,
+    "U": 2,
+    "L": 1,
+    "sd": 0,
+    "H": 40,
+    "P": 20,
+    "phase": 23,
+    "tA": 60,
+    "tB": 60,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=2 blocked=595,483 (explored 595,485)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration. The cell name gives the phase as a ratio over U; the phase column is in ticks (ratio times U = 2)."
+  },
+  {
+   "cell": "separation hb-off tA=31 sep=-21 R=4",
+   "regime": "E1-safe",
+   "label": "Two switch failures apart, no heartbeat in the landmark-change round: one tick below the window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": 31,
+    "tB": 10,
+    "sep": -21
+   },
+   "kind": "first-violation",
+   "expect_timed": "0 violations (exit 0, complete exploration without keep-going); execs=2 blocked=364,126 (explored 364,128)",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side met no violation, so its run is a complete exploration."
+  },
+  {
+   "cell": "separation hb-off tA=11 sep=40 R=5",
+   "regime": "E1-edge",
+   "label": "Two switch failures apart, no heartbeat in the landmark-change round: upper end of the vulnerable window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 5,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": 11,
+    "tB": 51,
+    "sep": 40
+   },
+   "kind": "first-violation",
+   "expect_timed": "a violation: the run stops at the first one (exit 101) after 86 s, no execs or blocked totals",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side also stops at its first violation (with a certified witness timeline): its count is not exhaustive either."
+  },
+  {
+   "cell": "separation hb-off tA=31 sep=-20 R=4",
+   "regime": "E1-edge",
+   "label": "Two switch failures apart, no heartbeat in the landmark-change round: lower end of the vulnerable window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": 31,
+    "tB": 11,
+    "sep": -20
+   },
+   "kind": "first-violation",
+   "expect_timed": "a violation: the run stops at the first one (exit 101) after 20 s, no execs or blocked totals",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side also stops at its first violation (with a certified witness timeline): its count is not exhaustive either."
+  },
+  {
+   "cell": "case7 boundary U=1 L=1 phase 10 R=4",
+   "regime": "C1-edge",
+   "label": "Case 7: both switches of DCN1 die together, backup timer offset: lower end of the safe window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 10,
+    "tA": 30,
+    "tB": 30,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "a violation: the run stops at the first one (exit 101) after 1.93 s, no execs or blocked totals",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side also stops at its first violation (with a certified witness timeline): its count is not exhaustive either."
+  },
+  {
+   "cell": "case7 boundary U=1 L=1 phase 14 R=4",
+   "regime": "C1-edge",
+   "label": "Case 7: both switches of DCN1 die together, backup timer offset: upper end of the safe window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 14,
+    "tA": 30,
+    "tB": 30,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "a violation: the run stops at the first one (exit 101) after 2.28 s, no execs or blocked totals",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side also stops at its first violation (with a certified witness timeline): its count is not exhaustive either."
+  },
+  {
+   "cell": "case7 boundary U=2 L=1 phase 10 R=4",
+   "regime": "C2-edge",
+   "label": "Case 7 with one tick of jitter, backup timer offset: lower end of the safe window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 2,
+    "U": 2,
+    "L": 1,
+    "sd": 0,
+    "H": 40,
+    "P": 20,
+    "phase": 20,
+    "tA": 60,
+    "tB": 60,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "a violation: the run stops at the first one (exit 101) after 1.90 s, no execs or blocked totals",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side also stops at its first violation (with a certified witness timeline): its count is not exhaustive either. The cell name gives the phase as a ratio over U; the phase column is in ticks (ratio times U = 2)."
+  },
+  {
+   "cell": "case7 boundary U=2 L=1 phase 12 R=4",
+   "regime": "C2-edge",
+   "label": "Case 7 with one tick of jitter, backup timer offset: upper end of the safe window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 2,
+    "U": 2,
+    "L": 1,
+    "sd": 0,
+    "H": 40,
+    "P": 20,
+    "phase": 24,
+    "tA": 60,
+    "tB": 60,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "a violation: the run stops at the first one (exit 101) after 2.25 s, no execs or blocked totals",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side also stops at its first violation (with a certified witness timeline): its count is not exhaustive either. The cell name gives the phase as a ratio over U; the phase column is in ticks (ratio times U = 2)."
+  },
+  {
+   "cell": "case7 boundary U=1 L=0 phase 11 R=4 (edge moves with L)",
+   "regime": "C3-viol",
+   "label": "Case 7 with zero-time transit allowed, backup timer offset: the safe window is empty, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 4,
+    "max": 2,
+    "U": 1,
+    "L": 0,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 11,
+    "tA": 30,
+    "tB": 30,
+    "sep": 0
+   },
+   "kind": "first-violation",
+   "expect_timed": "a violation: the run stops at the first one (exit 101) after 2.20 s, no execs or blocked totals",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side also stops at its first violation (with a certified witness timeline): its count is not exhaustive either."
+  },
+  {
+   "cell": "separation hb-on tA=1 sep=10 R=4",
+   "regime": "E2-edge",
+   "label": "Two switch failures apart, heartbeat in the landmark-change round: upper end of the vulnerable window, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "switch",
+    "attack": "-",
+    "hb_on_change": "on",
+    "R": 4,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": 1,
+    "tB": 11,
+    "sep": 10
+   },
+   "kind": "first-violation",
+   "expect_timed": "a violation: the run stops at the first one (exit 101) after 0.43 s, no execs or blocked totals",
+   "expect_baseline": "a violation: the run stops at the first one (exit 101) after under 0.01 s, no execs or blocked totals",
+   "note": "No keep-going: the baseline stops at its first violation (exit 101), so its explored count is not an exhaustive count (v9 records no execs or blocked totals for it, at most a last progress line) and no explored or wall ratio can be read from this row. The timed side also stops at its first violation (with a certified witness timeline): its count is not exhaustive either."
+  },
+  {
+   "cell": "selftest R=11 no-kg (edge rung, timed only)",
+   "regime": "A-safe",
+   "label": "Self test (no failure, no attack): edge rung, timed only, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "nrp",
+    "fault": "none",
+    "attack": "-",
+    "hb_on_change": "off",
+    "R": 11,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": "-",
+    "tB": "-",
+    "sep": "-"
+   },
+   "kind": "first-violation",
+   "expect_timed": "not measured yet (by the regime: 0 violations)",
+   "expect_baseline": "not run: this rung has a timed job only",
+   "note": "Added on 2026-10-11, one rung above the top of the ladder; timed job only, no result yet. Timed: the backup never has to decide (vacuity warning of the binary, expected for the self test)."
+  },
+  {
+   "cell": "case8 published leasing R=7 no-kg (edge rung, timed only)",
+   "regime": "B-safe",
+   "label": "Case 8: heartbeats wiped out, landmark reachable, leasing controller: edge rung, timed only, no keep-going (a side stops at its first violation)",
+   "params": {
+    "variant": "leasing",
+    "fault": "none",
+    "attack": "[0,-)",
+    "hb_on_change": "off",
+    "R": 7,
+    "max": 2,
+    "U": 1,
+    "L": 1,
+    "sd": 0,
+    "H": 20,
+    "P": 10,
+    "phase": 0,
+    "tA": "-",
+    "tB": "-",
+    "sep": "-"
+   },
+   "kind": "first-violation",
+   "expect_timed": "not measured yet (by the regime: 0 violations)",
+   "expect_baseline": "not run: this rung has a timed job only",
+   "note": "Added on 2026-10-11, one rung above the top of the ladder; timed job only, no result yet."
+  }
+ ],
+ "notes": [
+  "Regime letters name the scenario together with its network timing: A self test, B case 8 with the lease, C1 / C2 / C3 case 7 with the backup's timer offset at (U, L) = (1, 1) / (2, 1) / (1, 0), D case 7 without the shortcut, E1 / E2 failure separation without / with the heartbeat in the landmark-change round, F1 / F2 the lease-not-enough scenario at patience limit 2 / 1. v8 had no regime letters for this example.",
+  "Every -edge regime of this example lies on the violating side: all rules are non-strict (<=), so the end value itself violates and the first safe value is one tick further.",
+  "Case 8 is split by R: at R = 3 and 4 the lease cannot grant the role in any execution, the baseline reports 0 violations too (B-ctrl); from R = 5 it reports spurious ones (B-safe). The split also splits the R ladder of case 8 in the workbook.",
+  "A run that stops at the first violation (exit 101) prints no summary line and no execs or blocked totals; results_v9.csv has viol_execs = 0 and empty counts on every such row (129 rows on 2026-10-11), and its summary column holds lines of the witness instead. The verdict of those rows is the exit code, never viol_execs. Their resolved parameters were taken from the source (params_from, lines 1497-1589) and checked with the local binary on the same flags at --rounds 1 (resolution only, no count taken).",
+  "Resolved parameters: 20 cells are cross-checked against a v9 summary line and 5 against a v8 summary line (64 v9 rows carry one, none differs). The other 15 cells have no summary line anywhere, because both sides stop at their first violation (the 13 cells of the regimes C1-edge, C2-edge, C3-viol, E1-edge, E2-edge, F1-edge, F2-edge and F2-viol) or because the cell has not run yet (the 2 edge rungs); for these the values come from the source alone and from the local binary at --rounds 1.",
+  "The source header is older than the code in its counts and costs; the source of build_config and the v9 results win. Its execution counts (for example self test R = 4: 1 execution, 164 blocked) and its sentence 'cells take 0.1 s to 35 s' were measured on 2026-09-16, before build_config got with_all_sends_lossy (commit 60f262f, 2026-09-30); v9 has 1 execution and 51,806 blocked for that cell, and timed cells take 24 s to 15 h. The verdicts the header lists agree with every v8 and v9 result of the cells that were run.",
+  "Memory notes against the source: the 2026-09-16 note states the lease-not-enough window 0 <= delta <= 3U - L, the same as the source header; the v8 note 'NRP runs are dominated by blocked endings (harness guard + universal loss)' is confirmed by v9 (timed sides: 1 or 2 complete executions against 51,806 to 43 million blocked). The note on counter-based verdicts does not bite here: timeline_impossible = 0 on every finished row and every timed keep-going row has 0 violations, so no counter counts an impossible ending.",
+  "With every send lossy, a lost message always blocks the execution at the harness guard (sequence gap or a Done that never comes), so the completed executions are exactly the loss-free ones: the model checked is the reliable-channel model of the Rebeca files, and message loss adds cost only. Whether to keep the guard under universal loss is an open modelling decision.",
+  "Under keep-going a violating execution is counted in blocked, not in execs (the assertion aborts it): explored = execs + blocked already contains the violating executions.",
+  "The four timed hold cells of case 7 at R = 4 (phase 11 and 13 at U = 1, phase 21 and 23 at U = 2, L = 1) report identical counts (2 complete, 595,483 blocked).",
+  "The two sides of every cell run the same arguments except --mode. All cells run 1 core, no parallel option, --promote-rule takeover, sd = 0, no --attack-until-ratio.",
+  "Cells named 'MARS Table 1' and 'published leasing' run the ETFA backup (--promote-rule takeover, the default), not the MARS node verbatim (--promote-rule any). The source header reports a 252-cell grid run under both rules on 2026-09-18: 236 cells agree and the 16 that differ are all link cuts one round apart (--fault link --sep-ratio 20) in the nrp and noopt variants; no v9 cell is of that kind (the link-cut cells of v9 are leasing with sep = 0).",
+  "State of results_v9.csv on 2026-10-11 11:09: 193 rows of this example, all finished and all with the planned exit code. No v9 row yet for 9 sides: baseline of 'case7 switch failure, DCN2 phase 11, R=4 kg' (nrp-008, v8 result quoted); timed of 'case8 published leasing R=5 (first non-vacuous size) no-kg' (nrp-009, v8 result quoted); timed of 'lease-not-enough boundary (header cell M=2 cut 50 R=5) phase -3' (nrp-015, v8 result quoted); timed of 'lease-not-enough boundary (translated M=1 cut 30 R=4) phase 1' (nrp-017, v8 result quoted); timed of 'lease-not-enough boundary (translated M=1 cut 30 R=4) phase -3' (nrp-019, v8 result quoted); timed of 'lease-not-enough boundary (header cell M=2 cut 50 R=5) phase -2' (nrp-029, v8 result quoted); timed of 'case7 phase 11 R=6 no-kg' (nrp-037, v8 result quoted); timed of 'selftest R=11 no-kg (edge rung, timed only)' (nrp-e01, never measured); timed of 'case8 published leasing R=7 no-kg (edge rung, timed only)' (nrp-e02, never measured)."
+ ]
+}

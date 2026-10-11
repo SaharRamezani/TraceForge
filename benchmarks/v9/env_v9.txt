@@ -1,0 +1,36 @@
+v9 campaign, launched 2026-10-09 15:14:12 on brain05
+source: git archive of commit b67ccf71328b191009a9af8f174caaaec94dd006 (branch nissih), plus Cargo.lock md5 a31eb836e4baff3bdb194c2eca9f2942
+build : cd /local/sramezani/v9/src && CARGO_TARGET_DIR=/local/sramezani/v9/target cargo build --release --examples --locked
+cargo 1.97.1 (c980f4866 2026-06-30)
+rustc 1.97.1 (8bab26f4f 2026-07-14)
+Linux 6.18.38.1.amd64-smp #1 SMP PREEMPT_DYNAMIC Mon Jul 13 08:24:46 CEST 2026 x86_64
+PRETTY_NAME="Debian GNU/Linux 13 (trixie)"
+Model name:                              AMD EPYC 7702 64-Core Processor
+Thread(s) per core:                      2
+Core(s) per socket:                      64
+Socket(s):                               2
+CPU max MHz:                             3353.5149
+NUMA node(s):                            8
+governor schedutil, boost 1, smt on
+Mem:            2015          16        1988           0          18        1999
+load at launch: 4.63 4.79 2.36 1/2517 1121527
+scheduler: sweep_v9.py md5 52188b863599677509e00340f2f665d3; plan_v9.csv md5 a8a206531891640cd5229f0384672fbe, 1749 jobs
+measurement cores 2-63,66-127 (one job thread per physical core, hyper-thread siblings 130-191,194-255 unused); service cores 0,1,64,65
+job environment: TF_PRINT_STATS=1 TF_PROGRESS=100000 RAYON_NUM_THREADS=<cores of the job>; taskset -c <cores>; /usr/bin/time around the binary
+binaries:
+1a3477714ed2bc93faa0aef8ef38a549  /local/sramezani/v9/target/release/examples/alternating_bit_timed
+0e1ab2293d18135c7621d8272d04bea9  /local/sramezani/v9/target/release/examples/brp_timed
+04253c1f9f25a36d2d8fe0d0da589a31  /local/sramezani/v9/target/release/examples/chandra_toueg_timed
+e3d8c469bddfaeeab819464827882bda  /local/sramezani/v9/target/release/examples/lease_timed
+d3375cc668e193719796186b68cccaea  /local/sramezani/v9/target/release/examples/nisshi_txn_timed
+c90389ae287a4e6755fbf6f8009da2be  /local/sramezani/v9/target/release/examples/nrp_failure_detector_timed
+e3cd15045d64874c3ae004db3174334f  /local/sramezani/v9/target/release/examples/par_timed
+237706786196c48e373102f1c38359ca  /local/sramezani/v9/target/release/examples/retail_saga_timed
+5d1a201e9a710d76cd8d74a0614e9f46  /local/sramezani/v9/target/release/examples/sensor_network_timed
+abf03c242150cf633934cacbd34c8d68  /local/sramezani/v9/target/release/examples/spanning_tree_timed
+b661596924b6ee16d5fbd395d546eb17  /local/sramezani/v9/target/release/examples/swim_timed
+fd15b2e5601429dc5e2e6fbb6e405d71  /local/sramezani/v9/target/release/examples/three_pc_timed
+73a2b97a1ae5a2905c429fece59ba022  /local/sramezani/v9/target/release/examples/two_pc_timed
+85335bf1cc57ac4d31dfb0fdf168a96c  /local/sramezani/v9/target/release/examples/yarn_scheduler_timed
+8f11404ff51a66587924b9d466e30a0f  /local/sramezani/v9/target/release/examples/raft_leader_election
+b65e4de3e55e89247670a30d325a3a76  /local/sramezani/v9/target/release/examples/comm_closed_leader_election

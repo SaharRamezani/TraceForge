@@ -1,0 +1,218 @@
+{
+  "family": "legacy",
+  "example": "three_pc_timed",
+  "title": "Three-phase commit (central site, rounds, atomicity monitor)",
+  "source": "Skeen's central-site three-phase commit: the file header (lines 1-6) cites \"Skeen Figure 7 (central-site 3PC), without the Section 5 termination protocol\". That points to Skeen, \"Nonblocking Commit Protocols\" (SIGMOD 1981); the file does not name the paper, so check the reference before citing it. The rounds, the round filter on every receive, the atomicity monitor and all timing values (U, W = 3 U, sd = U / 4, L = 0) are our own modelling; no timing rule is taken from a paper.",
+  "property": "Atomicity, checked by a monitor thread that observes votes and decisions (lines 149-267): (A1) the coordinator sends Commit for a round only if every participant sent Yes for that round and none sent No; (A2) no round has both a Commit and an Abort.",
+  "citable": "with caveats",
+  "citable_note": "The reason of the 2026-09-18 audit (the only assertion was true by construction) no longer holds: since commit aedbdb9 (2026-09-22) the property is an atomicity monitor that fails under --inject quorum in both modes, and both modes run the same program. Usable as an efficiency result only: no timing boundary (0 violations on both sides), a participant that times out stops instead of deciding, the termination protocol is not modelled, crashes are off in every cell and the timing values are ours.",
+  "config_timed": "build_config, lines 481-487: apply_parallel(Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX)), then with_timed(L, U, sd) at line 485. U = --u; L = round(--l-ratio * U) and sd = round(--sd-ratio * U) (lines 653-654); W = U * --w-ratio (line 282). The cells pass --u 20 --w-ratio 3 --sd-ratio 0.25 and no --l-ratio: L = 0, U = 20, sd = 5, W = 60. No --parallel flag, so the run is sequential (apply_parallel, lines 472-479). Tool defaults for the rest (lib.rs, ConfigBuilder::new, lines 347-383): consistency model FIFO, scheduling policy LTR, keep-going off. Every send may be dropped, without a budget. Flags not passed, so off: --crashes, --inject; --property is full (the monitor observes Yes, No, Commit and Abort). Every protocol receive has wait W (lines 316, 356, 394, 421, 440); only the coordinator's Init receive is blocking (line 297).",
+  "config_baseline": "The same builder without with_timed (line 484): with_all_sends_lossy (every send may be dropped, without a budget), FIFO, LTR, keep-going off, sequential, the same flags. W is the wait of every protocol receive in both modes; without the clock its value has no effect (a receive with a finite wait can always time out) and L, U and sd are unused, although the summary line prints them.",
+  "program_differs_between_modes": "no: the mode is used only in build_config (lines 481-487) and to label the output. coordinator (lines 295-379) and participant (lines 385-460) do not take it, the monitor is started in both modes (line 500) and the file has no sleep. The timed-only stagger (delta) of the results before 2026-07-05 is gone.",
+  "failing_tasks": "The monitor thread: when a clause is broken its notify returns an error, the generated monitor loop prints the message followed by \"is the error returned\" and calls traceforge::assert(false) (traceforge-macros/src/lib.rs, lines 209-212). The binary has no keep-going option, so the run stops at the first certified violation with exit code 101. Under keep-going the line would carry the custom name traceforge_runtime::monitor (lib.rs, line 991), not task-N, so the campaign's task pattern would not count it. The main thread also has a std assert on the monitor's verdict (line 512), which the monitor's own assert comes before. Coordinator and participants assert nothing. No violation occurred in any run.",
+  "counters": [
+    {
+      "key": "commit",
+      "counts": "events",
+      "meaning": "COMMITS (line 373): incremented each time the coordinator code reaches the Commit decision of a round, in every program run of the search, so it is summed over complete and blocked executions and over rounds. It is not a number of complete executions and not a violation count; above 0 means that clause A1 of the monitor was exercised."
+    },
+    {
+      "key": "abort",
+      "counts": "events",
+      "meaning": "ABORTS (line 338): the coordinator aborted a round because a vote was missing or was No. Same counting as commit. A round given up for missing acknowledgements (line 368) is neither a commit nor an abort."
+    },
+    {
+      "key": "pcommit",
+      "counts": "events",
+      "meaning": "PARTICIPANT_COMMITS (line 455): a participant received Commit in phase 3; up to N per committed round and per explored execution. Not a violation count."
+    }
+  ],
+  "violation_counter": null,
+  "param_columns": [
+    {
+      "key": "N",
+      "header": "Participants N",
+      "meaning": "number of participants (--participants); one coordinator in addition",
+      "size": true
+    },
+    {
+      "key": "R",
+      "header": "Rounds R",
+      "meaning": "commit rounds the same threads run one after the other (--rounds)",
+      "size": true
+    },
+    {
+      "key": "L",
+      "header": "L (ticks)",
+      "meaning": "transit lower bound of every message = round(--l-ratio * U); timed side only",
+      "size": false
+    },
+    {
+      "key": "U",
+      "header": "U (ticks)",
+      "meaning": "transit upper bound of every message (--u); timed side only",
+      "size": false
+    },
+    {
+      "key": "sd",
+      "header": "sd (ticks)",
+      "meaning": "storage delay = round(--sd-ratio * U): how long a message stays readable after it arrived; timed side only",
+      "size": false
+    },
+    {
+      "key": "W",
+      "header": "W (ticks)",
+      "meaning": "wait of every protocol receive = U * --w-ratio; a receive that times out makes a participant stop, or makes the coordinator count the vote or acknowledgement as missing",
+      "size": false
+    }
+  ],
+  "boundary_law": null,
+  "regimes": [
+    {
+      "id": "W3-ctrl",
+      "name": "timeout of three transit bounds, full jitter",
+      "params": "L=0, U=20, sd=5, W=60 (W/U = 3, sd/U = 0.25, L/U = 0)",
+      "rule": "No timing boundary: atomicity follows from the coordinator's unanimity rule in both phases and holds with and without the clock. Control for the verdict: the two sides must agree on 0 violations; what is compared is the number of explored executions and the wall time. The source requires W/U >= 2 (line 280).",
+      "expect_timed": "0 violations (exit code 0), fewer executions explored than the baseline",
+      "expect_baseline": "0 violations (exit code 0)"
+    }
+  ],
+  "glossary": [
+    {
+      "term": "Phase 1 (Prepare, Yes / No)",
+      "meaning": "the coordinator sends Prepare to every participant; each participant votes Yes or No (a nondeterministic choice, line 407). One No or one missing vote makes the coordinator send Abort."
+    },
+    {
+      "term": "Phase 2 (PreCommit, Ack)",
+      "meaning": "after N Yes votes the coordinator sends PreCommit and waits for an acknowledgement of every participant; if one is missing it gives the round up without a decision"
+    },
+    {
+      "term": "Phase 3 (Commit)",
+      "meaning": "after N acknowledgements the coordinator sends Commit to every participant"
+    },
+    {
+      "term": "Round",
+      "meaning": "one run of the three phases; the same threads run R rounds. Every message carries its round and a receive skips messages of another round (round filter)."
+    },
+    {
+      "term": "Stopped participant",
+      "meaning": "a participant whose receive times out sets dead = true and takes no further part (lines 402, 431, 457); it does not decide on its own. The termination protocol of the original is not modelled."
+    },
+    {
+      "term": "Atomicity monitor",
+      "meaning": "a thread of the tool that observes the Yes and No votes and the Commit and Abort messages without taking part in the protocol, and checks clauses A1 and A2; it runs in both modes"
+    },
+    {
+      "term": "A1",
+      "meaning": "Commit in a round only after a Yes of every participant in that round and no No"
+    },
+    {
+      "term": "A2",
+      "meaning": "no round has both a Commit and an Abort"
+    },
+    {
+      "term": "commit / abort / pcommit",
+      "meaning": "activity counters of the summary line (coordinator commits, coordinator aborts, participants that received Commit), summed over all explored executions; they are not violation counts"
+    },
+    {
+      "term": "--inject quorum",
+      "meaning": "a switch that replaces unanimity by a majority for votes and acknowledgements; not used in the campaign. With it the monitor reports a violation, which shows that the property can fail."
+    },
+    {
+      "term": "Blocked (in this example)",
+      "meaning": "always execs + 1: one blocked twin per complete execution in which the message that stops the monitor is lost, plus the one execution in which the coordinator never gets its start message. It does not mean that the protocol got stuck."
+    },
+    {
+      "term": "W/U, sd/U",
+      "meaning": "the flags give W and sd as multiples of U: W/U = 3 gives W = 60, sd/U = 0.25 gives sd = 5 at U = 20"
+    }
+  ],
+  "cells": [
+    {
+      "cell": "N=2 R=2 U=20 W/U=3 sd/U=0.25",
+      "regime": "W3-ctrl",
+      "label": "2 participants, 2 rounds",
+      "params": {
+        "N": 2,
+        "R": 2,
+        "L": 0,
+        "U": 20,
+        "sd": 5,
+        "W": 60
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=39702 blocked=39703 (explored 79405) (v9, three repetitions identical; same counts as v8)",
+      "expect_baseline": "0 violations (exit code 0); execs=2229108 blocked=2229109 (explored 4458217) (v9, three repetitions identical; same counts as v8)",
+      "note": "The baseline explores 56 times more executions. No violation exists, so both sides explored their whole space."
+    },
+    {
+      "cell": "N=4 R=1 U=20 W/U=3 sd/U=0.25 (biggest N)",
+      "regime": "W3-ctrl",
+      "label": "4 participants, 1 round (largest N)",
+      "params": {
+        "N": 4,
+        "R": 1,
+        "L": 0,
+        "U": 20,
+        "sd": 5,
+        "W": 60
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=2464368 blocked=2464369 (explored 4928737) (v9, three repetitions identical; same counts as v8)",
+      "expect_baseline": "0 violations (exit code 0); execs=16535648 blocked=16535649 (explored 33071297) (v8 and the rerun of 2026-10-08 on commit e96fe7a; no v9 result on 2026-10-11, two runs are planned)",
+      "note": "With the v8 baseline count the baseline explores 6.7 times more executions."
+    },
+    {
+      "cell": "N=3 R=1 U=20 W/U=3 sd/U=0.25",
+      "regime": "W3-ctrl",
+      "label": "3 participants, 1 round",
+      "params": {
+        "N": 3,
+        "R": 1,
+        "L": 0,
+        "U": 20,
+        "sd": 5,
+        "W": 60
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=23592 blocked=23593 (explored 47185) (v9, three repetitions identical; same counts as v8)",
+      "expect_baseline": "0 violations (exit code 0); execs=114082 blocked=114083 (explored 228165) (v9, three repetitions identical; same counts as v8)",
+      "note": "The baseline explores 4.8 times more executions, but the wall times are almost equal (timed 15.4 s, baseline 16.7 s)."
+    },
+    {
+      "cell": "N=2 R=3 U=20 W/U=3 sd/U=0.25 (biggest R)",
+      "regime": "W3-ctrl",
+      "label": "2 participants, 3 rounds (largest R)",
+      "params": {
+        "N": 2,
+        "R": 3,
+        "L": 0,
+        "U": 20,
+        "sd": 5,
+        "W": 60
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=2741658 blocked=2741659 (explored 5483317) (v8 and the rerun of 2026-10-08 on commit e96fe7a; no v9 result on 2026-10-11, two runs are planned)",
+      "expect_baseline": "not measured yet: in v8 the run did not finish (stopped after 1 d 18 h at 67.6 million explored, no violation up to there); the v9 run legacy-014-r1 started on 2026-10-09 and was still running on 2026-10-11. The plan expects it to be cut off at the deadline.",
+      "note": "The baseline side is a ceiling run: it shows that the baseline does not finish where the timed side took about one hour in v8 (3652 s)."
+    }
+  ],
+  "notes": [
+    "Audit of 2026-09-18 (memory notes benchmark_citability_audit and benchmark_survey) checked against the current source. Its claim: the file's only assert, assert(voted_yes) on the Commit branch, is dominated by `if !voted_yes { continue; }` and is true by construction. That assert is gone: the participant asserts nothing (lines 447-455 record the removal) and the property is the atomicity monitor of lines 149-267, added in commit aedbdb9 on 2026-09-22, four days after the audit. `if !voted_yes { continue; }` is now line 415.",
+    "The monitor can fail (checked on the local binary of 2026-09-30, whose example source is the campaign's): --participants 3 --rounds 1 --u 20 --w-ratio 3 --sd-ratio 0.25 --inject quorum stops with exit code 101 in both modes, message \"atomicity: Commit in round 0 backed by only 2 of 3 Yes votes for that round\"; the timed run prints a certified counterexample. The commit counter is above 0 in every finished run, so clause A1 is exercised in the cells themselves.",
+    "What remains of the audit's second point: every timeout of a participant is still `dead = true; continue` (lines 402, 431, 457), so no participant decides on its own, and the termination protocol is not modelled. The monitor's clauses are about the coordinator's decisions, not about decisions of the participants. The source comment at lines 143-148 says so itself: unanimity in both phases carries atomicity, the round filter only keeps rounds apart.",
+    "No mode-conditional code (memory note three_pc_delta_commit_feasibility: the stagger was removed on 2026-07-05): confirmed, the file has no sleep and neither protocol function takes the mode.",
+    "Ratio flags resolved and cross-checked: every finished v9 run prints L=0 U=20 W=60 (W/U=3) sd=5 in its summary line, on both sides and for N=2 R=2, N=3 R=1 and N=4 R=1; the v8 summary lines of N=2 R=3 (timed) and N=4 R=1 (baseline) print the same values. sd = round(0.25 * 20) = 5, W = 3 * 20 = 60, L = round(0 * 20) = 0.",
+    "blocked = execs + 1 on every finished side (v9 and v8, both modes). Reading of the source that accounts for it: all protocol receives have a finite wait, so no protocol thread can wait forever once the coordinator has started; the message that tells the monitor to stop (line 510) is a send like any other and can be dropped, which leaves the main thread waiting on the monitor (one blocked twin per complete execution); and when the Init message (line 507) is dropped the coordinator never starts (one more). So explored = 2 * execs + 1 here, and execs is the count that reflects the protocol.",
+    "Counters: commit, abort and pcommit are incremented by the program text, once per program run that reaches the line, so they are summed over complete and blocked executions (and over rounds); they can exceed execs (N=2 R=2 timed: abort=135024, execs=39702). If the reading of blocked = execs + 1 above is right, each value is twice the number over complete executions; every measured value is even, which fits, but this was not tested separately. Do not quote them as numbers of executions.",
+    "The timed counters are lower in v9 than in v8 at identical execs and blocked (N=2 R=2 timed: commit 16668 in v8, 15328 in v9; N=3 R=1 timed: 8712, then 7776). The v8 tool ran a prefix twice when it gave up a run at a send, so increments were counted twice (memory note v8_vs_unstaged_must_edits); the tool change of commit e96fe7a removed that. The baseline counters are unchanged. Use the v9 values.",
+    "The counters are not in the counters column of results_v9.csv: the plan's counters_spec has no pattern for commit, abort or pcommit, so that column is empty for this example. They are only in the summary column.",
+    "violation_counter is null: no summary counter counts violations. The violating-execution count 0 comes from the exit code.",
+    "kind: the binary has no keep-going option (ConfigBuilder default, lib.rs line 353), so every cell is first-violation by the rule of FORMAT.md; all finished runs exit with code 0, which means that no violation exists and the whole space was explored.",
+    "The monitor is part of the program in both modes, so the executions its observations add are in both counts. The memory note monitor_acceptor_stateless_trap measured about 11 times more executions with the full monitor than without one at N=3 R=1 (2026-09-21, older tool, mode not recorded); the campaign runs the full monitor only, so the cost of the monitor is not separated from the protocol in these numbers.",
+    "Stale text in the file header: lines 41-46 say with_timed(0, U, 0); the cells run with sd = 5 through --sd-ratio.",
+    "Wall time (medians of three v9 repetitions): at N=3 R=1 the timed side explores 4.8 times fewer executions but takes almost as long as the baseline (15.4 s against 16.7 s); at N=2 R=2 it is 22 times faster (27 s against 598 s).",
+    "No v9 result on 2026-10-11 for: N=4 R=1 baseline (legacy-010), N=2 R=3 timed (legacy-013) and N=2 R=3 baseline (legacy-014, running). Their entries use v8.",
+    "Regime: one timing setting in all four cells and no timing boundary, so there is one regime, named W3 after W/U = 3, with the suffix -ctrl (the two sides agree on 0 violations)."
+  ]
+}

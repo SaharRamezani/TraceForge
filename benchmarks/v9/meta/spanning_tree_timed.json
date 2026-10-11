@@ -1,0 +1,1137 @@
+{
+  "family": "stp",
+  "example": "spanning_tree_timed",
+  "title": "Perlman spanning tree: transient loop against the forward delay (triangle of three bridges)",
+  "source": "R. Perlman, \"An Algorithm for Distributed Computation of a Spanning Tree in an Extended LAN\", Ninth Data Communications Symposium, ACM SIGCOMM 1985, Computer Communication Review 15(4), pages 44 to 53. Timing rule of the paper (pp. 49 and 50, as quoted in the header comment of the example; the paper was not read again for this file): PRE_FORWARDING_DELAY >= PRE_BACKUP_DELAY + MaxPropTime, simplified to Bd = 2 * MAX_AGE and Fd = 3 * MAX_AGE. The triangle model, its two scenarios and the exact thresholds are an own model built from the paper.",
+  "property": "No transient forwarding loop: bridge C's end of cable B-C must not forward at an instant when the other five bridge-to-cable ends forward (link-up: when C reads A's notice that cable A-B has opened; lost-hellos: when C's own forward delay runs out while B still forwards onto B-C).",
+  "citable": "with caveats",
+  "citable_note": "The 2026-09-18 audit rated the example citable; what it checked still holds on the current source and on v9 (no mode-dependent protocol code, the property is falsifiable, no hold is vacuous). Caveats: it is a precision result only (the timed run explores fewer executions but is 2.2 to 6.9 times slower in wall time than the baseline in every measured pair); since 2026-09-30 every send is lossy without a budget, so the bound grows with the horizon R and the thresholds are those of this model, not numbers published by Perlman; the model omits triggered hellos, which the source header lists as a deviation that can only add loops; every violation at the FIRE edge is a tie.",
+  "config_timed": "build_config, source lines 973 to 983: Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX) (line 974), with_keep_going_after_error(true) when --keep-going is given (lines 975 to 977), then with_timed(L, U, sd).build() (line 981) with L = round(l-ratio * U), U = --u (1 in every cell), sd = round(sd-ratio * U). Consistency model: the default FIFO per channel (lib.rs line 355; with_cons_type is never called). Scheduling policy: the default LTR (lib.rs line 356). Every send may be dropped, no budget. The notice from A to C is sent with its own transit bounds [0, 0] (line 707); all other sends use [L, U]. Parallel option (apply_parallel, lines 964 to 971): --parallel none in every cell except the two R=16 edge cells (four jobs), which use --parallel shared = with_parallel(true), the shared worker pool; its worker count is num_cpus::get() (exec_pool.rs lines 379 to 385, no with_parallel_workers call), and the campaign pins the job to 8 cores with taskset and sets RAYON_NUM_THREADS=8 (sweep_v9.py lines 485 to 488).",
+  "config_baseline": "The same builder without with_timed (line 980): Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX), with_keep_going_after_error(true) under --keep-going, then build(). FIFO, LTR, every send lossy without a budget, same parallel option as the timed side of the cell. The timed receive and send calls run unchanged and their waits, sleeps and transit bounds are ignored, so the baseline result does not depend on U, L, sd or on any timer value.",
+  "program_differs_between_modes": "no",
+  "failing_tasks": "Only bridge C asserts: traceforge::assert(!bc.forwards()) at source lines 786 and 809 (link-up) and 950 (lost-hellos). C is the third spawned thread, so under keep-going every violating execution prints one line \"task-3\". A, B and the main thread make no assertion (their panic! calls guard states that cannot be reached). Without keep-going the first violation ends the process with exit 101.",
+  "counters": [
+    {
+      "key": "violations",
+      "counts": "executions",
+      "meaning": "loop_before_news + loop_in_pre_backup + loop_reopened. Each of the three is raised by C immediately before an assertion that fails on every path reaching it, once per execution, so it equals the number of violating executions (equal to viol_execs in every v9 keep-going run). The only counter the campaign extracts into the counters column."
+    },
+    {
+      "key": "loop_before_news",
+      "counts": "executions",
+      "meaning": "link-up: C read A's notice (A-B open) before B's hello, while its B-C end still forwarded, and B's hello was still readable afterwards (validation read). Summary line only."
+    },
+    {
+      "key": "loop_in_pre_backup",
+      "counts": "executions",
+      "meaning": "link-up: C read A's notice inside its switch-off delay (PRE_BACKUP), B-C still forwarding. Summary line only."
+    },
+    {
+      "key": "loop_reopened",
+      "counts": "executions",
+      "meaning": "lost-hellos: C's forward delay ran out with no newer hello and B's next hello was readable only at or after that deadline (validation read): C opens B-C. Summary line only."
+    },
+    {
+      "key": "news_heard",
+      "counts": "events",
+      "meaning": "link-up evidence: C read B's hello and entered PRE_BACKUP. Summed over all explored executions, complete and blocked; read as zero or nonzero."
+    },
+    {
+      "key": "settled_backup",
+      "counts": "events",
+      "meaning": "link-up evidence: C's switch-off delay ran out and A's notice was provably readable only at or after it (the safe ordering). Zero or nonzero."
+    },
+    {
+      "key": "refreshed",
+      "counts": "events",
+      "meaning": "lost-hellos evidence: C read B's next hello within MAX_AGE. Zero or nonzero."
+    },
+    {
+      "key": "aged_out",
+      "counts": "events",
+      "meaning": "lost-hellos evidence: C's MAX_AGE wait timed out; includes timeouts that the later validation read discards. Zero or nonzero."
+    },
+    {
+      "key": "reverted",
+      "counts": "events",
+      "meaning": "lost-hellos evidence: a hello from B arrived during C's forward delay and sent B-C back to BACKUP; a hold with reverted = 0 is vacuous."
+    },
+    {
+      "key": "lost",
+      "counts": "events",
+      "meaning": "loss decisions taken by the program for --losses K; 0 in every cell (K=0). Drops made by the checker are not counted here."
+    }
+  ],
+  "violation_counter": "violations",
+  "param_columns": [
+    {
+      "key": "scenario",
+      "header": "Scenario",
+      "size": false,
+      "meaning": "--scenario. link-up: cable A-B is plugged in at time 0 while the other two cables are settled (the race is the new cable opening after Fd against C closing its B-C end). lost-hellos: all three cables settled, C ages out B's information when B's hellos stay away (the race is C reopening B-C after MA + Fd of silence)."
+    },
+    {
+      "key": "R",
+      "header": "Rounds R",
+      "size": true,
+      "meaning": "--rounds: number of hellos the root A sends. Because every send may be lost, R also sets how many consecutive hellos can be missing (R-1 in link-up, R-2 in lost-hellos), so the bound grows by H per round."
+    },
+    {
+      "key": "K",
+      "header": "Loss flag K",
+      "size": false,
+      "meaning": "--losses: hellos the lossy hop's sender may drop by its own nondeterministic choice. 0 in every campaign cell: the losses come from the checker (every send lossy, no budget), not from this flag."
+    },
+    {
+      "key": "U",
+      "header": "U (ticks)",
+      "size": false,
+      "meaning": "--u: upper bound of the transit time of one hop, timed side only (the baseline ignores it)"
+    },
+    {
+      "key": "L",
+      "header": "L (ticks)",
+      "size": false,
+      "meaning": "round(--l-ratio * U): lower bound of the transit time of one hop, timed side only"
+    },
+    {
+      "key": "sd",
+      "header": "sd (ticks)",
+      "size": false,
+      "meaning": "round(--sd-ratio * U): storage delay, how long a message stays readable after it arrived, timed side only"
+    },
+    {
+      "key": "H",
+      "header": "HELLO_TIME H (ticks)",
+      "size": false,
+      "meaning": "round(--hello-ratio * U), default 2U: period of the root's hellos"
+    },
+    {
+      "key": "P",
+      "header": "Phase P (ticks)",
+      "size": false,
+      "meaning": "link-up only: time of the root's first hello on the new cable after link-up; default P = H (--phase-ratio not given in any cell). \"-\" in lost-hellos."
+    },
+    {
+      "key": "MA",
+      "header": "MAX_AGE MA (ticks)",
+      "size": false,
+      "meaning": "round(--max-age-ratio * U), default 6U in link-up and 3U in lost-hellos. lost-hellos: how long C trusts B's last hello. link-up: read by no thread, it only sets the default Bd = 2 * MA."
+    },
+    {
+      "key": "Bd",
+      "header": "PRE_BACKUP_DELAY Bd (ticks)",
+      "size": false,
+      "meaning": "link-up only: how long C keeps forwarding on B-C after B's hello told it to stop; default 2 * MA = 12. \"-\" in lost-hellos."
+    },
+    {
+      "key": "Fd",
+      "header": "Forward delay Fd (ticks)",
+      "size": false,
+      "moves_with_size": "R",
+      "meaning": "round(--forward-delay-ratio * U): PRE_FORWARDING_DELAY, the wait before a link starts forwarding. The swept timer; in every cell it is set from the bound of that R (Fd = bound + margin in link-up, Fd = bound + margin - MA in lost-hellos)."
+    },
+    {
+      "key": "bound",
+      "header": "Bound of the law (ticks)",
+      "size": false,
+      "moves_with_size": "R",
+      "meaning": "right-hand side of the boundary law for this cell, computed from the resolved parameters: link-up P + (R-1)H + Bd + 2U + 2sd (largest violating Fd); lost-hellos (R-1)H + 2(U-L) + sd (largest violating MA + Fd). Equal to the bound quoted in the cell name."
+    },
+    {
+      "key": "margin",
+      "header": "Margin (ticks)",
+      "size": false,
+      "meaning": "Fd - bound (link-up) or MA + Fd - bound (lost-hellos). 1 = first safe value (tight hold, hold edge); 0 = last violating value (FIRE edge, certified witness)."
+    },
+    {
+      "key": "keep_going",
+      "header": "Keep-going",
+      "size": false,
+      "meaning": "yes: --keep-going, the run explores everything and counts the violating executions (exit 0). no: the run stops at the first violation (exit 101)."
+    },
+    {
+      "key": "workers",
+      "header": "Pool workers",
+      "size": false,
+      "meaning": "cores the job is pinned to. 1 = sequential exploration (--parallel none). 8 = shared worker pool (--parallel shared) on 8 cores (\"shared8\" in the cell name); only the R=16 edge rungs."
+    }
+  ],
+  "boundary_law": "Timed mode reports a transient loop (FIRE) iff: link-up: Fd <= P + (R-1)*H + Bd + 2*U + 2*sd; lost-hellos: MA + Fd <= (R-1)*H + 2*(U-L) + sd. All times in ticks; the tie (equality) is a violation. Reading of the source that explains the coefficients (the coefficients themselves are measured). link-up: every send may be lost, so the first root hello that reaches B can be the last one, sent at P + (R-1)H; B may read it up to U + sd later and relays at once; C may read the relay up to U + sd later and then keeps forwarding for Bd; A-B opens at Fd and the zero-transit notice proves the overlap. L and MA do not appear (MA only through the default Bd = 2 MA). lost-hellos: C reads B's first relay no earlier than 2L after root hello 0; the R-2 root hellos in between may all be lost; the last root hello leaves at (R-1)H, B may read it up to U + sd later, its relay travels up to U; C's timeouts (MA, then Fd) stand only if that relay had not arrived before the deadline, so the hop into C adds no sd and sd counts once. Origin: the model's own law; the source header gives it for a loss budget K (link-up K*H, lost-hellos (K+1)*H and 2sd, verified 2026-09-16), and the campaign runs K=0 with every send lossy, which acts as K = R-1 (link-up) and K = R-2 (lost-hellos). Against Perlman (p. 49, Fd >= Bd + MaxPropTime with MaxPropTime = 2(U + sd) + lost hello periods): the link-up law adds the phase P and one tick for the tie; the lost-hellos gap counts one hello period more than the lost hellos. How well it is checked: all 29 campaign cells agree with the bound in their name. Measured timed verdicts on both sides of the bound (v9 unless marked): setting A: hold at bound + 1 for R = 10, 11, 12, 13 (v8), 14, 15, FIRE at the bound for R = 10, 12; setting B: hold at bound + 1 for R = 10, FIRE at the bound for R = 10; setting C: hold at bound + 1 for R = 10, 11, 12 (v8), 13, 14, FIRE at the bound for R = 10, 12 (v8); setting D: hold at bound + 1 for R = 10, 12, 13 (v8), 14, 15, FIRE at the bound for R = 10; setting E: hold at bound + 1 for R = 10, FIRE at the bound for R = 10. R=16 is not measured yet. The coefficients of U, L, sd, H, P, Bd and MA were also checked on 152 small local cells (older local binary, verdicts only). The law is fitted and tested, not proved.",
+  "regimes": [
+    {
+      "id": "A-safe",
+      "name": "link-up, loose transit, no storage delay: first safe forward delay",
+      "params": "scenario=link-up, U=1, L=0, sd=0, H=2, P=2, MA=6, Bd=12, K=0; Fd = bound + 1 = 2R + 15 (35 at R=10 up to 47 at R=16)",
+      "rule": "FIRE iff Fd <= P + (R-1)*H + Bd + 2*U + 2*sd; bound = 2 + 2(R-1) + 12 + 2 + 0 = 2R + 14; Fd = bound + 1, one tick on the safe side",
+      "expect_timed": "0 violations (exit 0); the hold is not vacuous: news_heard > 0 and settled_backup > 0",
+      "expect_baseline": "violations > 0, all spurious at this Fd: without a clock nothing orders A's notice (cable A-B opens) after the end of C's switch-off delay, so C may read it before B's hello or inside the delay whatever Fd is. The count is the same at every Fd, L and sd of the same scenario and R"
+    },
+    {
+      "id": "A-edge",
+      "name": "link-up, loose transit, no storage delay: last violating forward delay",
+      "params": "scenario=link-up, U=1, L=0, sd=0, H=2, P=2, MA=6, Bd=12, K=0; Fd = bound = 2R + 14 (34 at R=10, 38 at R=12)",
+      "rule": "FIRE iff Fd <= P + (R-1)*H + Bd + 2*U + 2*sd; Fd = bound exactly. The tool puts the boundary point on the violating side: C reads the notice exactly at the end of its switch-off delay (zero-length overlap, counted as a loop)",
+      "expect_timed": "violations > 0: 2 violating executions in every measured cell (loop_in_pre_backup=2, loop_before_news=0), exit 0 under keep-going; without keep-going exit 101 with a certified witness timeline",
+      "expect_baseline": "violations > 0, the same count as in the safe regime of this setting and R (under keep-going exit 0; without keep-going exit 101 at the first one): the baseline cannot tell the two sides of the boundary apart"
+    },
+    {
+      "id": "B-safe",
+      "name": "link-up, storage delay of one tick: first safe forward delay",
+      "params": "scenario=link-up, U=1, L=0, sd=1, H=2, P=2, MA=6, Bd=12, K=0; Fd = bound + 1 = 37 at R=10",
+      "rule": "FIRE iff Fd <= P + (R-1)*H + Bd + 2*U + 2*sd; bound = 2R + 14 + 2sd = 36 at R=10 (sd counts on both hops); Fd = bound + 1",
+      "expect_timed": "0 violations (exit 0); the hold is not vacuous: news_heard > 0 and settled_backup > 0",
+      "expect_baseline": "violations > 0, all spurious at this Fd: without a clock nothing orders A's notice (cable A-B opens) after the end of C's switch-off delay, so C may read it before B's hello or inside the delay whatever Fd is. The count is the same at every Fd, L and sd of the same scenario and R"
+    },
+    {
+      "id": "B-edge",
+      "name": "link-up, storage delay of one tick: last violating forward delay",
+      "params": "scenario=link-up, U=1, L=0, sd=1, H=2, P=2, MA=6, Bd=12, K=0; Fd = bound = 36 at R=10",
+      "rule": "FIRE iff Fd <= P + (R-1)*H + Bd + 2*U + 2*sd; Fd = bound exactly, the tool puts it on the violating side (tie)",
+      "expect_timed": "violations > 0: 2 violating executions in every measured cell (loop_in_pre_backup=2, loop_before_news=0), exit 0 under keep-going; without keep-going exit 101 with a certified witness timeline",
+      "expect_baseline": "violations > 0, the same count as in the safe regime of this setting and R (under keep-going exit 0; without keep-going exit 101 at the first one): the baseline cannot tell the two sides of the boundary apart"
+    },
+    {
+      "id": "C-safe",
+      "name": "lost-hellos, loose transit, no storage delay: first safe forward delay",
+      "params": "scenario=lost-hellos, U=1, L=0, sd=0, H=2, MA=3, K=0; Fd = bound - MA + 1 = 2R - 2 (18 at R=10 up to 26 at R=14)",
+      "rule": "FIRE iff MA + Fd <= (R-1)*H + 2*(U-L) + sd; bound = 2(R-1) + 2 + 0 = 2R; MA + Fd = bound + 1, one tick on the safe side",
+      "expect_timed": "0 violations (exit 0); the hold is not vacuous: reverted > 0",
+      "expect_baseline": "violations > 0, all spurious at this Fd: without a clock C's two timers (MAX_AGE, then the forward delay) may always run out before B's next hello is read, whatever MA and Fd are. The count is the same at every Fd, L and sd of the same scenario and R"
+    },
+    {
+      "id": "C-edge",
+      "name": "lost-hellos, loose transit, no storage delay: last violating forward delay",
+      "params": "scenario=lost-hellos, U=1, L=0, sd=0, H=2, MA=3, K=0; Fd = bound - MA = 2R - 3 (17 at R=10, 21 at R=12)",
+      "rule": "FIRE iff MA + Fd <= (R-1)*H + 2*(U-L) + sd; MA + Fd = bound exactly. The tool puts the boundary point on the violating side: B's next hello reaches C exactly when C's forward delay expires (the arrival on the deadline may be missed)",
+      "expect_timed": "violations > 0: 3 violating executions in every measured cell (loop_reopened=3), exit 0 under keep-going; without keep-going exit 101 with a certified witness timeline",
+      "expect_baseline": "violations > 0, the same count as in the safe regime of this setting and R (under keep-going exit 0; without keep-going exit 101 at the first one): the baseline cannot tell the two sides of the boundary apart"
+    },
+    {
+      "id": "D-safe",
+      "name": "lost-hellos, exact transit (L = U): first safe forward delay",
+      "params": "scenario=lost-hellos, U=1, L=1, sd=0, H=2, MA=3, K=0; Fd = bound - MA + 1 = 2R - 4 (16 at R=10 up to 28 at R=16)",
+      "rule": "FIRE iff MA + Fd <= (R-1)*H + 2*(U-L) + sd; bound = 2(R-1) + 0 + 0 = 2R - 2 (no transit jitter: only the lost hello periods are left); MA + Fd = bound + 1",
+      "expect_timed": "0 violations (exit 0); the hold is not vacuous: reverted > 0",
+      "expect_baseline": "violations > 0, all spurious at this Fd: without a clock C's two timers (MAX_AGE, then the forward delay) may always run out before B's next hello is read, whatever MA and Fd are. The count is the same at every Fd, L and sd of the same scenario and R"
+    },
+    {
+      "id": "D-edge",
+      "name": "lost-hellos, exact transit (L = U): last violating forward delay",
+      "params": "scenario=lost-hellos, U=1, L=1, sd=0, H=2, MA=3, K=0; Fd = bound - MA = 15 at R=10",
+      "rule": "FIRE iff MA + Fd <= (R-1)*H + 2*(U-L) + sd; MA + Fd = bound = 18 at R=10 exactly, the tool puts it on the violating side (tie)",
+      "expect_timed": "violations > 0: 3 violating executions in every measured cell (loop_reopened=3), exit 0 under keep-going; without keep-going exit 101 with a certified witness timeline",
+      "expect_baseline": "violations > 0, the same count as in the safe regime of this setting and R (under keep-going exit 0; without keep-going exit 101 at the first one): the baseline cannot tell the two sides of the boundary apart"
+    },
+    {
+      "id": "E-safe",
+      "name": "lost-hellos, storage delay of one tick: first safe forward delay",
+      "params": "scenario=lost-hellos, U=1, L=0, sd=1, H=2, MA=3, K=0; Fd = bound - MA + 1 = 19 at R=10",
+      "rule": "FIRE iff MA + Fd <= (R-1)*H + 2*(U-L) + sd; bound = 2(R-1) + 2 + sd = 21 at R=10 (sd counts once); MA + Fd = bound + 1 = 22",
+      "expect_timed": "0 violations (exit 0); the hold is not vacuous: reverted > 0",
+      "expect_baseline": "violations > 0, all spurious at this Fd: without a clock C's two timers (MAX_AGE, then the forward delay) may always run out before B's next hello is read, whatever MA and Fd are. The count is the same at every Fd, L and sd of the same scenario and R"
+    },
+    {
+      "id": "E-edge",
+      "name": "lost-hellos, storage delay of one tick: last violating forward delay",
+      "params": "scenario=lost-hellos, U=1, L=0, sd=1, H=2, MA=3, K=0; Fd = bound - MA = 18 at R=10",
+      "rule": "FIRE iff MA + Fd <= (R-1)*H + 2*(U-L) + sd; MA + Fd = bound = 21 at R=10 exactly, the tool puts it on the violating side (tie)",
+      "expect_timed": "violations > 0: 3 violating executions in every measured cell (loop_reopened=3), exit 0 under keep-going; without keep-going exit 101 with a certified witness timeline",
+      "expect_baseline": "violations > 0, the same count as in the safe regime of this setting and R (under keep-going exit 0; without keep-going exit 101 at the first one): the baseline cannot tell the two sides of the boundary apart"
+    }
+  ],
+  "glossary": [
+    {
+      "term": "bridge",
+      "meaning": "a box that copies every frame between the cables it sits on; the example has three, A (id 1, the root), B (id 2) and C (id 3), joined in a triangle by cables A-B, B-C and C-A"
+    },
+    {
+      "term": "root",
+      "meaning": "the bridge with the smallest id (A); it sends a hello every HELLO_TIME"
+    },
+    {
+      "term": "designated bridge",
+      "meaning": "the bridge closest to the root on a cable (ties: smaller id); it forwards there and relays the root's hellos onto that cable"
+    },
+    {
+      "term": "hello",
+      "meaning": "the message \"root is X, I am N steps from it, I am bridge Y\"; relayed at once by a designated bridge"
+    },
+    {
+      "term": "transient loop",
+      "meaning": "an instant at which all six bridge-to-cable ends of the triangle forward: frames circulate. This is the violation."
+    },
+    {
+      "term": "link-up",
+      "meaning": "scenario 1: cable A-B comes up at time 0; both ends wait Fd before forwarding; the root's next hello tells B, B tells C, C keeps forwarding on B-C for Bd and then stops. Loop iff A-B opens while C still forwards on B-C."
+    },
+    {
+      "term": "lost-hellos",
+      "meaning": "scenario 2: C's B-C end is switched off (B is designated there). If no hello from B is read for MA, C ages B's information out and waits Fd; if still nothing, it opens B-C while B forwards there: a loop."
+    },
+    {
+      "term": "HELLO_TIME (H)",
+      "meaning": "period of the root's hellos, in ticks"
+    },
+    {
+      "term": "phase (P)",
+      "meaning": "link-up: delay from link-up to the root's first hello on the new cable, 0 <= P <= H"
+    },
+    {
+      "term": "MAX_AGE (MA)",
+      "meaning": "how long a bridge trusts the last hello it heard on a cable"
+    },
+    {
+      "term": "PRE_BACKUP_DELAY (Bd)",
+      "meaning": "Perlman's switch-off delay: a link that must stop forwarding keeps forwarding this long"
+    },
+    {
+      "term": "PRE_FORWARDING_DELAY (Fd)",
+      "meaning": "Perlman's switch-on delay, today called the forward delay: a link that should start forwarding first waits this long"
+    },
+    {
+      "term": "U, L",
+      "meaning": "upper and lower bound of the transit time of one message hop, in ticks (with_timed(L, U, sd)); L = U means exact transit"
+    },
+    {
+      "term": "sd",
+      "meaning": "storage delay: a message stays readable for sd ticks after it arrived"
+    },
+    {
+      "term": "tick",
+      "meaning": "the integer time unit of the model; all ratio flags are multiplied by U and rounded to ticks"
+    },
+    {
+      "term": "R (rounds)",
+      "meaning": "number of root hellos in one run; the horizon of the model"
+    },
+    {
+      "term": "lossy send",
+      "meaning": "every send may be dropped by the checker, without a budget, in both modes (with_all_sends_lossy, source line 974). The program's own loss flag K is 0 in every cell."
+    },
+    {
+      "term": "forwarding notice",
+      "meaning": "verification scaffolding, not protocol traffic: A sends C a zero-transit message at the instant A-B opens; C reading it while its B-C end forwards proves a loop without reading a clock"
+    },
+    {
+      "term": "validation read (assume_*)",
+      "meaning": "a blocking read that follows a timeout or a notice read and is feasible only if the awaited message could really be read that late; it turns spurious timeout branches into blocked executions instead of false violations. Holds therefore report blocked > 0 by design."
+    },
+    {
+      "term": "bound",
+      "meaning": "right-hand side of the boundary law: the largest Fd (link-up) or MA + Fd (lost-hellos) at which a loop is still reachable"
+    },
+    {
+      "term": "tight hold / hold edge",
+      "meaning": "cell names for the first safe value, Fd one tick above the bound (margin 1); regimes with suffix -safe"
+    },
+    {
+      "term": "FIRE edge",
+      "meaning": "cell name for the last violating value, Fd exactly on the bound (margin 0); regimes with suffix -edge"
+    },
+    {
+      "term": "certified witness",
+      "meaning": "cell run without --keep-going: the timed checker stops at the first violation, validates it against one consistent assignment of times, prints it as \"Certified witness timeline\" and exits 101"
+    },
+    {
+      "term": "FIRE / hold",
+      "meaning": "FIRE: a loop is reachable (violations > 0, or exit 101 without keep-going). hold: no loop over the explored executions (violations = 0, exit 0)"
+    },
+    {
+      "term": "tie",
+      "meaning": "the awaited message arrives exactly on a deadline. A timed receive may read at its deadline and may also miss it, so a zero-length overlap counts as a loop; with the opposite convention every <= in the law would be <"
+    },
+    {
+      "term": "evidence counters",
+      "meaning": "news_heard, settled_backup (link-up) and refreshed, aged_out, reverted (lost-hellos): event counts summed over all explored executions, to be read as zero or nonzero. A link-up hold with news_heard = 0 or settled_backup = 0, or a lost-hellos hold with reverted = 0, is vacuous and prints a WARNING"
+    },
+    {
+      "term": "task-3",
+      "meaning": "the line printed under keep-going for each violating execution: bridge C is the third spawned thread and the only one that asserts"
+    },
+    {
+      "term": "shared worker pool",
+      "meaning": "--parallel shared (with_parallel(true)): several workers explore the same search tree; the wall time is not comparable with a sequential run, compare CPU time"
+    },
+    {
+      "term": "edge rung",
+      "meaning": "a cell with purpose \"edge\": one R above the largest rung of a ladder, added on 2026-10-11"
+    }
+  ],
+  "cells": [
+    {
+      "cell": "link-up R=10 Fd=35 (tight hold, bound 34)",
+      "regime": "A-safe",
+      "label": "link-up (cable plugged in), no storage delay: first safe forward delay",
+      "params": {
+        "scenario": "link-up",
+        "R": 10,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": 2,
+        "MA": 6,
+        "Bd": 12,
+        "Fd": 35,
+        "bound": 34,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v9 (3 runs, identical counts): 0 violating executions, exit 0, execs=29 524 blocked=510 112, timeline_impossible=0; news_heard=118 096 settled_backup=59 048 loop_before_news=0 loop_in_pre_backup=0",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v9 (3 runs, identical counts): 118 096 violating executions, exit 0, execs=88 572 blocked=510 112, timeline_impossible=0; news_heard=177 144 settled_backup=59 048 loop_before_news=59 048 loop_in_pre_backup=59 048",
+      "note": ""
+    },
+    {
+      "cell": "link-up R=11 Fd=37 (tight hold, bound 36)",
+      "regime": "A-safe",
+      "label": "link-up (cable plugged in), no storage delay: first safe forward delay",
+      "params": {
+        "scenario": "link-up",
+        "R": 11,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": 2,
+        "MA": 6,
+        "Bd": 12,
+        "Fd": 37,
+        "bound": 36,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v9 (3 runs, identical counts): 0 violating executions, exit 0, execs=88 573 blocked=1 522 137, timeline_impossible=0; news_heard=354 292 settled_backup=177 146 loop_before_news=0 loop_in_pre_backup=0",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v9 (3 runs, identical counts): 354 292 violating executions, exit 0, execs=265 719 blocked=1 522 137, timeline_impossible=0; news_heard=531 438 settled_backup=177 146 loop_before_news=177 146 loop_in_pre_backup=177 146",
+      "note": ""
+    },
+    {
+      "cell": "link-up R=12 Fd=39 (tight hold, bound 38)",
+      "regime": "A-safe",
+      "label": "link-up (cable plugged in), no storage delay: first safe forward delay",
+      "params": {
+        "scenario": "link-up",
+        "R": 12,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": 2,
+        "MA": 6,
+        "Bd": 12,
+        "Fd": 39,
+        "bound": 38,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v9 (3 runs, identical counts): 0 violating executions, exit 0, execs=265 720 blocked=4 550 020, timeline_impossible=0; news_heard=1 062 880 settled_backup=531 440 loop_before_news=0 loop_in_pre_backup=0",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v9 (3 runs, identical counts): 1 062 880 violating executions, exit 0, execs=797 160 blocked=4 550 020, timeline_impossible=0; news_heard=1 594 320 settled_backup=531 440 loop_before_news=531 440 loop_in_pre_backup=531 440",
+      "note": ""
+    },
+    {
+      "cell": "link-up R=13 Fd=41 (tight hold, bound 40)",
+      "regime": "A-safe",
+      "label": "link-up (cable plugged in), no storage delay: first safe forward delay",
+      "params": {
+        "scenario": "link-up",
+        "R": 13,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": 2,
+        "MA": 6,
+        "Bd": 12,
+        "Fd": 41,
+        "bound": 40,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v8 (1 run): 0 violating executions, exit 0, execs=797 161 blocked=13 617 285, timeline_impossible=0; news_heard=3 188 644 settled_backup=1 594 322 loop_before_news=0 loop_in_pre_backup=0 (v8 value; the v9 run of this side had no result row on 2026-10-11)",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v9 (3 runs, identical counts): 3 188 644 violating executions, exit 0, execs=2 391 483 blocked=13 617 285, timeline_impossible=0; news_heard=4 782 966 settled_backup=1 594 322 loop_before_news=1 594 322 loop_in_pre_backup=1 594 322",
+      "note": "timed side: no v9 result row on 2026-10-11 (still queued or running), the counts quoted are from v8 (stp-017)."
+    },
+    {
+      "cell": "link-up R=14 Fd=43 (tight hold, bound 42)",
+      "regime": "A-safe",
+      "label": "link-up (cable plugged in), no storage delay: first safe forward delay",
+      "params": {
+        "scenario": "link-up",
+        "R": 14,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": 2,
+        "MA": 6,
+        "Bd": 12,
+        "Fd": 43,
+        "bound": 42,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v9 (1 run): 0 violating executions, exit 0, execs=2 391 484 blocked=40 786 312, timeline_impossible=0; news_heard=9 565 936 settled_backup=4 782 968 loop_before_news=0 loop_in_pre_backup=0",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v8 (1 run): 9 565 936 violating executions, exit 0, execs=7 174 452 blocked=40 786 312, timeline_impossible=0; news_heard=14 348 904 settled_backup=4 782 968 loop_before_news=4 782 968 loop_in_pre_backup=4 782 968 (v8 value; the v9 run of this side had no result row on 2026-10-11)",
+      "note": "baseline side: no v9 result row on 2026-10-11 (still queued or running), the counts quoted are from v8 (stp-002)."
+    },
+    {
+      "cell": "link-up R=15 Fd=45 (tight hold, bound 44)",
+      "regime": "A-safe",
+      "label": "link-up (cable plugged in), no storage delay: first safe forward delay",
+      "params": {
+        "scenario": "link-up",
+        "R": 15,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": 2,
+        "MA": 6,
+        "Bd": 12,
+        "Fd": 45,
+        "bound": 44,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v9 (1 run): 0 violating executions, exit 0, execs=7 174 453 blocked=122 227 857, timeline_impossible=0; news_heard=28 697 812 settled_backup=14 348 906 loop_before_news=0 loop_in_pre_backup=0",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v8 (1 run): 28 697 812 violating executions, exit 0, execs=21 523 359 blocked=122 227 857, timeline_impossible=0; news_heard=43 046 718 settled_backup=14 348 906 loop_before_news=14 348 906 loop_in_pre_backup=14 348 906 (v8 value; the v9 run of this side had no result row on 2026-10-11)",
+      "note": "baseline side: no v9 result row on 2026-10-11 (still queued or running), the counts quoted are from v8 (stp-010)."
+    },
+    {
+      "cell": "link-up R=16 Fd=47 (tight hold, bound 46) shared8 (edge rung)",
+      "regime": "A-safe",
+      "label": "link-up (cable plugged in), no storage delay: first safe forward delay, edge rung on the shared worker pool",
+      "params": {
+        "scenario": "link-up",
+        "R": 16,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": 2,
+        "MA": 6,
+        "Bd": 12,
+        "Fd": 47,
+        "bound": 46,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 8
+      },
+      "kind": "exhaustive",
+      "expect_timed": "not measured yet; rule: 0 violations, exit 0; the closed form of the rungs below predicts execs = (3^16 - 1)/2 = 21 523 360 (a prediction, not a measurement)",
+      "expect_baseline": "not measured yet; rule: violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0; the closed forms of the rungs below predict execs = 3(3^16 - 1)/2 = 64 570 080 and violations = 2(3^16 - 1) = 86 093 440 (a prediction, not a measurement)",
+      "note": "Edge rung added on 2026-10-11, one round above the top of the tight-hold ladder. Run with --parallel shared on 8 cores; every rung below is sequential on 1 core, so compare CPU time, not wall time, with the rungs below."
+    },
+    {
+      "cell": "link-up R=10 Fd=34 (FIRE edge, bound 34)",
+      "regime": "A-edge",
+      "label": "link-up (cable plugged in), no storage delay: last violating forward delay (the tie)",
+      "params": {
+        "scenario": "link-up",
+        "R": 10,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": 2,
+        "MA": 6,
+        "Bd": 12,
+        "Fd": 34,
+        "bound": 34,
+        "margin": 0,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations > 0 (a real loop, the tie), exit 0 under keep-going. Measured v9 (3 runs, identical counts): 2 violating executions, exit 0, execs=29 525 blocked=510 113, timeline_impossible=0; news_heard=118 098 settled_backup=59 048 loop_before_news=0 loop_in_pre_backup=2",
+      "expect_baseline": "violations > 0, the same count as at the safe twin of this cell (the baseline reports the same on both sides of the bound, so it says nothing about the real loop here), exit 0. Measured v9 (3 runs, identical counts): 118 096 violating executions, exit 0, execs=88 572 blocked=510 112, timeline_impossible=0; news_heard=177 144 settled_backup=59 048 loop_before_news=59 048 loop_in_pre_backup=59 048",
+      "note": "The violation is the tie: the awaited message or the notice lands exactly on the deadline (a zero-length overlap counts as a loop). Confirmed by the certified witness cell with the same arguments without --keep-going (exit 101)."
+    },
+    {
+      "cell": "link-up R=12 Fd=38 (FIRE edge, bound 38)",
+      "regime": "A-edge",
+      "label": "link-up (cable plugged in), no storage delay: last violating forward delay (the tie)",
+      "params": {
+        "scenario": "link-up",
+        "R": 12,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": 2,
+        "MA": 6,
+        "Bd": 12,
+        "Fd": 38,
+        "bound": 38,
+        "margin": 0,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations > 0 (a real loop, the tie), exit 0 under keep-going. Measured v9 (3 runs, identical counts): 2 violating executions, exit 0, execs=265 721 blocked=4 550 021, timeline_impossible=0; news_heard=1 062 882 settled_backup=531 440 loop_before_news=0 loop_in_pre_backup=2",
+      "expect_baseline": "violations > 0, the same count as at the safe twin of this cell (the baseline reports the same on both sides of the bound, so it says nothing about the real loop here), exit 0. Measured v9 (3 runs, identical counts): 1 062 880 violating executions, exit 0, execs=797 160 blocked=4 550 020, timeline_impossible=0; news_heard=1 594 320 settled_backup=531 440 loop_before_news=531 440 loop_in_pre_backup=531 440",
+      "note": "The violation is the tie: the awaited message or the notice lands exactly on the deadline (a zero-length overlap counts as a loop). No twin without --keep-going in the campaign; the count is sound because timeline_impossible is 0."
+    },
+    {
+      "cell": "link-up R=10 Fd=34 no keep-going (certified witness)",
+      "regime": "A-edge",
+      "label": "link-up (cable plugged in), no storage delay: last violating forward delay, stop at the first violation (certified witness)",
+      "params": {
+        "scenario": "link-up",
+        "R": 10,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": 2,
+        "MA": 6,
+        "Bd": 12,
+        "Fd": 34,
+        "bound": 34,
+        "margin": 0,
+        "keep_going": "no",
+        "workers": 1
+      },
+      "kind": "first-violation",
+      "expect_timed": "violation: exit 101 at the first loop found, with a certified witness timeline. Measured v9 (3 runs): exit 101, wall 124 to 129 s; no execution counts (the run stops at the violation)",
+      "expect_baseline": "violation: exit 101 at the first violation the baseline meets. Measured v9 (3 runs): exit 101, wall below 0.01 s; no execution counts (the run stops at the violation)",
+      "note": "Run without --keep-going: the verdict is the exit code 101, not a count. results_v9.csv shows viol_execs=0 and no execs/blocked for both sides because the count of violating executions is taken from keep-going output. The timed side prints a certified witness timeline; the baseline stops at the first violation it meets, within 0.01 s (it has violations at the safe Fd too, so its exit 101 does not locate the boundary). The keep-going twin of this cell (same arguments plus --keep-going) gives the counts."
+    },
+    {
+      "cell": "link-up R=10 sd=1 Fd=37 (hold edge)",
+      "regime": "B-safe",
+      "label": "link-up (cable plugged in), storage delay of one tick: first safe forward delay",
+      "params": {
+        "scenario": "link-up",
+        "R": 10,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 1,
+        "H": 2,
+        "P": 2,
+        "MA": 6,
+        "Bd": 12,
+        "Fd": 37,
+        "bound": 36,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v9 (3 runs, identical counts): 0 violating executions, exit 0, execs=29 524 blocked=510 112, timeline_impossible=0; news_heard=118 096 settled_backup=59 048 loop_before_news=0 loop_in_pre_backup=0",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v9 (3 runs, identical counts): 118 096 violating executions, exit 0, execs=88 572 blocked=510 112, timeline_impossible=0; news_heard=177 144 settled_backup=59 048 loop_before_news=59 048 loop_in_pre_backup=59 048",
+      "note": ""
+    },
+    {
+      "cell": "link-up R=10 sd=1 Fd=36 (FIRE edge, bound 36)",
+      "regime": "B-edge",
+      "label": "link-up (cable plugged in), storage delay of one tick: last violating forward delay (the tie)",
+      "params": {
+        "scenario": "link-up",
+        "R": 10,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 1,
+        "H": 2,
+        "P": 2,
+        "MA": 6,
+        "Bd": 12,
+        "Fd": 36,
+        "bound": 36,
+        "margin": 0,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations > 0 (a real loop, the tie), exit 0 under keep-going. Measured v9 (3 runs, identical counts): 2 violating executions, exit 0, execs=29 525 blocked=510 113, timeline_impossible=0; news_heard=118 098 settled_backup=59 048 loop_before_news=0 loop_in_pre_backup=2",
+      "expect_baseline": "violations > 0, the same count as at the safe twin of this cell (the baseline reports the same on both sides of the bound, so it says nothing about the real loop here), exit 0. Measured v9 (3 runs, identical counts): 118 096 violating executions, exit 0, execs=88 572 blocked=510 112, timeline_impossible=0; news_heard=177 144 settled_backup=59 048 loop_before_news=59 048 loop_in_pre_backup=59 048",
+      "note": "The violation is the tie: the awaited message or the notice lands exactly on the deadline (a zero-length overlap counts as a loop). No twin without --keep-going in the campaign; the count is sound because timeline_impossible is 0."
+    },
+    {
+      "cell": "lost-hellos R=10 MA=3 Fd=18 (tight hold, bound MA+Fd<=20)",
+      "regime": "C-safe",
+      "label": "lost-hellos (hellos go missing), no storage delay: first safe forward delay",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 10,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 18,
+        "bound": 20,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v9 (3 runs, identical counts): 0 violating executions, exit 0, execs=202 374 blocked=601 906, timeline_impossible=0; refreshed=612 855 aged_out=934 665 reverted=587 436 loop_reopened=0",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v9 (3 runs, identical counts): 250 959 violating executions, exit 0, execs=423 185 blocked=663 481, timeline_impossible=0; refreshed=1 264 633 aged_out=1 968 300 reverted=1 264 633 loop_reopened=250 959",
+      "note": ""
+    },
+    {
+      "cell": "lost-hellos R=11 MA=3 Fd=20 (tight hold, bound MA+Fd<=22)",
+      "regime": "C-safe",
+      "label": "lost-hellos (hellos go missing), no storage delay: first safe forward delay",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 11,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 20,
+        "bound": 22,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v9 (3 runs, identical counts): 0 violating executions, exit 0, execs=624 531 blocked=1 844 468, timeline_impossible=0; refreshed=2 109 332 aged_out=3 135 136 reverted=2 025 798 loop_reopened=0",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v9 (3 runs, identical counts): 841 449 violating executions, exit 0, execs=1 387 652 blocked=2 104 436, timeline_impossible=0; refreshed=4 610 743 aged_out=6 928 416 reverted=4 610 743 loop_reopened=841 449",
+      "note": ""
+    },
+    {
+      "cell": "lost-hellos R=12 MA=3 Fd=22 (tight hold, bound MA+Fd<=24)",
+      "regime": "C-safe",
+      "label": "lost-hellos (hellos go missing), no storage delay: first safe forward delay",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 12,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 22,
+        "bound": 24,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v8 (1 run): 0 violating executions, exit 0, execs=1 922 574 blocked=5 645 782, timeline_impossible=0; refreshed=7 148 895 aged_out=10 395 070 reverted=6 876 729 loop_reopened=0 (v8 value; the v9 run of this side had no result row on 2026-10-11)",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v9 (3 runs, identical counts): 2 790 066 violating executions, exit 0, execs=4 517 249 blocked=6 659 401, timeline_impossible=0; refreshed=16 518 958 aged_out=24 091 992 reverted=16 518 958 loop_reopened=2 790 066",
+      "note": "timed side: no v9 result row on 2026-10-11 (still queued or running), the counts quoted are from v8 (stp-021)."
+    },
+    {
+      "cell": "lost-hellos R=13 MA=3 Fd=24 (tight hold, bound MA+Fd<=26)",
+      "regime": "C-safe",
+      "label": "lost-hellos (hellos go missing), no storage delay: first safe forward delay",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 13,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 24,
+        "bound": 26,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v9 (1 run): 0 violating executions, exit 0, execs=5 905 542 blocked=17 260 220, timeline_impossible=0; refreshed=23 922 366 aged_out=34 133 225 reverted=23 042 701 loop_reopened=0",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v9 (3 runs, identical counts): 9 167 358 violating executions, exit 0, execs=14 614 628 blocked=21 024 692, timeline_impossible=0; refreshed=58 325 650 aged_out=82 904 796 reverted=58 325 650 loop_reopened=9 167 358",
+      "note": ""
+    },
+    {
+      "cell": "lost-hellos R=14 MA=3 Fd=26 (tight hold, bound MA+Fd<=28)",
+      "regime": "C-safe",
+      "label": "lost-hellos (hellos go missing), no storage delay: first safe forward delay",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 14,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 26,
+        "bound": 28,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v9 (1 run): 0 violating executions, exit 0, execs=18 104 409 blocked=52 702 478, timeline_impossible=0; refreshed=79 199 820 aged_out=111 154 353 reverted=76 376 028 loop_reopened=0",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v8 (1 run): 29 893 557 violating executions, exit 0, execs=47 032 529 blocked=66 229 945, timeline_impossible=0; refreshed=203 409 043 aged_out=282 726 612 reverted=203 409 043 loop_reopened=29 893 557 (v8 value; the v9 run of this side had no result row on 2026-10-11)",
+      "note": "baseline side: no v9 result row on 2026-10-11 (still queued or running), the counts quoted are from v8 (stp-004)."
+    },
+    {
+      "cell": "lost-hellos R=10 MA=3 Fd=17 (FIRE edge, bound 20)",
+      "regime": "C-edge",
+      "label": "lost-hellos (hellos go missing), no storage delay: last violating forward delay (the tie)",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 10,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 17,
+        "bound": 20,
+        "margin": 0,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations > 0 (a real loop, the tie), exit 0 under keep-going. Measured v9 (3 runs, identical counts): 3 violating executions, exit 0, execs=202 376 blocked=611 749, timeline_impossible=0; refreshed=612 855 aged_out=944 510 reverted=587 436 loop_reopened=3",
+      "expect_baseline": "violations > 0, the same count as at the safe twin of this cell (the baseline reports the same on both sides of the bound, so it says nothing about the real loop here), exit 0. Measured v9 (3 runs, identical counts): 250 959 violating executions, exit 0, execs=423 185 blocked=663 481, timeline_impossible=0; refreshed=1 264 633 aged_out=1 968 300 reverted=1 264 633 loop_reopened=250 959",
+      "note": "The violation is the tie: the awaited message or the notice lands exactly on the deadline (a zero-length overlap counts as a loop). Confirmed by the certified witness cell with the same arguments without --keep-going (exit 101)."
+    },
+    {
+      "cell": "lost-hellos R=12 MA=3 Fd=21 (FIRE edge, bound 24)",
+      "regime": "C-edge",
+      "label": "lost-hellos (hellos go missing), no storage delay: last violating forward delay (the tie)",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 12,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 21,
+        "bound": 24,
+        "margin": 0,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations > 0 (a real loop, the tie), exit 0 under keep-going. Measured v8 (1 run): 3 violating executions, exit 0, execs=1 922 576 blocked=5 734 357, timeline_impossible=0; refreshed=7 148 895 aged_out=10 483 647 reverted=6 876 729 loop_reopened=3 (v8 value; the v9 run of this side had no result row on 2026-10-11)",
+      "expect_baseline": "violations > 0, the same count as at the safe twin of this cell (the baseline reports the same on both sides of the bound, so it says nothing about the real loop here), exit 0. Measured v9 (3 runs, identical counts): 2 790 066 violating executions, exit 0, execs=4 517 249 blocked=6 659 401, timeline_impossible=0; refreshed=16 518 958 aged_out=24 091 992 reverted=16 518 958 loop_reopened=2 790 066",
+      "note": "timed side: no v9 result row on 2026-10-11 (still queued or running), the counts quoted are from v8 (stp-035). The violation is the tie: the awaited message or the notice lands exactly on the deadline (a zero-length overlap counts as a loop). No twin without --keep-going in the campaign; the count is sound because timeline_impossible is 0."
+    },
+    {
+      "cell": "lost-hellos R=10 MA=3 Fd=17 no keep-going (certified witness)",
+      "regime": "C-edge",
+      "label": "lost-hellos (hellos go missing), no storage delay: last violating forward delay, stop at the first violation (certified witness)",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 10,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 0,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 17,
+        "bound": 20,
+        "margin": 0,
+        "keep_going": "no",
+        "workers": 1
+      },
+      "kind": "first-violation",
+      "expect_timed": "violation: exit 101 at the first loop found, with a certified witness timeline. Measured v9 (3 runs): exit 101, wall 202 to 206 s; no execution counts (the run stops at the violation)",
+      "expect_baseline": "violation: exit 101 at the first violation the baseline meets. Measured v9 (3 runs): exit 101, wall below 0.01 s; no execution counts (the run stops at the violation)",
+      "note": "Run without --keep-going: the verdict is the exit code 101, not a count. results_v9.csv shows viol_execs=0 and no execs/blocked for both sides because the count of violating executions is taken from keep-going output. The timed side prints a certified witness timeline; the baseline stops at the first violation it meets, within 0.01 s (it has violations at the safe Fd too, so its exit 101 does not locate the boundary). The keep-going twin of this cell (same arguments plus --keep-going) gives the counts."
+    },
+    {
+      "cell": "lost-hellos L=U=1 R=10 MA=3 Fd=16 (tight hold, bound MA+Fd<=18)",
+      "regime": "D-safe",
+      "label": "lost-hellos (hellos go missing), exact transit (L = U): first safe forward delay",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 10,
+        "K": 0,
+        "U": 1,
+        "L": 1,
+        "sd": 0,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 16,
+        "bound": 18,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v9 (3 runs, identical counts): 0 violating executions, exit 0, execs=59 049 blocked=299 345, timeline_impossible=0; refreshed=57 513 aged_out=115 538 reverted=27 990 loop_reopened=0",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v9 (3 runs, identical counts): 250 959 violating executions, exit 0, execs=423 185 blocked=663 481, timeline_impossible=0; refreshed=1 264 633 aged_out=1 968 300 reverted=1 264 633 loop_reopened=250 959",
+      "note": ""
+    },
+    {
+      "cell": "lost-hellos L=U=1 R=12 MA=3 Fd=20 (tight hold, bound MA+Fd<=22)",
+      "regime": "D-safe",
+      "label": "lost-hellos (hellos go missing), exact transit (L = U): first safe forward delay",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 12,
+        "K": 0,
+        "U": 1,
+        "L": 1,
+        "sd": 0,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 20,
+        "bound": 22,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v9 (3 runs, identical counts): 0 violating executions, exit 0, execs=531 441 blocked=2 673 593, timeline_impossible=0; refreshed=525 297 aged_out=1 052 642 reverted=259 578 loop_reopened=0",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v9 (3 runs, identical counts): 2 790 066 violating executions, exit 0, execs=4 517 249 blocked=6 659 401, timeline_impossible=0; refreshed=16 518 958 aged_out=24 091 992 reverted=16 518 958 loop_reopened=2 790 066",
+      "note": ""
+    },
+    {
+      "cell": "lost-hellos L=U=1 R=13 MA=3 Fd=22 (tight hold, bound MA+Fd<=24)",
+      "regime": "D-safe",
+      "label": "lost-hellos (hellos go missing), exact transit (L = U): first safe forward delay",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 13,
+        "K": 0,
+        "U": 1,
+        "L": 1,
+        "sd": 0,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 22,
+        "bound": 24,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v8 (1 run): 0 violating executions, exit 0, execs=1 594 323 blocked=8 004 387, timeline_impossible=0; refreshed=1 582 035 aged_out=3 168 166 reverted=784 875 loop_reopened=0 (v8 value; the v9 run of this side had no result row on 2026-10-11)",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v9 (3 runs, identical counts): 9 167 358 violating executions, exit 0, execs=14 614 628 blocked=21 024 692, timeline_impossible=0; refreshed=58 325 650 aged_out=82 904 796 reverted=58 325 650 loop_reopened=9 167 358",
+      "note": "timed side: no v9 result row on 2026-10-11 (still queued or running), the counts quoted are from v8 (stp-019)."
+    },
+    {
+      "cell": "lost-hellos L=U=1 R=14 MA=3 Fd=24 (tight hold, bound MA+Fd<=26) [REVIEW: added]",
+      "regime": "D-safe",
+      "label": "lost-hellos (hellos go missing), exact transit (L = U): first safe forward delay",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 14,
+        "K": 0,
+        "U": 1,
+        "L": 1,
+        "sd": 0,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 24,
+        "bound": 26,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v9 (1 run): 0 violating executions, exit 0, execs=4 782 969 blocked=23 980 385, timeline_impossible=0; refreshed=4 758 393 aged_out=9 524 978 reverted=2 366 910 loop_reopened=0",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v8 (1 run): 29 893 557 violating executions, exit 0, execs=47 032 529 blocked=66 229 945, timeline_impossible=0; refreshed=203 409 043 aged_out=282 726 612 reverted=203 409 043 loop_reopened=29 893 557 (v8 value; the v9 run of this side had no result row on 2026-10-11)",
+      "note": "The tag \"[REVIEW: added]\" is part of the v8 cell name (the cell was added during the v8 plan review); it is an ordinary rung. baseline side: no v9 result row on 2026-10-11 (still queued or running), the counts quoted are from v8 (stp-014)."
+    },
+    {
+      "cell": "lost-hellos L=U=1 R=15 MA=3 Fd=26 (tight hold, bound MA+Fd<=28)",
+      "regime": "D-safe",
+      "label": "lost-hellos (hellos go missing), exact transit (L = U): first safe forward delay",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 15,
+        "K": 0,
+        "U": 1,
+        "L": 1,
+        "sd": 0,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 26,
+        "bound": 28,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v9 (1 run): 0 violating executions, exit 0, execs=14 348 907 blocked=71 875 611, timeline_impossible=0; refreshed=14 299 755 aged_out=28 615 894 reverted=7 125 303 loop_reopened=0",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v9 (1 run): 96 855 123 violating executions, exit 0, execs=150 663 524 blocked=208 190 228, timeline_impossible=0; refreshed=701 900 701 aged_out=956 593 800 reverted=701 900 701 loop_reopened=96 855 123",
+      "note": ""
+    },
+    {
+      "cell": "lost-hellos L=U=1 R=16 MA=3 Fd=28 (tight hold, bound MA+Fd<=30) shared8 (edge rung)",
+      "regime": "D-safe",
+      "label": "lost-hellos (hellos go missing), exact transit (L = U): first safe forward delay, edge rung on the shared worker pool",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 16,
+        "K": 0,
+        "U": 1,
+        "L": 1,
+        "sd": 0,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 28,
+        "bound": 30,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 8
+      },
+      "kind": "exhaustive",
+      "expect_timed": "not measured yet; rule: 0 violations, exit 0; the closed form of the rungs below predicts execs = 3^16 = 43 046 721 (a prediction, not a measurement)",
+      "expect_baseline": "not measured yet; rule: violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0",
+      "note": "Edge rung added on 2026-10-11, one round above the top of the tight-hold ladder. Run with --parallel shared on 8 cores; every rung below is sequential on 1 core, so compare CPU time, not wall time, with the rungs below."
+    },
+    {
+      "cell": "lost-hellos L=U=1 R=10 MA=3 Fd=15 (FIRE edge, bound 18)",
+      "regime": "D-edge",
+      "label": "lost-hellos (hellos go missing), exact transit (L = U): last violating forward delay (the tie)",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 10,
+        "K": 0,
+        "U": 1,
+        "L": 1,
+        "sd": 0,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 15,
+        "bound": 18,
+        "margin": 0,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations > 0 (a real loop, the tie), exit 0 under keep-going. Measured v9 (3 runs, identical counts): 3 violating executions, exit 0, execs=59 051 blocked=309 188, timeline_impossible=0; refreshed=57 513 aged_out=125 383 reverted=27 990 loop_reopened=3",
+      "expect_baseline": "violations > 0, the same count as at the safe twin of this cell (the baseline reports the same on both sides of the bound, so it says nothing about the real loop here), exit 0. Measured v9 (3 runs, identical counts): 250 959 violating executions, exit 0, execs=423 185 blocked=663 481, timeline_impossible=0; refreshed=1 264 633 aged_out=1 968 300 reverted=1 264 633 loop_reopened=250 959",
+      "note": "The violation is the tie: the awaited message or the notice lands exactly on the deadline (a zero-length overlap counts as a loop). No twin without --keep-going in the campaign; the count is sound because timeline_impossible is 0."
+    },
+    {
+      "cell": "lost-hellos R=10 sd=1 MA=3 Fd=19 (hold edge)",
+      "regime": "E-safe",
+      "label": "lost-hellos (hellos go missing), storage delay of one tick: first safe forward delay",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 10,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 1,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 19,
+        "bound": 21,
+        "margin": 1,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0. Measured v9 (3 runs, identical counts): 0 violating executions, exit 0, execs=254 902 blocked=638 880, timeline_impossible=0; refreshed=822 789 aged_out=1 211 127 reverted=799 055 loop_reopened=0",
+      "expect_baseline": "violations > 0, all spurious at this Fd (the same count at every Fd, L and sd of this scenario and R), exit 0. Measured v9 (3 runs, identical counts): 250 959 violating executions, exit 0, execs=423 185 blocked=663 481, timeline_impossible=0; refreshed=1 264 633 aged_out=1 968 300 reverted=1 264 633 loop_reopened=250 959",
+      "note": ""
+    },
+    {
+      "cell": "lost-hellos R=10 sd=1 MA=3 Fd=18 (FIRE edge, bound 21 = (R-1)H+2U+sd)",
+      "regime": "E-edge",
+      "label": "lost-hellos (hellos go missing), storage delay of one tick: last violating forward delay (the tie)",
+      "params": {
+        "scenario": "lost-hellos",
+        "R": 10,
+        "K": 0,
+        "U": 1,
+        "L": 0,
+        "sd": 1,
+        "H": 2,
+        "P": "-",
+        "MA": 3,
+        "Bd": "-",
+        "Fd": 18,
+        "bound": 21,
+        "margin": 0,
+        "keep_going": "yes",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations > 0 (a real loop, the tie), exit 0 under keep-going. Measured v9 (3 runs, identical counts): 3 violating executions, exit 0, execs=254 904 blocked=648 723, timeline_impossible=0; refreshed=822 789 aged_out=1 220 972 reverted=799 055 loop_reopened=3",
+      "expect_baseline": "violations > 0, the same count as at the safe twin of this cell (the baseline reports the same on both sides of the bound, so it says nothing about the real loop here), exit 0. Measured v9 (3 runs, identical counts): 250 959 violating executions, exit 0, execs=423 185 blocked=663 481, timeline_impossible=0; refreshed=1 264 633 aged_out=1 968 300 reverted=1 264 633 loop_reopened=250 959",
+      "note": "The violation is the tie: the awaited message or the notice lands exactly on the deadline (a zero-length overlap counts as a loop). No twin without --keep-going in the campaign; the count is sound because timeline_impossible is 0."
+    }
+  ],
+  "notes": [
+    "Losses: build_config (source lines 973 to 983) calls with_all_sends_lossy() in BOTH modes, so every send (hellos, relays, the notice, Done and Init) may be dropped without a budget. No campaign cell passes --losses, so K=0 and the summary counter lost= is 0 everywhere although lost hellos drive the boundary: R-1 consecutive root hellos can be lost in link-up, R-2 in lost-hellos.",
+    "Source header against source code: the header comment of spanning_tree_timed.rs (\"Expected verdicts (matrix-verified, 2026-09-16)\", lines 304 to 405, and the \"Losses\" paragraph, lines 149 to 154) describes the program before 2026-09-30: loss only through --losses K, link-up FIRE iff Fd <= P + K*H + Bd + 2U + 2sd, lost-hellos FIRE iff MA + Fd <= (K+1)*H + 2(U-L) + 2sd. The code wins: with every send lossy the campaign law has K replaced by R-1 (link-up) and K+1 by R-1 (lost-hellos), and the lost-hellos sd term is sd, not 2sd. The header numbers (execs 1..7 on holds, \"26 vs 18\") no longer describe the cells of this campaign.",
+    "Memory notes against source: timed_case_study_examples_2026_09_16 quotes the K form of the link-up law and \"hold cells are single-execution\"; benchmark_citability_audit_2026_09_18 quotes \"explored is 36 vs 34\". Both predate universal loss and do not apply to the v9 cells. project_v8_campaign (\"loss budget R-1, one sd in lost-hellos\") matches the source and the measurements.",
+    "Boundary check on the campaign cells: for all 29 cells the bound computed from the resolved parameters equals the bound quoted in the cell name, margin is 1 for every cell named tight hold or hold edge and 0 for every cell named FIRE edge or certified witness.",
+    "R=16 edge rungs: lost-hellos L=U=1 has bound (16-1)*2 + 2*(1-1) + 0 = 30 and MA + Fd = 3 + 28 = 31 = bound + 1; link-up has bound 2 + 15*2 + 12 + 2 + 0 = 46 and Fd = 47 = bound + 1. Both continue the tight-hold series correctly (link-up Fd = 2R + 15, lost-hellos L=U=1 Fd = 2R - 4).",
+    "Measurement state on 2026-10-11 11:09 (results_v9.csv): of the 58 sides, 46 have a v9 result, 8 are quoted from v8 because the v9 run has no row yet, 4 (the four R=16 edge sides) are not measured. Every v9 side that also ran in v8 has the same execs, blocked and violation count as v8, and the first-violation sides the same exit code (46 sides compared, 0 differ).",
+    "Violation counter: violations= equals viol_execs in all 112 v9 keep-going runs, and equals loop_before_news + loop_in_pre_backup + loop_reopened. timeline_impossible is 0 in every v9 run, so neither count contains an ending without a valid timeline. In general a program counter above zero is only an upper bound; the confirmation by a run without keep-going (exit 101, certified witness) exists for the FIRE edge of settings A and C at R=10, the other FIRE edge cells have no such twin in the campaign.",
+    "First-violation cells (the two \"no keep-going (certified witness)\" cells): results_v9.csv has viol_execs=0, empty execs/blocked and no summary line for both sides, because the process aborts at the violation. Read the exit code (101) as the verdict; a check of \"violations above zero\" must skip these rows.",
+    "Baseline counts do not depend on Fd, L, sd or MA: every baseline run of the same scenario and R reports the same execs, blocked and violations (lost-hellos R=10: execs=423 185 blocked=663 481 violations=250 959 in all 6 cells; link-up R=10: execs=88 572 blocked=510 112 violations=118 096 in all 4 cells; lost-hellos R=12: execs=4 517 249 blocked=6 659 401 violations=2 790 066 in all 3 cells). The baseline therefore cannot separate a safe cell from its edge twin.",
+    "Closed forms that fit every measured exhaustive side (26 sides checked, v9 or v8 where v9 is pending; empirical, not derived): link-up timed execs = (3^R - 1)/2 on a hold and one more on the FIRE edge; link-up baseline execs = 3(3^R - 1)/2 and violations = 2(3^R - 1); lost-hellos L=U=1 timed execs = 3^R on a hold. The plan uses them to predict the timed R=16 rungs (3^16 = 43 046 721 and (3^16 - 1)/2 = 21 523 360 complete executions).",
+    "Cost: this is a precision benchmark. Measured v9 pairs: setting A: explored ratio (baseline / timed) 1.11 to 1.11, wall ratio (baseline / timed) 0.14 to 0.17 over 5 cells; setting B: explored ratio (baseline / timed) 1.11 to 1.11, wall ratio (baseline / timed) 0.17 to 0.18 over 2 cells; setting C: explored ratio (baseline / timed) 1.33 to 1.54, wall ratio (baseline / timed) 0.16 to 0.17 over 4 cells; setting D: explored ratio (baseline / timed) 2.95 to 4.16, wall ratio (baseline / timed) 0.42 to 0.46 over 4 cells; setting E: explored ratio (baseline / timed) 1.20 to 1.22, wall ratio (baseline / timed) 0.15 to 0.16 over 2 cells. A wall ratio below 1 means the timed run is slower than the baseline.",
+    "Ladders in the workbook: Fd and bound are chosen per rung from R (margin stays 1), and the R=16 rungs use 8 pool workers. A ladder builder that requires all other parameter columns to be equal does not join the tight-hold rungs: build_v9_xlsx.py as of 2026-10-11 builds the workbook with this file and its checks pass, but its sheet \"The edge\" shows no spanning tree ladder. The columns Fd and bound carry the hint \"moves_with_size\": \"R\" and should be left out of the fixed part (group by regime and margin instead), and workers has to be ignored to attach the R=16 rungs. The three R ladders are the regimes A-safe (R 10 to 16), C-safe (R 10 to 14) and D-safe (R 10, 12 to 16).",
+    "Regime letters are new in v9 (v8 had no regime column for this example): A, B = link-up with sd 0, 1; C, D, E = lost-hellos with (L, sd) = (0, 0), (1, 0), (0, 1). Suffix -edge is used for Fd exactly on the bound; the tool puts that point on the violating side, so a check of the timed verdict must expect violations above zero for -edge here.",
+    "Law check beyond the campaign: a local grid of 152 small cells (R 2 to 5, U 1 to 3, L 0 to U, sd 0 to 3, H 2 to 6, several P, Bd and MA; Fd at bound - 1, bound, bound + 1, bound + 2) agrees with both formulas in every cell. It was run with the local binary of 2026-09-30, which is older than the campaign commit b67ccf7, and only verdicts were read from it, no counts.",
+    "The tag \"[REVIEW: added]\" belongs to one v8 cell name (lost-hellos L=U=1 R=14) and is kept verbatim.",
+    "Shared pool and the violation count: a small local run with --parallel shared printed one task-3 line per violating execution and a violations= value equal to the number of lines, in both modes (format check only, local binary, no count taken). So viol_execs and the violations counter should stay comparable on the R=16 rungs once they finish; where they differ by a few per million on a baseline pool run (two workers writing a line at once), the violations counter is the exact value.",
+    "Witness of the link-up tie, read from a small local run (R=3, Fd=20 = bound): the first two root hellos are dropped, the last leaves at 6, B reads it at 7, C at 8 and forwards until 20, the notice arrives at 20: the read on the deadline is the violation.",
+    "No timed hold of the campaign is vacuous: news_heard and settled_backup (link-up) and reverted (lost-hellos) are above zero in every v9 summary line of a hold."
+  ]
+}

@@ -1,0 +1,248 @@
+{
+ "time": "2026-10-11 11:09:56",
+ "deadline": "2026-10-13 08:00",
+ "free_cores": 3,
+ "ballast": 3,
+ "queued": 171,
+ "queued_timing": 0,
+ "running": [
+  {
+   "id": "swim-093-r1",
+   "cores": 1,
+   "elapsed_s": 158142,
+   "pred_s": 4521854,
+   "tier": "reach"
+  },
+  {
+   "id": "brp-043-r1",
+   "cores": 1,
+   "elapsed_s": 158142,
+   "pred_s": 3000000,
+   "tier": "reach"
+  },
+  {
+   "id": "opt-036-r1",
+   "cores": 1,
+   "elapsed_s": 158142,
+   "pred_s": 2800000,
+   "tier": "reach"
+  },
+  {
+   "id": "abp-037-r1",
+   "cores": 1,
+   "elapsed_s": 158142,
+   "pred_s": 1700000,
+   "tier": "reach"
+  },
+  {
+   "id": "abp-036-r1",
+   "cores": 1,
+   "elapsed_s": 158142,
+   "pred_s": 1250000,
+   "tier": "reach"
+  },
+  {
+   "id": "brp-044-r1",
+   "cores": 1,
+   "elapsed_s": 158142,
+   "pred_s": 1250000,
+   "tier": "reach"
+  },
+  {
+   "id": "legacy-014-r1",
+   "cores": 1,
+   "elapsed_s": 158142,
+   "pred_s": 1100000,
+   "tier": "reach"
+  },
+  {
+   "id": "sensor-064-r1",
+   "cores": 8,
+   "elapsed_s": 158142,
+   "pred_s": 1000000,
+   "tier": "reach"
+  },
+  {
+   "id": "lease-063-r1",
+   "cores": 8,
+   "elapsed_s": 158142,
+   "pred_s": 880000,
+   "tier": "reach"
+  },
+  {
+   "id": "opt-035-r1",
+   "cores": 1,
+   "elapsed_s": 158142,
+   "pred_s": 436000,
+   "tier": "reach"
+  },
+  {
+   "id": "lease-064-r1",
+   "cores": 8,
+   "elapsed_s": 158142,
+   "pred_s": 400000,
+   "tier": "reach"
+  },
+  {
+   "id": "nisshi-090-r1",
+   "cores": 4,
+   "elapsed_s": 158142,
+   "pred_s": 400000,
+   "tier": "reach"
+  },
+  {
+   "id": "sensor-063-r1",
+   "cores": 8,
+   "elapsed_s": 158142,
+   "pred_s": 400000,
+   "tier": "reach"
+  },
+  {
+   "id": "swim-094-r1",
+   "cores": 1,
+   "elapsed_s": 158142,
+   "pred_s": 400000,
+   "tier": "reach"
+  },
+  {
+   "id": "lease-008-r1",
+   "cores": 7,
+   "elapsed_s": 38838,
+   "pred_s": 45011,
+   "tier": "reach"
+  },
+  {
+   "id": "nrp-015-r1",
+   "cores": 1,
+   "elapsed_s": 25692,
+   "pred_s": 34398,
+   "tier": "reach"
+  },
+  {
+   "id": "sensor-046-r1",
+   "cores": 8,
+   "elapsed_s": 11944,
+   "pred_s": 16853,
+   "tier": "reach"
+  },
+  {
+   "id": "par-017-r1",
+   "cores": 4,
+   "elapsed_s": 9990,
+   "pred_s": 15724,
+   "tier": "reach"
+  },
+  {
+   "id": "swim-009-r1",
+   "cores": 8,
+   "elapsed_s": 7242,
+   "pred_s": 15236,
+   "tier": "reach"
+  },
+  {
+   "id": "swim-039-r1",
+   "cores": 2,
+   "elapsed_s": 7242,
+   "pred_s": 15240,
+   "tier": "reach"
+  },
+  {
+   "id": "lease-085-r1",
+   "cores": 8,
+   "elapsed_s": 6346,
+   "pred_s": 15008,
+   "tier": "reach"
+  },
+  {
+   "id": "swim-038-r1",
+   "cores": 1,
+   "elapsed_s": 6346,
+   "pred_s": 14651,
+   "tier": "reach"
+  },
+  {
+   "id": "nrp-008-r1",
+   "cores": 1,
+   "elapsed_s": 6223,
+   "pred_s": 14459,
+   "tier": "reach"
+  },
+  {
+   "id": "swim-072-r1",
+   "cores": 1,
+   "elapsed_s": 6033,
+   "pred_s": 14263,
+   "tier": "reach"
+  },
+  {
+   "id": "swim-071-r1",
+   "cores": 3,
+   "elapsed_s": 4515,
+   "pred_s": 14042,
+   "tier": "reach"
+  },
+  {
+   "id": "lease-039-r1",
+   "cores": 7,
+   "elapsed_s": 3353,
+   "pred_s": 13802,
+   "tier": "reach"
+  },
+  {
+   "id": "lease-007-r1",
+   "cores": 7,
+   "elapsed_s": 2944,
+   "pred_s": 13578,
+   "tier": "reach"
+  },
+  {
+   "id": "lease-061-r1",
+   "cores": 6,
+   "elapsed_s": 1971,
+   "pred_s": 13516,
+   "tier": "reach"
+  },
+  {
+   "id": "stp-010-r1",
+   "cores": 1,
+   "elapsed_s": 1747,
+   "pred_s": 13502,
+   "tier": "reach"
+  },
+  {
+   "id": "nrp-017-r1",
+   "cores": 1,
+   "elapsed_s": 1747,
+   "pred_s": 13300,
+   "tier": "reach"
+  },
+  {
+   "id": "ct-013-r1",
+   "cores": 7,
+   "elapsed_s": 295,
+   "pred_s": 13242,
+   "tier": "reach"
+  },
+  {
+   "id": "zz-keeper-r1",
+   "cores": 1,
+   "elapsed_s": 210,
+   "pred_s": 4521854,
+   "tier": "timing"
+  },
+  {
+   "id": "nrp-e01-r1",
+   "cores": 1,
+   "elapsed_s": 210,
+   "pred_s": 48000,
+   "tier": "reach"
+  },
+  {
+   "id": "nrp-e02-r1",
+   "cores": 1,
+   "elapsed_s": 210,
+   "pred_s": 90000,
+   "tier": "reach"
+  }
+ ]
+}

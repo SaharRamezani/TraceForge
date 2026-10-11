@@ -1,0 +1,132 @@
+{
+  "family": "legacy",
+  "example": "raft_leader_election",
+  "title": "Raft leader election (one term, staggered election timers)",
+  "source": "Ongaro and Ousterhout, \"In Search of an Understandable Consensus Algorithm\" (USENIX ATC 2014), Section 5.2 and Figure 2, election only: logs are empty and log replication is left out (file header, lines 3-8). Election Safety is the property of Figure 3 of that paper. The timing (stagger unit delta, L = 0, U = 1, sd = (N - 1) * delta) is our own; the Raft paper states no such rule.",
+  "property": "Election Safety, at most one leader per term: every node remembers the first (term, leader) it sees and asserts that its own election and every later AppendEntries of the same term name the same leader (record_leader, lines 193-201).",
+  "citable": "no",
+  "citable_note": "The two modes do not run the same program: the timed mode has a staggered sleep, a zero-wait peek receive and a deterministic candidacy rule where the baseline has one nondeterministic choice (lines 351-353, 358-374, 382-393), so the two counts measure two different models. The 2026-09-18 audit verdict (not citable) holds on the current source; in addition --rounds has no effect (unconditional return at line 442) and the timed side explores 3.3 times more than the baseline.",
+  "config_timed": "build_config, lines 453-470: Config::builder().with_all_sends_lossy().with_timed(0, 1, sd).with_progress_report(100_000).with_verbose(0), with sd = (N - 1) * delta computed at line 464 (N = 3, delta = 2: sd = 4). L = 0 and U = 1 are fixed in the source, there is no flag for them. Tool defaults for the rest (lib.rs, ConfigBuilder::new, lines 347-383): consistency model FIFO, scheduling policy LTR, keep-going off, sequential (the binary has no parallel option). Every send may be dropped, without a budget. The Init handoff is send_msg_timed(.., 0, 0) (line 494). Receives: blocking (lines 340 and 431) and the peek with wait 0 (line 362).",
+  "config_baseline": "build_config, lines 449-452: Config::builder().with_all_sends_lossy().with_progress_report(100_000).with_verbose(0): FIFO, LTR, keep-going off, sequential; every send may be dropped, without a budget. No clock. delta is not used in this mode (the local binary prints the same counts for --delta 2 and --delta 7).",
+  "program_differs_between_modes": "yes: three mode-dependent blocks in the protocol code of the node function, which takes the mode as a parameter (line 333, passed at line 482). (1) Lines 351-353: if mode == Mode::Timed, sleep((me + 1) * delta), the staggered election timer, timed only. (2) Lines 358-374: the peek; the baseline sets saw_message_in_peek = false without receiving, the timed mode does recv_msg_timed(WaitTime::Finite(0)), handles the message and may send a reply (line 367). (3) Lines 382-393: the decision to stand for election; baseline: not Leader, current_term < round, and traceforge::nondet(); timed: deterministic (still Follower, has not voted, nothing read in the peek).",
+  "failing_tasks": "Node threads only: traceforge::assert at line 197 (record_leader), reached from become_leader (line 217) and from the AppendEntries handler (line 294). Under keep-going the line would read task-N; this binary has no keep-going option, so a violation would stop the run at the first certified violation with exit code 101. The main thread asserts nothing. No violation occurred in any run.",
+  "counters": [],
+  "violation_counter": null,
+  "param_columns": [
+    {
+      "key": "N",
+      "header": "Nodes N",
+      "meaning": "cluster size (--nodes); a majority is N/2 + 1 (integer division)",
+      "size": true
+    },
+    {
+      "key": "R",
+      "header": "Rounds R (no effect)",
+      "meaning": "value of --rounds, meant as the highest term; it has no effect, the node function returns at the end of the first round (line 442)",
+      "size": false
+    },
+    {
+      "key": "delta",
+      "header": "delta (ticks)",
+      "meaning": "stagger unit (--delta): node i (from 0) sleeps (i + 1) * delta before its election step; timed side only",
+      "size": false
+    },
+    {
+      "key": "L",
+      "header": "L (ticks)",
+      "meaning": "transit lower bound, fixed 0 in the source; timed side only",
+      "size": false
+    },
+    {
+      "key": "U",
+      "header": "U (ticks)",
+      "meaning": "transit upper bound, fixed 1 in the source; timed side only",
+      "size": false
+    },
+    {
+      "key": "sd",
+      "header": "sd (ticks)",
+      "meaning": "storage delay = (N - 1) * delta, computed in the source (line 464); timed side only",
+      "size": false
+    }
+  ],
+  "boundary_law": null,
+  "regimes": [
+    {
+      "id": "S-ctrl",
+      "name": "staggered election timers",
+      "params": "L=0, U=1, sd=4, delta=2 (the nodes sleep 2, 4 and 6 ticks before their election step; timed side only)",
+      "rule": "No timing boundary: Election Safety holds with and without the clock in the single term that is run. Control for the verdict only (the two sides must agree on 0 violations). The two sides run different programs, so their execution counts are not a measure of what the clock removes.",
+      "expect_timed": "0 violations (exit code 0)",
+      "expect_baseline": "0 violations (exit code 0)"
+    }
+  ],
+  "glossary": [
+    {
+      "term": "Term",
+      "meaning": "Raft's election epoch; only term 1 is ever run, whatever --rounds says"
+    },
+    {
+      "term": "RequestVote",
+      "meaning": "a candidate asks every peer for its vote; a node grants at most one vote per term"
+    },
+    {
+      "term": "AppendEntries (heartbeat)",
+      "meaning": "sent by a node to every peer once it has a majority of votes; logs are empty, so it carries only (term, leader)"
+    },
+    {
+      "term": "Election Safety",
+      "meaning": "at most one leader per term, checked locally by every node on its own election and on every heartbeat it receives"
+    },
+    {
+      "term": "delta / stagger",
+      "meaning": "timed side only: node i sleeps (i + 1) * delta ticks, so the election timers fire one after the other. It models the common case of spread-out timers; it is a different scenario from the baseline, not the same program with fewer interleavings."
+    },
+    {
+      "term": "Peek",
+      "meaning": "timed side only: one receive with wait 0 after the sleep, to see whether a message of an earlier candidate is already there; the node stands for election only if it read nothing"
+    },
+    {
+      "term": "Candidacy choice (baseline)",
+      "meaning": "baseline only: each node decides with traceforge::nondet() whether its election timer fires, so every subset of the nodes may stand"
+    },
+    {
+      "term": "Blocked (in this example)",
+      "meaning": "a node waits forever on its blocking receive: no leader emerged (split vote) or the message it needs was lost. With every send lossy this is the large majority of the explored executions."
+    },
+    {
+      "term": "Reference only",
+      "meaning": "the cell is kept as a record of the v8 row; it must not be used as evidence for or against the timed checker"
+    }
+  ],
+  "cells": [
+    {
+      "cell": "N=3 delta=2 (rounds is a no-op; reference only, below 10 s)",
+      "regime": "S-ctrl",
+      "label": "3 nodes, one term, stagger unit 2 (reference only)",
+      "params": {
+        "N": 3,
+        "R": 1,
+        "delta": 2,
+        "L": 0,
+        "U": 1,
+        "sd": 4
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=2712 blocked=38503 (explored 41215) (v9, three repetitions identical)",
+      "expect_baseline": "0 violations (exit code 0); execs=2232 blocked=10364 (explored 12596) (v9, three repetitions identical; same counts as v8)",
+      "note": "The two sides run different programs. The timed side explores 3.3 times MORE than the baseline (41215 against 12596) and takes about 15 times longer (9.3 s against 0.6 s). Not citable."
+    }
+  ],
+  "notes": [
+    "Not citable. Audit of 2026-09-18 checked against the current source: it names line 351 plus two mode-dependent branches; they are at lines 351-353 (timed-only sleep), 358-374 (timed-only peek receive) and 382-393 (nondeterministic choice in the baseline, deterministic rule in timed mode). The standing rule (memory note three_pc_delta_commit_feasibility) forbids mode-conditional sleeps in a benchmark that compares the two modes; the note feedback_raft_temporal_framing adds that the stagger models a different scenario, so the baseline and the timed mode explore different state spaces.",
+    "--rounds is a no-op (memory note project_v8_campaign): confirmed. The for loop over rounds ends in an unconditional return at line 442, so only round 1 runs. Checked on the local binary: --rounds 1 and --rounds 3 print the same counts in both modes. The file header (lines 1, 10-24, 113, 117-120) still describes a multi-term, R-bounded model; that text is out of date.",
+    "The summary line prints only nodes and R (line 502): delta, L, U and sd do not appear in it. They are resolved from the source: L = 0 and U = 1 at line 466, sd = (N - 1) * delta = 4 at line 464.",
+    "v8 numbers: the row legacy-019 of results_v8.csv (timed, blocked=25304) was measured under the W = 0 rule that was withdrawn on 2026-09-30 and must be ignored; the rerun legacy-019-A in results_v8_w0A.csv has blocked=38503, which is what v9 measures. The baseline counts are the same in v8 and v9.",
+    "The timed side explores more than the baseline (41215 against 12596 explored, 9.3 s against 0.6 s). Complete executions: 2712 timed, 2232 baseline.",
+    "violation_counter is null and counters is empty: the summary line has no counter. The violating-execution count 0 comes from the exit code.",
+    "kind: the binary has no keep-going option (ConfigBuilder default, lib.rs line 353), so the cell is first-violation by the rule of FORMAT.md; the runs exit with code 0, which means that no violation exists and the whole space was explored.",
+    "Regime suffix: the first draft used S-safe. Changed to S-ctrl: there is no timing boundary and both sides report 0 violations, so the definition of -safe does not apply. Field family: the first draft had \"raft\"; set to \"legacy\", the family id of plan_v9.csv. The file name raft.json is kept as asked.",
+    "The source comment at lines 454-463 explains sd: with sd = 0 a late peek would find nothing and no leader would ever be elected, so sd is tied to delta by the source, not chosen freely."
+  ]
+}

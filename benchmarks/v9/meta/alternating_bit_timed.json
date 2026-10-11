@@ -1,0 +1,798 @@
+{
+  "family": "abp",
+  "example": "alternating_bit_timed",
+  "title": "Alternating bit protocol, with its unmarked-acknowledgement variant (par)",
+  "source": "Own generalized model (one global transit window [L, U], storage sd), not a transliteration. Protocol idea: K. A. Bartlett, R. A. Scantlebury, P. T. Wilkinson, 'A Note on Reliable Full-Duplex Transmission over Half-Duplex Links', CACM 12(5):260-261, 1969 (the later one-way form with a resend timer is modelled). The par variant and its too-short-wait failure: D. Bosnacki and D. Dams, FORTE/PSTV 1998, pp. 423-439 (rule: the wait 'should be longer than the sum of the delays through the channels and the message processing time by the receiver'). Timed benchmark form of the protocol: the AlternatingBit model of Bonneland, Jensen, Larsen, Muniz, Srba, CAV 2018. The transliteration of the Bosnacki-Dams listing is the separate example par_timed.",
+  "property": "Two assertions of the receiver. P1 (every delivery, line 602): the delivered payload is the next expected one, so nothing is delivered twice and nothing is skipped in the middle. P2 (on Done{completed: true}, line 629): when the sender believes all K messages were acknowledged, the receiver has delivered all K (no silent gap at the tail).",
+  "citable": "with caveats",
+  "citable_note": "The 2026-09-18 audit rated it citable with one claim withdrawn (equal cost at U = 3, 30, 300 against DT-Spin's state growth is not a timed-against-baseline result; the source header withdraws it too). The current source still meets the audit's conditions: the program is identical in both modes and the vacuity warnings are in place. Caveats: an own model, not the published listing (cite par_timed for that); the par boundary is measured on a finite set of cells, not proved, and its sd term is not exercised by the campaign (sd = 0 in every cell); holds are holds for the bounds K and R; the audit's execution counts (54 against 29) predate universal loss.",
+  "config_timed": "apply_parallel(Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX)) (alternating_bit_timed.rs:659-660), then .with_timed(L, U, sd) (line 666): every send in both directions has a transit time in [L, U], a message stays readable for sd after it arrives. W is the wait of the sender's receive (Finite(W), lines 537-540), dR an exact sleep of the receiver after it delivers a new frame (line 609). Every send may be dropped, without a budget (Init and Done included). Consistency model: the default, FIFO (lib.rs:355). Scheduling policy: the default, LTR (lib.rs:356). --keep-going adds with_keep_going_after_error(true) (lines 661-663): passed by the par-variant cells only; the abp-variant cells run without it. Exploration is sequential (apply_parallel, lines 647-654, default none) except in the two edge rungs, which pass --parallel shared (with_parallel(true), line 650): the shared worker pool, one worker per CPU the process is pinned to (num_cpus::get(), exec_pool.rs:379-385), 8 in the campaign.",
+  "config_baseline": "The same builder without with_timed (line 665): with_all_sends_lossy (every send may be dropped, without a budget), FIFO, LTR, same keep-going option, sequential. The timed receive and the sleep run with their timing ignored, so W, U, L, sd and dR have no effect: baseline counts depend only on the variant, K and R.",
+  "program_differs_between_modes": "no: sender and receiver take only the parameters; the processing sleep is unconditional (a no-op without a clock); the mode only selects the Config (lines 664-667)",
+  "failing_tasks": "Only the receiver asserts (P1 at line 602, P2 at line 629). It is the first thread main spawns, so every violating execution of a keep-going run prints the line task-1 (checked in a local run of the par variant). In a run without --keep-going the first violation aborts with exit code 101; no abp-variant cell does.",
+  "counters": [
+    {
+      "key": "p1_fails",
+      "counts": "executions",
+      "meaning": "executions in which P1 failed (a wrong or duplicate delivery); raised once, immediately before the failing assertion, which ends the execution"
+    },
+    {
+      "key": "p2_fails",
+      "counts": "executions",
+      "meaning": "executions in which P2 failed (the sender completed, the receiver misses a message at the tail). p1_fails + p2_fails equals the violating executions in every v9 run (74 of 74)"
+    },
+    {
+      "key": "stale",
+      "counts": "events",
+      "meaning": "times the abp sender discarded an acknowledgement with the wrong bit: evidence that the premature-timeout path was explored. Read as zero or nonzero; always 0 for the par variant"
+    }
+  ],
+  "violation_counter": null,
+  "param_columns": [
+    {
+      "key": "variant",
+      "header": "Variant",
+      "meaning": "abp: acknowledgements repeat the frame's bit and the sender ignores a wrong one; par: acknowledgements carry no bit, any acknowledgement counts (--variant)",
+      "size": false
+    },
+    {
+      "key": "K",
+      "header": "Messages K",
+      "meaning": "messages to transfer (--messages)",
+      "size": true
+    },
+    {
+      "key": "R",
+      "header": "Retries R",
+      "meaning": "retransmissions per message before the sender gives up (--retries)",
+      "size": true
+    },
+    {
+      "key": "L",
+      "header": "L (ticks)",
+      "meaning": "transit lower bound, L = round(l-ratio * U); timed side only",
+      "size": false
+    },
+    {
+      "key": "U",
+      "header": "U (ticks)",
+      "meaning": "transit upper bound (--u, default 1); timed side only",
+      "size": false
+    },
+    {
+      "key": "sd",
+      "header": "sd (ticks)",
+      "meaning": "storage lifetime: how long a message stays readable after it arrives, sd = round(sd-ratio * U); 0 in every cell",
+      "size": false
+    },
+    {
+      "key": "dR",
+      "header": "dR (ticks)",
+      "meaning": "receiver's processing time after it delivers a new frame, dR = round(proc-ratio * U)",
+      "size": false
+    },
+    {
+      "key": "W",
+      "header": "Wait W (ticks)",
+      "meaning": "sender's timeout: how long it waits for an acknowledgement before it sends the frame again, W = round(w-ratio * U)",
+      "size": false
+    },
+    {
+      "key": "W_lo",
+      "header": "Window from",
+      "meaning": "derived: smallest W of the violation window of the par variant, the smallest integer W >= 1 with (R + 1) W >= 2L + dR",
+      "size": false
+    },
+    {
+      "key": "W_hi",
+      "header": "Window to",
+      "meaning": "derived: largest W of the violation window, 2U + sd + dR (the upper edge; the tie violates). The par variant violates on the timed side iff W_lo <= W <= W_hi; for the abp variant the same window is where the premature-timeout path is feasible (stale above 0)",
+      "size": false
+    }
+  ],
+  "boundary_law": "par variant, timed side: a violation exists iff W <= 2U + sd + dR (upper edge; the tie violates) and 2L + dR <= (R + 1) W (lower edge). Above the upper edge a timeout can no longer be followed by a read of the acknowledgement it gave up on; below the lower edge no acknowledgement can return before the sender gives up on the first message, so nothing completes (0 violations, P2 never evaluated). The abp variant holds at every W; for it the window only says where the timed side still explores the premature-timeout path. Origin: measured with this binary (source header, 'Expected verdicts', re-measured 2026-09-30 with every send lossy, lines 318-349) and coded in its vacuity check (lines 764-770); not proved. At L = U and sd = 0 the upper edge is Bosnacki and Dams' To > dK + dL + dR. How well it is checked in v9: all 7 par-variant timed cells agree (2 one tick above the upper edge at U = 1, 2 ties, 1 one tick above the upper edge on the DT-Spin row, 1 smallest wait inside, 1 below the lower edge), at sd = 0 only.",
+  "regimes": [
+    {
+      "id": "A-ctrl",
+      "name": "abp variant, wait above the premature window (default setting)",
+      "params": "L=0, U=1, sd=0, dR=0, W=3; variant abp",
+      "rule": "W = 3 > 2U + sd + dR = 2: on the timed side no timeout can be followed by a read of the acknowledgement it gave up on. This variant has no violating side: acknowledgements carry the bit, so the protocol is correct at every W on order-preserving channels. Control: the clock changes the cost, not the verdict. All size ladders (messages K, retries R) run here.",
+      "expect_timed": "0 violations (stale = 0: the premature-timeout path is infeasible)",
+      "expect_baseline": "0 violations (stale above 0: without a clock the stale acknowledgement is explored and discarded)"
+    },
+    {
+      "id": "A-safe",
+      "name": "par variant, wait one tick above the upper edge (default setting)",
+      "params": "L=0, U=1, sd=0, dR=0, W=3; variant par",
+      "rule": "W = 3 > 2U + sd + dR = 2: above the upper edge of the violation window, so the acknowledgement mix-up cannot happen in real time.",
+      "expect_timed": "0 violations",
+      "expect_baseline": "spurious violations (p1_fails and p2_fails above 0): without a clock the sender can time out early at every W and take the second acknowledgement of one message for the acknowledgement of the next"
+    },
+    {
+      "id": "B-ctrl",
+      "name": "abp variant, wait on the upper edge of the premature window",
+      "params": "L=0, U=1, sd=0, dR=0, W=2; variant abp",
+      "rule": "W = 2 = 2U + sd + dR: a premature timeout followed by a read of the late acknowledgement is feasible; the abp sender discards that acknowledgement (wrong bit). Still no violation: control.",
+      "expect_timed": "0 violations (stale above 0: the premature-timeout path is explored)",
+      "expect_baseline": "0 violations, the same counts as in A-ctrl (the baseline ignores W)"
+    },
+    {
+      "id": "B-edge",
+      "name": "par variant, wait on the upper edge (tie)",
+      "params": "L=0, U=1, sd=0, dR=0, W=2; variant par",
+      "rule": "W = 2 = 2U + sd + dR: exactly on the upper edge; the lower-edge condition 2L + dR = 0 <= (R + 1) W holds. The tool puts the tie on the violating side (a timeout and an arrival at the same instant may be ordered either way).",
+      "expect_timed": "violations (p1_fails and p2_fails above 0): real",
+      "expect_baseline": "violations, the same counts as in A-safe: the baseline ignores W, U, L, sd and dR (no baseline job of its own)"
+    },
+    {
+      "id": "C-ctrl",
+      "name": "abp variant, wait inside the premature window",
+      "params": "L=0, U=1, sd=0, dR=0, W=1; variant abp",
+      "rule": "W = 1 < 2U + sd + dR = 2: premature timeouts are feasible at every send. Still no violation: control. The timed side explores 0.71 of the baseline's executions here (v8, K=4).",
+      "expect_timed": "0 violations (stale above 0)",
+      "expect_baseline": "0 violations, the same counts as in A-ctrl (the baseline ignores W)"
+    },
+    {
+      "id": "D-edge",
+      "name": "par variant, DT-Spin row, wait on the upper edge (tie)",
+      "params": "L=3, U=3, sd=0, dR=1, W=7; variant par",
+      "rule": "W = 7 = 2U + sd + dR, which at L = U = 3 is Bosnacki and Dams' dK + dL + dR with their constants (3, 3, 1): exactly on the upper edge. The lower-edge condition 2L + dR = 7 <= (R + 1) W = 21 holds. The tool puts the tie on the violating side, as the published rule To > dK + dL + dR does.",
+      "expect_timed": "violations (p1_fails and p2_fails above 0): real",
+      "expect_baseline": "violations, the same counts as in A-safe: the baseline ignores W, U, L, sd and dR (no baseline job of its own)"
+    },
+    {
+      "id": "D-safe",
+      "name": "par variant, DT-Spin row, first wait above the upper edge",
+      "params": "L=3, U=3, sd=0, dR=1, W=8; variant par",
+      "rule": "W = 8 = 2U + sd + dR + 1: the smallest wait the published rule To > dK + dL + dR = 7 allows.",
+      "expect_timed": "0 violations",
+      "expect_baseline": "spurious violations (p1_fails and p2_fails above 0): without a clock the sender can time out early at every W and take the second acknowledgement of one message for the acknowledgement of the next"
+    },
+    {
+      "id": "E-viol",
+      "name": "par variant, DT-Spin row, smallest wait inside the window",
+      "params": "L=3, U=3, sd=0, dR=1, W=3; variant par",
+      "rule": "W = 3 <= 2U + sd + dR = 7 and 2L + dR = 7 <= (R + 1) W = 9 at R = 2: inside the violation window. W = 3 is the smallest integer wait that meets the lower-edge condition (not a tie: 9 > 7).",
+      "expect_timed": "violations (p1_fails and p2_fails above 0): real",
+      "expect_baseline": "violations, the same counts as in A-safe: the baseline ignores W, U, L, sd and dR (no baseline job of its own)"
+    },
+    {
+      "id": "E-safe",
+      "name": "par variant, DT-Spin row, wait below the lower edge: nothing completes",
+      "params": "L=3, U=3, sd=0, dR=1, W=2; variant par",
+      "rule": "(R + 1) W = 6 < 2L + dR = 7 at R = 2: no acknowledgement can come back before the sender gives up on the first message, so no execution completes. 0 violations, but P2 is never evaluated (end_checks = 0, the binary prints a WARNING): a partial hold, to be read as 'no completion'.",
+      "expect_timed": "0 violations (no execution completes: end_checks = 0, P1 checked only)",
+      "expect_baseline": "spurious violations, the same counts as in A-safe: the baseline ignores W (no baseline job of its own)"
+    }
+  ],
+  "glossary": [
+    {
+      "term": "abp variant",
+      "meaning": "the alternating bit protocol proper: every acknowledgement repeats the bit of the frame it answers and the sender ignores an acknowledgement with the wrong bit. Correct at every timeout on channels that keep the order"
+    },
+    {
+      "term": "par variant",
+      "meaning": "the same protocol with unmarked acknowledgements (any acknowledgement counts): a wait shorter than the round trip lets the sender take the second acknowledgement of one message for the acknowledgement of the next, which is then never resent"
+    },
+    {
+      "term": "frame",
+      "meaning": "a data message: the alternating bit plus the payload (0 to K-1)"
+    },
+    {
+      "term": "acknowledgement (Ack)",
+      "meaning": "the receiver's reply to every frame, new or duplicate"
+    },
+    {
+      "term": "W",
+      "meaning": "the sender's wait for an acknowledgement, in ticks, counted from the (re)send"
+    },
+    {
+      "term": "L, U",
+      "meaning": "bounds of the transit time of every message, in ticks, in both directions"
+    },
+    {
+      "term": "sd",
+      "meaning": "storage lifetime in ticks: a message not read within sd of its arrival expires"
+    },
+    {
+      "term": "dR",
+      "meaning": "the receiver's processing time, an exact sleep after a new frame is delivered and before its acknowledgement is sent"
+    },
+    {
+      "term": "violation window",
+      "meaning": "the waits W for which the par variant violates on the timed side: W_lo <= W <= W_hi"
+    },
+    {
+      "term": "upper edge (W_hi)",
+      "meaning": "2U + sd + dR: the largest wait at which a timeout can still be followed by a read of the acknowledgement it gave up on"
+    },
+    {
+      "term": "lower edge (W_lo)",
+      "meaning": "the smallest wait with (R + 1) W >= 2L + dR: below it the sender gives up on the first message before any acknowledgement can return"
+    },
+    {
+      "term": "tie",
+      "meaning": "W = W_hi: the timeout and the latest possible arrival fall on the same instant; both orders are possible and the cell violates"
+    },
+    {
+      "term": "premature timeout",
+      "meaning": "the sender resends although the acknowledgement is still on its way. Harmless for abp (the late acknowledgement has the wrong bit and is discarded, counted in stale), fatal for par"
+    },
+    {
+      "term": "DT-Spin row",
+      "meaning": "the constants of Bosnacki and Dams' Table 2, first row, in this model's parameters: L = U = 3 (dK = dL = 3), dR = 1; flags --u 3 --l-ratio 1 --proc-ratio 0.333"
+    },
+    {
+      "term": "no completion",
+      "meaning": "an exit-0 run in which no execution reaches Done{completed: true} (end_checks = 0): P2 was never evaluated, so the run is not a hold of P2"
+    },
+    {
+      "term": "p1_fails, p2_fails",
+      "meaning": "executions in which P1 or P2 failed; their sum is the number of violating executions"
+    },
+    {
+      "term": "stale",
+      "meaning": "event counter: acknowledgements with the wrong bit that the abp sender discarded"
+    },
+    {
+      "term": "confused",
+      "meaning": "summary counter (events): the sender accepted an acknowledgement that answers an older frame; 0 in every abp-variant run and on the safe side of the par variant"
+    },
+    {
+      "term": "delivered, dups, timeouts, completed, gave_up, end_checks",
+      "meaning": "summary counters (events over all explored executions, read as zero or nonzero): frames handed to the user, old copies acknowledged again, retransmissions, senders that got all K acknowledgements, senders that gave up after R retransmissions, evaluations of P2. Their values on the timed side changed between v8 and v9 although the execution counts did not, so never compare them across campaigns"
+    },
+    {
+      "term": "Init, Done",
+      "meaning": "harness messages: main's bootstrap and the sender's end marker. Like every send they may be dropped; the waiting thread then blocks (a blocked execution, not a violation)"
+    },
+    {
+      "term": "expiry",
+      "meaning": "on the timed side a stored message that is not read within sd is gone. With dR above 0 a frame can expire while the receiver processes an earlier one: a loss the baseline does not have (the binary prints a NOTE on the DT-Spin rows)"
+    }
+  ],
+  "cells": [
+    {
+      "cell": "abp K=3 R=2 W=3",
+      "regime": "A-ctrl",
+      "label": "abp, 3 messages, 2 retries",
+      "params": {
+        "variant": "abp",
+        "K": 3,
+        "R": 2,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=1142 blocked=1160 (explored 2302), stale=0; v9, 3 runs",
+      "expect_baseline": "0 violations (exit code 0); execs=107388 blocked=107406 (explored 214794), stale above 0; v9, 3 runs",
+      "note": "Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Every finished run of this cell ended with exit code 0."
+    },
+    {
+      "cell": "abp K=4 R=2 W=3",
+      "regime": "A-ctrl",
+      "label": "abp, 4 messages, 2 retries",
+      "params": {
+        "variant": "abp",
+        "K": 4,
+        "R": 2,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=8002 blocked=8020 (explored 16022), stale=0; v9, 3 runs",
+      "expect_baseline": "0 violations (exit code 0); execs=4503679 blocked=4503697 (explored 9007376), stale above 0; v9, 3 runs",
+      "note": "Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Every finished run of this cell ended with exit code 0."
+    },
+    {
+      "cell": "abp K=5 R=2 W=3 (U=1)",
+      "regime": "A-ctrl",
+      "label": "abp, 5 messages, 2 retries: largest K both sides finished",
+      "params": {
+        "variant": "abp",
+        "K": 5,
+        "R": 2,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=56022 blocked=56040 (explored 112062), stale=0; v9, 3 runs",
+      "expect_baseline": "0 violations (exit code 0); execs=188828658 blocked=188828676 (explored 377657334), stale above 0; v9, 1 run",
+      "note": "Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Every finished run of this cell ended with exit code 0."
+    },
+    {
+      "cell": "abp K=6 R=2 W=3",
+      "regime": "A-ctrl",
+      "label": "abp, 6 messages, 2 retries (baseline is a ceiling job)",
+      "params": {
+        "variant": "abp",
+        "K": 6,
+        "R": 2,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=392162 blocked=392180 (explored 784342), stale=0; v9, 3 runs",
+      "expect_baseline": "not finished: v8 stopped it at the deadline after 1 d 15 h with 1335200000 explored and no violation up to that point (one would have ended the run); the v9 run started on 2026-10-09 15:14 and is still running. Expected for this variant: 0 violations",
+      "note": "Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Every finished run of this cell ended with exit code 0. The baseline side is a ceiling job that is expected not to finish."
+    },
+    {
+      "cell": "abp K=7 R=2 W=3",
+      "regime": "A-ctrl",
+      "label": "abp, 7 messages, 2 retries (timed side only)",
+      "params": {
+        "variant": "abp",
+        "K": 7,
+        "R": 2,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=2745142 blocked=2745160 (explored 5490302), stale=0; v8 (abp-013); no v9 result yet (queued on 2026-10-11)",
+      "expect_baseline": "not run: no baseline job for this cell",
+      "note": "Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Every finished run of this cell ended with exit code 0."
+    },
+    {
+      "cell": "abp K=8 R=2 W=3 (U=1)",
+      "regime": "A-ctrl",
+      "label": "abp, 8 messages, 2 retries (timed side only)",
+      "params": {
+        "variant": "abp",
+        "K": 8,
+        "R": 2,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=19216002 blocked=19216020 (explored 38432022), stale=0; v9, 1 run",
+      "expect_baseline": "not run: no baseline job for this cell",
+      "note": "Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Every finished run of this cell ended with exit code 0."
+    },
+    {
+      "cell": "abp K=9 R=2 W=3 (U=1) shared8 (edge rung, timed only)",
+      "regime": "A-ctrl",
+      "label": "abp, 9 messages, 2 retries, shared pool on 8 cores (edge rung, timed side only)",
+      "params": {
+        "variant": "abp",
+        "K": 9,
+        "R": 2,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "not measured yet (0 violations expected: the variant holds at every W; the plan predicts execs of about 1.3e8, the ladder's factor 7 per message)",
+      "expect_baseline": "not run: no baseline job for this cell",
+      "note": "Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Edge rung added on 2026-10-11: one message above the top of the K ladder (K=8). It runs with the shared worker pool on 8 cores (--parallel shared), while every other cell of this example is sequential (1 core): its wall time is not on the ladder's scale, compare explored executions or CPU time."
+    },
+    {
+      "cell": "abp K=2 R=4 W=3",
+      "regime": "A-ctrl",
+      "label": "abp, 2 messages, 4 retries",
+      "params": {
+        "variant": "abp",
+        "K": 2,
+        "R": 4,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=2946 blocked=3012 (explored 5958), stale=0; v9, 3 runs",
+      "expect_baseline": "0 violations (exit code 0); execs=1124640 blocked=1124706 (explored 2249346), stale above 0; v9, 3 runs",
+      "note": "Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Every finished run of this cell ended with exit code 0."
+    },
+    {
+      "cell": "abp K=2 R=5 W=3 (U=1)",
+      "regime": "A-ctrl",
+      "label": "abp, 2 messages, 5 retries",
+      "params": {
+        "variant": "abp",
+        "K": 2,
+        "R": 5,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=12034 blocked=12164 (explored 24198), stale=0; v9, 3 runs",
+      "expect_baseline": "0 violations (exit code 0); execs=23694712 blocked=23694842 (explored 47389554), stale above 0; v8 (abp-006); no v9 result yet (queued on 2026-10-11)",
+      "note": "Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Every finished run of this cell ended with exit code 0."
+    },
+    {
+      "cell": "abp K=2 R=6 W=3",
+      "regime": "A-ctrl",
+      "label": "abp, 2 messages, 6 retries: largest R both sides finished",
+      "params": {
+        "variant": "abp",
+        "K": 2,
+        "R": 6,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=48642 blocked=48900 (explored 97542), stale=0; v9, 3 runs",
+      "expect_baseline": "0 violations (exit code 0); execs=500815327 blocked=500815585 (explored 1001630912), stale above 0; v9, 1 run",
+      "note": "Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Every finished run of this cell ended with exit code 0."
+    },
+    {
+      "cell": "abp K=2 R=7 W=3",
+      "regime": "A-ctrl",
+      "label": "abp, 2 messages, 7 retries (baseline is a ceiling job)",
+      "params": {
+        "variant": "abp",
+        "K": 2,
+        "R": 7,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=195586 blocked=196100 (explored 391686), stale=0; v9, 3 runs",
+      "expect_baseline": "not finished: v8 stopped it at the deadline after 1 d 15 h with 1691300000 explored and no violation up to that point (one would have ended the run); the v9 run started on 2026-10-09 15:14 and is still running. Expected for this variant: 0 violations",
+      "note": "Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Every finished run of this cell ended with exit code 0. The baseline side is a ceiling job that is expected not to finish."
+    },
+    {
+      "cell": "abp K=2 R=8 W=3",
+      "regime": "A-ctrl",
+      "label": "abp, 2 messages, 8 retries (timed side only)",
+      "params": {
+        "variant": "abp",
+        "K": 2,
+        "R": 8,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=784386 blocked=785412 (explored 1569798), stale=0; v9, 3 runs",
+      "expect_baseline": "not run: no baseline job for this cell",
+      "note": "Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Every finished run of this cell ended with exit code 0."
+    },
+    {
+      "cell": "abp K=2 R=9 W=3",
+      "regime": "A-ctrl",
+      "label": "abp, 2 messages, 9 retries (timed side only)",
+      "params": {
+        "variant": "abp",
+        "K": 2,
+        "R": 9,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=3141634 blocked=3143684 (explored 6285318), stale=0; v8 (abp-020); no v9 result yet (queued on 2026-10-11)",
+      "expect_baseline": "not run: no baseline job for this cell",
+      "note": "Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Every finished run of this cell ended with exit code 0."
+    },
+    {
+      "cell": "abp K=2 R=10 W=3",
+      "regime": "A-ctrl",
+      "label": "abp, 2 messages, 10 retries (timed side only)",
+      "params": {
+        "variant": "abp",
+        "K": 2,
+        "R": 10,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=12574722 blocked=12578820 (explored 25153542), stale=0; v9, 1 run",
+      "expect_baseline": "not run: no baseline job for this cell",
+      "note": "Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Every finished run of this cell ended with exit code 0."
+    },
+    {
+      "cell": "abp K=2 R=11 W=3 shared8 (edge rung, timed only)",
+      "regime": "A-ctrl",
+      "label": "abp, 2 messages, 11 retries, shared pool on 8 cores (edge rung, timed side only)",
+      "params": {
+        "variant": "abp",
+        "K": 2,
+        "R": 11,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "not measured yet (0 violations expected: the variant holds at every W; the plan predicts execs of about 5.0e7, the ladder's factor 4 per retry)",
+      "expect_baseline": "not run: no baseline job for this cell",
+      "note": "Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Edge rung added on 2026-10-11: one retry above the top of the R ladder (R=10). It runs with the shared worker pool on 8 cores (--parallel shared), while every other cell of this example is sequential (1 core): its wall time is not on the ladder's scale, compare explored executions or CPU time."
+    },
+    {
+      "cell": "par K=4 R=2 W=3 keep-going",
+      "regime": "A-safe",
+      "label": "par, 4 messages, 2 retries",
+      "params": {
+        "variant": "par",
+        "K": 4,
+        "R": 2,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=8002 blocked=8020 (explored 16022); v9, 3 runs",
+      "expect_baseline": "spurious violations: 83247 violating executions (p1_fails=14334 + p2_fails=68913, exit code 0 under keep-going); execs=1383138 blocked=1397490 (explored 2780628); v9, 3 runs",
+      "note": "Law check: W = 3 > W_hi = 2, safe side; timed 0 violations as predicted. Same timed counts as the abp variant at this size."
+    },
+    {
+      "cell": "par K=5 R=2 W=3 (U=1) keep-going",
+      "regime": "A-safe",
+      "label": "par, 5 messages, 2 retries",
+      "params": {
+        "variant": "par",
+        "K": 5,
+        "R": 2,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 3,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=56022 blocked=56040 (explored 112062); v9, 3 runs",
+      "expect_baseline": "spurious violations: 3346794 violating executions (p1_fails=794622 + p2_fails=2552172, exit code 0 under keep-going); execs=44528549 blocked=45323189 (explored 89851738); v8 (abp-004 and abp-033, identical); no v9 result yet (queued on 2026-10-11)",
+      "note": "Law check: W = 3 > W_hi = 2, safe side; timed 0 violations as predicted. Its baseline job is also the baseline of every other par K=5 R=2 cell (B-edge, D-edge, D-safe, E-viol, E-safe)."
+    },
+    {
+      "cell": "abp premature K=4 R=2 W=2 (=edge)",
+      "regime": "B-ctrl",
+      "label": "abp, 4 messages, wait on the upper edge",
+      "params": {
+        "variant": "abp",
+        "K": 4,
+        "R": 2,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 2,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=263236 blocked=263254 (explored 526490), stale=485108 (above 0, as predicted); v9, 3 runs",
+      "expect_baseline": "0 violations (exit code 0); execs=4503679 blocked=4503697 (explored 9007376), stale above 0; v9, 3 runs",
+      "note": "Boundary cell. Law check: W = 2 = W_hi (on the upper edge, inside the window) and (R + 1) W = 6 >= 2L + dR = 0, so the premature-timeout path is feasible on the timed side: stale above 0 and no violation, as predicted for the abp variant. Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Every finished run of this cell ended with exit code 0."
+    },
+    {
+      "cell": "abp premature K=5 R=2 W=2 (=edge)",
+      "regime": "B-ctrl",
+      "label": "abp, 5 messages, wait on the upper edge",
+      "params": {
+        "variant": "abp",
+        "K": 5,
+        "R": 2,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 2,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=4959562 blocked=4959580 (explored 9919142), stale above 0; v8 (abp-028); no v9 result yet (queued on 2026-10-11)",
+      "expect_baseline": "0 violations (exit code 0); execs=188828658 blocked=188828676 (explored 377657334), stale above 0; v9, 1 run",
+      "note": "Boundary cell. Law check: W = 2 = W_hi, premature-timeout path feasible on the timed side, no violation predicted for the abp variant (timed side checked in v8 only so far). The baseline is a replicate of the A-ctrl baseline at K=5 (identical counts: the baseline ignores W). Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Every finished run of this cell ended with exit code 0."
+    },
+    {
+      "cell": "abp premature K=4 R=2 W=1",
+      "regime": "C-ctrl",
+      "label": "abp, 4 messages, wait inside the premature window",
+      "params": {
+        "variant": "abp",
+        "K": 4,
+        "R": 2,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 1,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=3216945 blocked=3216963 (explored 6433908), stale above 0; v8 (abp-026); no v9 result yet (queued on 2026-10-11)",
+      "expect_baseline": "0 violations (exit code 0); execs=4503679 blocked=4503697 (explored 9007376), stale above 0; v9, 3 runs",
+      "note": "Boundary cell. Law check: W = 1 < W_hi = 2, inside the window: premature-timeout path feasible on the timed side, no violation predicted for the abp variant (timed side checked in v8 only so far). Timed explores 0.71 of the baseline's executions here and took 4690 s against the baseline's 823 s in v8. Runs without --keep-going: a violation would stop the run with exit code 101, and a run that ends with exit code 0 has explored everything. Every finished run of this cell ended with exit code 0."
+    },
+    {
+      "cell": "par edge U=1 K=5 R=2 W=2 (tie, FIRE side)",
+      "regime": "B-edge",
+      "label": "par, 5 messages, wait on the upper edge (tie)",
+      "params": {
+        "variant": "par",
+        "K": 5,
+        "R": 2,
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "dR": 0,
+        "W": 2,
+        "W_lo": 1,
+        "W_hi": 2
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations: 97964 violating executions (p1_fails=32288 + p2_fails=65676, exit code 0 under keep-going); execs=1676326 blocked=1708632 (explored 3384958); v9, 3 runs",
+      "expect_baseline": "no baseline job of its own: the baseline of par K=5 R=2 is the same for every W, U, L and dR; violations: 3346794 violating executions (p1_fails=794622 + p2_fails=2552172, exit code 0 under keep-going); execs=44528549 blocked=45323189 (explored 89851738); v8 (abp-004 and abp-033, identical)",
+      "note": "Boundary cell. Law check: W = 2 = W_hi = 2U + sd + dR (tie) and (R + 1) W = 6 >= 2L + dR = 0: violation predicted, found. Timed side only."
+    },
+    {
+      "cell": "par DT-Spin row K=5 R=2 W=7 (FIRE side)",
+      "regime": "D-edge",
+      "label": "par, DT-Spin constants, wait on the upper edge (tie)",
+      "params": {
+        "variant": "par",
+        "K": 5,
+        "R": 2,
+        "L": 3,
+        "U": 3,
+        "sd": 0,
+        "dR": 1,
+        "W": 7,
+        "W_lo": 3,
+        "W_hi": 7
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations: 7462 violating executions (p1_fails=2548 + p2_fails=4914, exit code 0 under keep-going); execs=366294 blocked=368860 (explored 735154); v9, 3 runs",
+      "expect_baseline": "no baseline job of its own: the baseline of par K=5 R=2 is the same for every W, U, L and dR; violations: 3346794 violating executions (p1_fails=794622 + p2_fails=2552172, exit code 0 under keep-going); execs=44528549 blocked=45323189 (explored 89851738); v8 (abp-004 and abp-033, identical)",
+      "note": "Boundary cell. Law check: W = 7 = W_hi = 2U + sd + dR = 6 + 0 + 1 (tie) and (R + 1) W = 21 >= 2L + dR = 7: violation predicted, found. Resolved from --u 3 --l-ratio 1 --proc-ratio 0.333 --w-ratio 2.3333333: L = 3, dR = round(0.999) = 1, W = round(6.9999999) = 7. Timed side only."
+    },
+    {
+      "cell": "par DT-Spin row K=5 R=2 W=8 (hold side)",
+      "regime": "D-safe",
+      "label": "par, DT-Spin constants, first wait above the upper edge",
+      "params": {
+        "variant": "par",
+        "K": 5,
+        "R": 2,
+        "L": 3,
+        "U": 3,
+        "sd": 0,
+        "dR": 1,
+        "W": 8,
+        "W_lo": 3,
+        "W_hi": 7
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=39215 blocked=39233 (explored 78448), end_checks above 0 (P2 evaluated); v9, 3 runs",
+      "expect_baseline": "spurious violations: 3346794 violating executions (p1_fails=794622 + p2_fails=2552172, exit code 0 under keep-going); execs=44528549 blocked=45323189 (explored 89851738); v8 (abp-004 and abp-033, identical); no v9 result yet (queued on 2026-10-11)",
+      "note": "Boundary cell. Law check: W = 8 > W_hi = 7: safe side, 0 violations predicted, found. Resolved from --w-ratio 2.6666667 at U = 3: W = round(8.0000001) = 8. The baseline job is a replicate of the A-safe baseline at K=5 (the baseline ignores U, L, dR and W; identical counts in v8)."
+    },
+    {
+      "cell": "par DT-Spin row K=5 R=2 W=3 (lower edge, FIRE)",
+      "regime": "E-viol",
+      "label": "par, DT-Spin constants, smallest wait inside the window",
+      "params": {
+        "variant": "par",
+        "K": 5,
+        "R": 2,
+        "L": 3,
+        "U": 3,
+        "sd": 0,
+        "dR": 1,
+        "W": 3,
+        "W_lo": 3,
+        "W_hi": 7
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations: 37730 violating executions (p1_fails=19258 + p2_fails=18472, exit code 0 under keep-going); execs=174476 blocked=197464 (explored 371940); v9, 3 runs",
+      "expect_baseline": "no baseline job of its own: the baseline of par K=5 R=2 is the same for every W, U, L and dR; violations: 3346794 violating executions (p1_fails=794622 + p2_fails=2552172, exit code 0 under keep-going); execs=44528549 blocked=45323189 (explored 89851738); v8 (abp-004 and abp-033, identical)",
+      "note": "Boundary cell. Law check: W = 3 <= W_hi = 7 and (R + 1) W = 9 >= 2L + dR = 7: inside the window, violation predicted, found. W = 3 = W_lo is the smallest wait that meets the lower-edge condition. Resolved from --w-ratio 1 at U = 3. Timed side only."
+    },
+    {
+      "cell": "par DT-Spin row K=5 R=2 W=2 (below lower edge)",
+      "regime": "E-safe",
+      "label": "par, DT-Spin constants, wait below the lower edge",
+      "params": {
+        "variant": "par",
+        "K": 5,
+        "R": 2,
+        "L": 3,
+        "U": 3,
+        "sd": 0,
+        "dR": 1,
+        "W": 2,
+        "W_lo": 3,
+        "W_hi": 7
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=27 blocked=45 (explored 72), completed=0, end_checks=0: no execution completes, P2 is never evaluated (WARNING printed); v9, 3 runs",
+      "expect_baseline": "no baseline job of its own: the baseline of par K=5 R=2 is the same for every W, U, L and dR; violations: 3346794 violating executions (p1_fails=794622 + p2_fails=2552172, exit code 0 under keep-going); execs=44528549 blocked=45323189 (explored 89851738); v8 (abp-004 and abp-033, identical)",
+      "note": "Boundary cell. Law check: (R + 1) W = 6 < 2L + dR = 7: below the lower edge, no completion and no violation predicted, found. A partial hold (P1 only), not a hold of P2. Resolved from --w-ratio 0.6666667 at U = 3: W = round(2.0000001) = 2. Runs in 0.01 s: not a timing row. Timed side only."
+    }
+  ],
+  "notes": [
+    "Regime letters are new in v9 (v8 had none for ABP). One letter = one complete timing setting: A (L=0, U=1, sd=0, dR=0, W=3: the default, all size ladders), B (same network, W=2), C (same network, W=1), D (DT-Spin row at the upper edge: W=7 and W=8), E (DT-Spin row at the lower edge: W=3 and W=2). On A and B the variant decides the suffix: abp is a control (no violating side exists), par is safe or on the edge.",
+    "Boundary cells checked against the law (par, timed: violation iff W <= 2U + sd + dR and 2L + dR <= (R + 1) W). U=1 (window W = 1 to 2): abp premature W=2 (on the upper edge) and W=1 (inside): no violation, stale above 0, as predicted for abp; par edge W=2 (tie): violation, found (97964). DT-Spin row at R=2 (window W = 3 to 7): W=7 (tie): violation, found (7462); W=8: none, found 0 with P2 evaluated; W=3 (smallest inside): violation, found (37730); W=2 (below, 6 < 7): no completion, found (execs=27, end_checks=0). No mismatch. Still unmeasured in v9 on the timed side: abp premature K=4 W=1 and K=5 W=2 (v8: holds with stale above 0).",
+    "Many cells exist on the timed side only. (1) par K=5 R=2: one baseline computation serves all six cells, because the baseline ignores W, U, L and dR. It has two jobs, abp-004 (U=1, W=3) and abp-033 (DT-Spin row, W=8); v8 measured them bit-identical (execs=44528549 blocked=45323189 p1_fails=794622 p2_fails=2552172); neither has a v9 result yet. The rows B-edge, D-edge, E-viol and E-safe have no baseline side of their own in the plan. (2) abp ladders above K=6 (R=2) and above R=7 (K=2) have no baseline job: the baseline did not finish K=6 or R=7 in v8.",
+    "The baseline ignores W: v9 measures the abp baseline at K=4 R=2 three times (W = 3, 2, 1) with identical counts (execs=4503679 blocked=4503697) and at K=5 R=2 twice (W = 3, 2: execs=188828658 blocked=188828676). Those baseline rows are replicates of one computation.",
+    "kind = first-violation on the abp-variant cells only records that they run without --keep-going. Every finished one ended with exit code 0, so each explored its whole space and its counts are exhaustive. The par-variant cells run with --keep-going: a violating run exits with code 0 and the verdict is the count (plus the VIOLATION line), never the exit code. A local run of a small par tie cell without --keep-going (K=2, R=1, U=1, W=2, binary of 30 September) aborts with exit code 101 and a certified witness.",
+    "No single violation counter: violating executions = p1_fails + p2_fails (two different assertions). The sum equals the tool's count in all 74 finished v9 runs (12 of them with violations), so violation_counter is null and the two counters are listed instead. All runs are sequential, so the pool effect seen on the PAR sheet (a few violation lines lost) cannot occur here.",
+    "Disagreement between memory notes and source, the source wins. (1) The 2026-09-16 case-study note gives the upper edge as 2U + 2sd + dR; the source (re-measured 2026-09-30) says 2U + sd + dR: one sd went away with the timeout-miss rule, under which a timeout may not pass over a readable acknowledgement. The binary still prints '(2U+2sd+dR=..)' in its summary line, for reference only (lines 505-510). With sd = 0 in every campaign cell the two expressions coincide, so v9 cannot tell them apart and says nothing about the sd term. (2) The same note records that Sahar asked for the example to use unordered (bag) channels and calls the header's bullet 'Order-preserving channels instead of TAPAAL's unordered media' out of date. The committed source sets no consistency model, so every cell runs on FIFO channels, and the bullet is still in the header (lines 169-171). (3) The audit's execution counts for the default cell (54 against 29) predate universal loss; the header now gives 122 + 132 against 34 + 44.",
+    "Event counters (delivered, dups, timeouts, stale, confused, completed, gave_up) changed on the timed side between v8 and v9 while execs, blocked, p1_fails and p2_fails are identical in all 28 jobs finished in both campaigns (example: stale at abp premature K=4 W=2 was 604703 in v8 and is 485108 in v9, on the same 263236 + 263254 executions); on the baseline side no counter changed. Use them as zero or nonzero evidence only. Where a v9 result is missing, this file quotes v8 execution counts but never a v8 event count.",
+    "Above the edge the two variants are the same computation on the timed side: at W=3 abp and par report identical counts (K=4: 8002 + 8020; K=5: 56022 + 56040), because no stale acknowledgement can ever be read.",
+    "Cost is not uniform across the regimes. A (W=3): timed explores far less (K=5 R=2: 112062 against 377657334) and is far faster (48 s against 7 h 25 min). B-ctrl (W=2): K=4, 526490 explored in 222 s against 9007376 in 582 s. C-ctrl (W=1): in v8 the timed side explored 0.71 of the baseline's executions and took 4690 s against 823 s. The premature-timeout path costs the timed side most of its advantage.",
+    "E-safe (below the lower edge) is a partial hold: 0 violations because nothing completes, P2 never evaluated. It carries the suffix safe because the clock rules the violation out, but it must not be reported as a hold of both properties. Its counts (execs=27, blocked=45) do not depend on K.",
+    "Timed execution counts follow closed forms in A-ctrl: execs = (10 * 7^K - 4) / 3 at R=2 (blocked = execs + 18) and execs = 3n^2 - 4n + 2 with n = 2^(R+1) at K=2 (blocked = execs + 2n + 2). They fit all 13 measured sizes (K = 3 to 8, R = 4 to 10) and give the plan's predictions for the edge rungs: K=9, 134512022 execs; R=11, 50315266 execs. Observed regularities, not derived formulas.",
+    "The two edge rungs (abp-e01, K=9; abp-e02, R=11) are the only cells of this example that use the shared worker pool (8 cores); the rest of both ladders is sequential. This file has no pool-size column so that the rungs stay attached to their ladders; their wall times must not be put on the same axis as the sequential rungs. The parameters of the edge flags were checked with a local run of the same flags at K=2, R=1: L=0 U=1 sd=0 W=3 dR=0.",
+    "Ratio flags resolve as round(ratio * U): all 74 v9 summary lines carry the values this file lists (checked by script). The cells without a v9 row were checked against their v8 summary line (abp-004, abp-006, abp-013, abp-020, abp-026, abp-028, abp-033) or, for the two ceiling baselines and the two edge rungs, against cells with the same timing flags.",
+    "Run counts in expect_timed and expect_baseline ('v9, 3 runs') are those of the results fetched on 2026-10-11 11:09. Without a v9 result at that time: baselines abp-004 (par K=5 R=2), abp-006 (abp K=2 R=5), abp-033 (par DT-Spin row W=8), the ceiling baselines abp-036 and abp-037 (running since the launch, expected not to finish); timed abp-013 (K=7), abp-020 (R=9), abp-026 (premature W=1), abp-028 (premature K=5 W=2); the two edge rungs."
+  ]
+}

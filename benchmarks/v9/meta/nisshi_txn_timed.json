@@ -1,0 +1,1407 @@
+{
+  "family": "nisshi",
+  "example": "nisshi_txn_timed",
+  "title": "Delayed EndTxn in the nisshi transaction coordinator (KAFKA-17754)",
+  "source": "Own model (traceforge/examples/nisshi_txn_timed.rs, header comment lines 1 to 126) of a real bug class: KAFKA-17754, reported for Apache Kafka (found by Jepsen, per the header): a delayed EndTxn request commits the next transaction. The storage thread follows the PostgreSQL engine of the Rust broker nisshi (formerly Tansu), commit b3d0ceaf, nisshi-storage/src/pg.rs; the producer follows the retry behaviour of the Apache Kafka Java client 3.9 (TransactionManager.java). The timing rule is not published anywhere: it is the hop count of this model, read off the source and confirmed by the boundary cells. The header reports that both witness orders were replayed on the real nisshi code on 2026-09-16 (evidence under docs/research/nisshi_kafka_17754/, a directory git ignores).",
+  "property": "Two assertions, both made by the storage thread. P1 (stray commit, the KAFKA-17754 bug), checked whenever an EndTxn writes a control marker: the marker of EndTxn of client transaction g seals only records of transaction g (line 549). P2 (dirty read), checked after every request: no record of transaction g is below the last stable offset before an EndTxn(commit) of g was processed (line 656). Every cell runs with --property both, so either failure ends the execution.",
+  "citable": "with caveats",
+  "citable_note": "The 2026-09-18 audit ruled it citable and the current source still supports that for the precision result: no mode-dependent protocol code, both properties fail on the timed side exactly from their boundary on, and the epoch-bump fix removes them on both sides. Caveats: (1) quote dirty_reads (= violating executions), never the summary's violations= (it counts every stray-commit execution twice); (2) every size-ladder cell has W = 1 < 2L, where the clock forces every EndTxn sent while retries remain to time out, so the timed complete executions do not depend on T, the blocked ones grow only linearly, and the large explored ratios of the ladder owe much to that setting (see notes; needs a ruling before an efficiency claim); (3) the law is this model's hop count, re-checked in v9 on 21 exhaustive and 9 first-violation timed cells, not on the 216 cells the audit quotes, which predate the lossy sends.",
+  "config_timed": "build_config, lines 692 to 707: Config::builder().with_all_sends_lossy() (line 693: every send may be dropped, no budget) .with_progress_report(usize::MAX) .with_verbose(0), then .with_timed(L, U, sd) (line 705) with L = --l, U = --u, sd = --sd (0 in every cell, the default of line 754). Consistency model and scheduling policy are not set: the defaults FIFO and LTR (traceforge/src/lib.rs, Config::default, lines 355 and 356). --keep-going adds with_keep_going_after_error(true) (line 701). --parallel shared adds with_parallel(true) (line 696) with one worker per core the job is pinned to (exec_pool.rs lines 379 to 385: num_cpus::get under taskset; the scheduler does not set MUST_PARALLEL_WORKERS); without --parallel the search is sequential. Windows of the sends: producer to connection [0, 0] (send_tagged_msg_timed, lines 243 to 249 and 351); connection to storage (line 362), storage to producer (line 674) and the final Done message (line 349) the default [L, U].",
+  "config_baseline": "The same builder without with_timed (line 704): with_all_sends_lossy() (every send may be dropped, as on the timed side), FIFO, LTR, the same keep-going and parallel options. There is no clock: --l, --u and --sd are parsed and printed in the summary line but not used, the send windows are ignored, sleep(B) has no effect, and a receive with wait W may time out or not whatever W is. Measured: the baseline counts do not change with L, U, W, B (the 16 baseline sides at T=2 R=3 without the fix are identical, and so are the 5 at T=2 R=4).",
+  "program_differs_between_modes": "no: the only mode-dependent line is with_timed in build_config (lines 703 to 706). Producer, connection and storage code is the same on both sides; the backoff sleep (lines 323 to 325) depends on the parameter B, not on the mode.",
+  "failing_tasks": "Only the storage thread asserts: P1 at line 549 (inside end_in_tx) and P2 at line 656 (inside check_visibility), both reached from storage(), lines 662 to 678. It is the first thread spawned (line 716), so under keep-going a violating execution prints one line `task-1` (seen in a local run of the binary of 30 September); an execution in which both assertions fail still prints one line. Without keep-going the run stops at the first violation with exit code 101: the timed side prints the execution graph, a 'Certified witness timeline' and the panic 'assertion failed (certified timed counterexample; graph and witness above)'; the baseline prints the graph and the panic 'assertion failed: cond'. The main thread, the producer and the connections never assert.",
+  "counters": [
+    {
+      "key": "dirty_reads",
+      "counts": "executions",
+      "meaning": "executions (complete or blocked) in which P2 failed at least once: a static counter raised once per program run (flag dirty_seen, lines 651 to 654), whatever --property is. It equals the tool's count of violating executions on every finished v9 run (206 of 206 runs on both sides, 134 of them with violations), because a stray commit always produces a dirty read in the same storage step: under keep-going a failed traceforge::assert records the failure and returns (lib.rs line 2373 and following), the stray marker closes the row of the next transaction, and check_visibility then finds its record below the last stable offset. On the timed side the tool prints a failing-task line only for an execution that has a timeline, while the counter is raised when the code runs; their equality shows that no counted dirty read comes from an execution without a timeline."
+    },
+    {
+      "key": "stray_commits",
+      "counts": "executions",
+      "meaning": "executions in which P1 failed at least once (flag stray_seen, lines 544 to 547). A subset of the dirty-read executions: stray_commits <= dirty_reads on all 206 finished runs, positive on 104 of them. On the timed side it is 0 below the stray-commit boundary and positive from it on."
+    },
+    {
+      "key": "violations",
+      "counts": "events",
+      "meaning": "the sum stray_commits + dirty_reads (line 744). It counts every stray-commit execution twice, so it is NOT the number of violating executions: violations = violating executions + stray_commits on all 206 finished runs. Do not quote it (the v8 results file had this number in its violations column)."
+    }
+  ],
+  "violation_counter": "dirty_reads",
+  "param_columns": [
+    {
+      "key": "T",
+      "header": "Transactions T",
+      "meaning": "client transactions, each one record to partition 0 and a commit (--txns, default 2)",
+      "size": true
+    },
+    {
+      "key": "R",
+      "header": "Retries R",
+      "meaning": "EndTxn request timeouts the producer may take in the whole run (--retries, default 1); the run has R + 1 connections",
+      "size": true
+    },
+    {
+      "key": "L",
+      "header": "L (ticks)",
+      "meaning": "lower bound of the delay of one hop, connection to storage or storage to producer (--l); used by the timed side only",
+      "size": false
+    },
+    {
+      "key": "U",
+      "header": "U (ticks)",
+      "meaning": "upper bound of the delay of one hop (--u); used by the timed side only. The parameter the boundary cells scan",
+      "size": false
+    },
+    {
+      "key": "W",
+      "header": "W (ticks)",
+      "meaning": "EndTxn request timeout (--w, the client's request.timeout.ms): how long the producer waits for the response while retries remain; without a clock the timeout may fire at any moment",
+      "size": false
+    },
+    {
+      "key": "B",
+      "header": "Backoff B (ticks)",
+      "meaning": "sleep between a timeout and the retry (--backoff, the client's retry.backoff.ms); no effect without a clock",
+      "size": false
+    },
+    {
+      "key": "sd",
+      "header": "sd (ticks)",
+      "meaning": "storage delay: how long a delivered message stays readable after its arrival (--sd, default 0); no cell sets it, so 0 everywhere; timed side only",
+      "size": false
+    },
+    {
+      "key": "property",
+      "header": "Property",
+      "meaning": "which assertions end an execution (--property both, stray or dirty; default both); no cell sets it, so both everywhere. The two counters are raised whatever the value",
+      "size": false
+    },
+    {
+      "key": "fix",
+      "header": "Fix",
+      "meaning": "none: the behaviour of nisshi; epoch-bump: the comparison fix (--fix epoch-bump), a completed commit bumps the producer epoch, in the style of KIP-890; not nisshi code",
+      "size": false
+    },
+    {
+      "key": "pool",
+      "header": "Pool workers",
+      "meaning": "worker threads of the shared search pool (--parallel shared), one per core the job is pinned to: 4, or 8 in one edge rung (the cell names say shared4, shared8); '-': no --parallel, sequential search on one core",
+      "size": false
+    }
+  ],
+  "boundary_law": "Two laws, one per property; U is compared with a sum of the protocol timers. P2 (dirty read) can fail iff U >= W + B + 5L. P1 (stray commit, the KAFKA-17754 bug) can fail iff U >= W + B + 7L. Both need T >= 2 and R >= 1; T, R and sd do not appear (sd = 0 in every cell). The source header does not state the formulas (they come from the case-study note of 2026-09-16); the source supports them by counting hops. Let t0 be the instant the producer writes the last copy of EndTxn(g) whose wait times out. That copy reaches the storage at most U later (producer to connection takes 0, connection to storage at most U). The producer times out at t0 + W (lines 260 to 266 and 314), sleeps B (lines 323 to 325), makes a FindCoordinator round trip (line 326, at least 2L), a round trip of the re-sent EndTxn(g) (lines 310 to 315, at least 2L), and sends AddPartitionsToTxn(g+1) (line 291), which reaches the storage at least L later: no earlier than t0 + W + B + 5L. If the delayed copy arrives after it, it finds the row open again and closes it (lines 568 to 582), so the record of g+1 is appended without bookkeeping (lines 433 to 441) and lies below the last stable offset before any commit of g+1: P2 fails (lines 639 to 658). Two hops later (the response to AddPartitionsToTxn and the Produce request of line 298), from t0 + W + B + 7L on, the delayed copy arrives after Produce(g+1) and its control marker seals the record of g+1: P1 fails (lines 537 to 552), and P2 with it. At equality the tool reports the violation (the two requests may arrive at the same instant in either order). The 'only if' direction rests on this count (the producer sends one request at a time and a dropped message never arrives late, so no path is shorter); the 'if' direction rests on the measurements. Checked in v9 on 21 exhaustive timed cells (T=2; R=3 on all four positions of the four timer settings, R=4 on five of them; regimes A0-safe, A1-edge, A2-viol, A3-edge, C0-safe, C1-edge, C2-viol, C3-edge, D0-safe, D1-edge, D2-viol, D3-edge, E0-safe, E1-edge, E2-viol, E3-edge) and 9 first-violation timed cells (up to R=5 and T=32): 87 measured sides compared with their regime, 0 mismatches. The positions scanned are one tick below the P2 boundary, on it, one tick below the P1 boundary and on it. The baseline reports both violations for every L, U, W, B.",
+  "regimes": [
+    {
+      "id": "A0-safe",
+      "name": "base timers, one tick below the dirty-read boundary",
+      "params": "L=1, U=5, sd=0, W=1, B=0, fix=none",
+      "rule": "W + B + 5L = 6 (P2, dirty read): U = 5 is below it. W + B + 7L = 8 (P1, stray commit): U = 5 is below it",
+      "expect_timed": "0 violations (dirty_reads = 0, stray_commits = 0); without keep-going the run explores everything and exits 0",
+      "expect_baseline": "spurious violations of both properties (dirty_reads > 0, stray_commits > 0): without a clock the delayed EndTxn may arrive arbitrarily late; without keep-going exit 101"
+    },
+    {
+      "id": "A1-edge",
+      "name": "base timers, exactly on the dirty-read boundary",
+      "params": "L=1, U=6, sd=0, W=1, B=0, fix=none",
+      "rule": "W + B + 5L = 6 (P2, dirty read): U = 6 is on it. W + B + 7L = 8 (P1, stray commit): U = 6 is below it",
+      "expect_timed": "violations, dirty reads only (dirty_reads > 0, stray_commits = 0); without keep-going exit 101. The tool puts the boundary value on the violating side: the delayed EndTxn and the AddPartitionsToTxn of the next transaction may reach the storage at the same instant, in either order",
+      "expect_baseline": "violations of both properties, the same counts as in every other regime of the same T and R. All its stray commits are spurious here (time rules P1 failures out) and its dirty-read count is far above the timed one"
+    },
+    {
+      "id": "A2-viol",
+      "name": "base timers, between the boundaries, one tick below the stray-commit boundary",
+      "params": "L=1, U=7, sd=0, W=1, B=0, fix=none",
+      "rule": "W + B + 5L = 6 (P2, dirty read): U = 7 is above it. W + B + 7L = 8 (P1, stray commit): U = 7 is below it",
+      "expect_timed": "violations, dirty reads only (dirty_reads > 0, stray_commits = 0); without keep-going exit 101",
+      "expect_baseline": "violations of both properties, the same counts as in every other regime of the same T and R. All its stray commits are spurious here (time rules P1 failures out) and its dirty-read count is far above the timed one"
+    },
+    {
+      "id": "A3-edge",
+      "name": "base timers, exactly on the stray-commit boundary",
+      "params": "L=1, U=8, sd=0, W=1, B=0, fix=none",
+      "rule": "W + B + 5L = 6 (P2, dirty read): U = 8 is above it. W + B + 7L = 8 (P1, stray commit): U = 8 is on it",
+      "expect_timed": "violations of both properties (stray_commits > 0, dirty_reads > stray_commits); without keep-going exit 101. The tool puts the boundary value on the violating side",
+      "expect_baseline": "violations of both properties, the same counts as in every other regime of the same T and R; real violations of both kinds exist here, the baseline count is above the timed one"
+    },
+    {
+      "id": "A3-ctrl",
+      "name": "base timers, exactly on the stray-commit boundary, with the epoch-bump fix",
+      "params": "L=1, U=8, sd=0, W=1, B=0, fix=epoch-bump",
+      "rule": "W + B + 5L = 6 (P2, dirty read): U = 8 is above it. W + B + 7L = 8 (P1, stray commit): U = 8 is on it. Same timing as A3-edge, where the program without the fix violates both properties; the fix (a completed commit bumps the producer epoch, so a late EndTxn of the old epoch no longer touches the transaction of the new epoch, lines 592 to 612) removes the bug itself, so the clock adds no information",
+      "expect_timed": "0 violations (dirty_reads = 0, stray_commits = 0)",
+      "expect_baseline": "0 violations: the two sides agree"
+    },
+    {
+      "id": "C0-safe",
+      "name": "backoff 2, one tick below the dirty-read boundary",
+      "params": "L=1, U=7, sd=0, W=1, B=2, fix=none",
+      "rule": "W + B + 5L = 8 (P2, dirty read): U = 7 is below it. W + B + 7L = 10 (P1, stray commit): U = 7 is below it",
+      "expect_timed": "0 violations (dirty_reads = 0, stray_commits = 0); without keep-going the run explores everything and exits 0",
+      "expect_baseline": "spurious violations of both properties (dirty_reads > 0, stray_commits > 0): without a clock the delayed EndTxn may arrive arbitrarily late; without keep-going exit 101"
+    },
+    {
+      "id": "C1-edge",
+      "name": "backoff 2, exactly on the dirty-read boundary",
+      "params": "L=1, U=8, sd=0, W=1, B=2, fix=none",
+      "rule": "W + B + 5L = 8 (P2, dirty read): U = 8 is on it. W + B + 7L = 10 (P1, stray commit): U = 8 is below it",
+      "expect_timed": "violations, dirty reads only (dirty_reads > 0, stray_commits = 0); without keep-going exit 101. The tool puts the boundary value on the violating side: the delayed EndTxn and the AddPartitionsToTxn of the next transaction may reach the storage at the same instant, in either order",
+      "expect_baseline": "violations of both properties, the same counts as in every other regime of the same T and R. All its stray commits are spurious here (time rules P1 failures out) and its dirty-read count is far above the timed one"
+    },
+    {
+      "id": "C2-viol",
+      "name": "backoff 2, between the boundaries, one tick below the stray-commit boundary",
+      "params": "L=1, U=9, sd=0, W=1, B=2, fix=none",
+      "rule": "W + B + 5L = 8 (P2, dirty read): U = 9 is above it. W + B + 7L = 10 (P1, stray commit): U = 9 is below it",
+      "expect_timed": "violations, dirty reads only (dirty_reads > 0, stray_commits = 0); without keep-going exit 101",
+      "expect_baseline": "violations of both properties, the same counts as in every other regime of the same T and R. All its stray commits are spurious here (time rules P1 failures out) and its dirty-read count is far above the timed one"
+    },
+    {
+      "id": "C3-edge",
+      "name": "backoff 2, exactly on the stray-commit boundary",
+      "params": "L=1, U=10, sd=0, W=1, B=2, fix=none",
+      "rule": "W + B + 5L = 8 (P2, dirty read): U = 10 is above it. W + B + 7L = 10 (P1, stray commit): U = 10 is on it",
+      "expect_timed": "violations of both properties (stray_commits > 0, dirty_reads > stray_commits); without keep-going exit 101. The tool puts the boundary value on the violating side",
+      "expect_baseline": "violations of both properties, the same counts as in every other regime of the same T and R; real violations of both kinds exist here, the baseline count is above the timed one"
+    },
+    {
+      "id": "D0-safe",
+      "name": "slower network floor, L = 2, one tick below the dirty-read boundary",
+      "params": "L=2, U=10, sd=0, W=1, B=0, fix=none",
+      "rule": "W + B + 5L = 11 (P2, dirty read): U = 10 is below it. W + B + 7L = 15 (P1, stray commit): U = 10 is below it",
+      "expect_timed": "0 violations (dirty_reads = 0, stray_commits = 0); without keep-going the run explores everything and exits 0",
+      "expect_baseline": "spurious violations of both properties (dirty_reads > 0, stray_commits > 0): without a clock the delayed EndTxn may arrive arbitrarily late; without keep-going exit 101"
+    },
+    {
+      "id": "D1-edge",
+      "name": "slower network floor, L = 2, exactly on the dirty-read boundary",
+      "params": "L=2, U=11, sd=0, W=1, B=0, fix=none",
+      "rule": "W + B + 5L = 11 (P2, dirty read): U = 11 is on it. W + B + 7L = 15 (P1, stray commit): U = 11 is below it",
+      "expect_timed": "violations, dirty reads only (dirty_reads > 0, stray_commits = 0); without keep-going exit 101. The tool puts the boundary value on the violating side: the delayed EndTxn and the AddPartitionsToTxn of the next transaction may reach the storage at the same instant, in either order",
+      "expect_baseline": "violations of both properties, the same counts as in every other regime of the same T and R. All its stray commits are spurious here (time rules P1 failures out) and its dirty-read count is far above the timed one"
+    },
+    {
+      "id": "D2-viol",
+      "name": "slower network floor, L = 2, between the boundaries, one tick below the stray-commit boundary",
+      "params": "L=2, U=14, sd=0, W=1, B=0, fix=none",
+      "rule": "W + B + 5L = 11 (P2, dirty read): U = 14 is above it. W + B + 7L = 15 (P1, stray commit): U = 14 is below it",
+      "expect_timed": "violations, dirty reads only (dirty_reads > 0, stray_commits = 0); without keep-going exit 101",
+      "expect_baseline": "violations of both properties, the same counts as in every other regime of the same T and R. All its stray commits are spurious here (time rules P1 failures out) and its dirty-read count is far above the timed one"
+    },
+    {
+      "id": "D3-edge",
+      "name": "slower network floor, L = 2, exactly on the stray-commit boundary",
+      "params": "L=2, U=15, sd=0, W=1, B=0, fix=none",
+      "rule": "W + B + 5L = 11 (P2, dirty read): U = 15 is above it. W + B + 7L = 15 (P1, stray commit): U = 15 is on it",
+      "expect_timed": "violations of both properties (stray_commits > 0, dirty_reads > stray_commits); without keep-going exit 101. The tool puts the boundary value on the violating side",
+      "expect_baseline": "violations of both properties, the same counts as in every other regime of the same T and R; real violations of both kinds exist here, the baseline count is above the timed one"
+    },
+    {
+      "id": "E0-safe",
+      "name": "longer request timeout, W = 5, one tick below the dirty-read boundary",
+      "params": "L=1, U=9, sd=0, W=5, B=0, fix=none",
+      "rule": "W + B + 5L = 10 (P2, dirty read): U = 9 is below it. W + B + 7L = 12 (P1, stray commit): U = 9 is below it",
+      "expect_timed": "0 violations (dirty_reads = 0, stray_commits = 0); without keep-going the run explores everything and exits 0",
+      "expect_baseline": "spurious violations of both properties (dirty_reads > 0, stray_commits > 0): without a clock the delayed EndTxn may arrive arbitrarily late; without keep-going exit 101"
+    },
+    {
+      "id": "E1-edge",
+      "name": "longer request timeout, W = 5, exactly on the dirty-read boundary",
+      "params": "L=1, U=10, sd=0, W=5, B=0, fix=none",
+      "rule": "W + B + 5L = 10 (P2, dirty read): U = 10 is on it. W + B + 7L = 12 (P1, stray commit): U = 10 is below it",
+      "expect_timed": "violations, dirty reads only (dirty_reads > 0, stray_commits = 0); without keep-going exit 101. The tool puts the boundary value on the violating side: the delayed EndTxn and the AddPartitionsToTxn of the next transaction may reach the storage at the same instant, in either order",
+      "expect_baseline": "violations of both properties, the same counts as in every other regime of the same T and R. All its stray commits are spurious here (time rules P1 failures out) and its dirty-read count is far above the timed one"
+    },
+    {
+      "id": "E2-viol",
+      "name": "longer request timeout, W = 5, between the boundaries, one tick below the stray-commit boundary",
+      "params": "L=1, U=11, sd=0, W=5, B=0, fix=none",
+      "rule": "W + B + 5L = 10 (P2, dirty read): U = 11 is above it. W + B + 7L = 12 (P1, stray commit): U = 11 is below it",
+      "expect_timed": "violations, dirty reads only (dirty_reads > 0, stray_commits = 0); without keep-going exit 101",
+      "expect_baseline": "violations of both properties, the same counts as in every other regime of the same T and R. All its stray commits are spurious here (time rules P1 failures out) and its dirty-read count is far above the timed one"
+    },
+    {
+      "id": "E3-edge",
+      "name": "longer request timeout, W = 5, exactly on the stray-commit boundary",
+      "params": "L=1, U=12, sd=0, W=5, B=0, fix=none",
+      "rule": "W + B + 5L = 10 (P2, dirty read): U = 12 is above it. W + B + 7L = 12 (P1, stray commit): U = 12 is on it",
+      "expect_timed": "violations of both properties (stray_commits > 0, dirty_reads > stray_commits); without keep-going exit 101. The tool puts the boundary value on the violating side",
+      "expect_baseline": "violations of both properties, the same counts as in every other regime of the same T and R; real violations of both kinds exist here, the baseline count is above the timed one"
+    }
+  ],
+  "glossary": [
+    {
+      "term": "KAFKA-17754",
+      "meaning": "Bug class reported for Apache Kafka: the server cannot tell which transaction an EndTxn request was meant for and ends whatever transaction is open. An EndTxn of transaction g that is delayed until the client has retried it and started transaction g+1 commits g+1, or part of it."
+    },
+    {
+      "term": "nisshi",
+      "meaning": "Kafka-compatible broker written in Rust (formerly Tansu), commit b3d0ceaf. The storage thread of the model follows its PostgreSQL engine, where EndTxn identifies the transaction by transactional id, producer id and epoch only, and one row per epoch is reused by every transaction of that epoch."
+    },
+    {
+      "term": "EndTxn",
+      "meaning": "The request that commits (or aborts) the open transaction. The only request with a timeout in the model; every other request waits without one."
+    },
+    {
+      "term": "Producer, connection, storage",
+      "meaning": "The threads of the model: one producer (the client), R + 1 connections (a TCP connection together with the stateless broker reading from it; requests on one connection keep their order, requests on different connections do not), one storage (the database: executes each request atomically in arrival order and checks both properties)."
+    },
+    {
+      "term": "Hop",
+      "meaning": "One message transfer with a delay in [L, U]: connection to storage, or storage to producer. Producer to connection takes no time. A request and its response are two hops, at least 2L."
+    },
+    {
+      "term": "T (transactions)",
+      "meaning": "Number of transactions the producer runs one after the other: AddPartitionsToTxn, Produce (one record), EndTxn(commit)."
+    },
+    {
+      "term": "R (retries)",
+      "meaning": "Budget of EndTxn timeouts for the whole run. After a timeout the producer abandons its connection (a request already written to it is still delivered), sleeps B, looks up the coordinator on the next connection and sends the same EndTxn again. With no budget left it waits without a timeout."
+    },
+    {
+      "term": "W (request timeout)",
+      "meaning": "How long the producer waits for the EndTxn response before it retries, in ticks. If W < 2L the response can never arrive in time, so with the clock every EndTxn sent while retries remain times out; this is the case in every cell with W = 1."
+    },
+    {
+      "term": "B (backoff)",
+      "meaning": "Sleep between a timeout and the retry, in ticks."
+    },
+    {
+      "term": "L, U, sd",
+      "meaning": "L and U: lower and upper bound of the delay of one hop. sd: how long a delivered message stays readable after its arrival (0 in every cell). All three are used by the timed side only."
+    },
+    {
+      "term": "P1, stray commit",
+      "meaning": "The control marker written by EndTxn of transaction g seals a record of another transaction: the next transaction is committed by a request that was never meant for it. This is KAFKA-17754 itself."
+    },
+    {
+      "term": "P2, dirty read",
+      "meaning": "A record of transaction g becomes visible to a read_committed consumer (it lies below the last stable offset) before any EndTxn(commit) of g was processed. It happens when the delayed EndTxn closes the row of the next transaction: before its Produce (the record is then appended without bookkeeping, as in nisshi's produce path) or after it (the stray commit)."
+    },
+    {
+      "term": "Last stable offset",
+      "meaning": "The offset up to which a read_committed consumer may read: the smallest first offset of a transaction that is still open on the partition, else the end of the log."
+    },
+    {
+      "term": "Control marker",
+      "meaning": "The log entry EndTxn writes on every partition the transaction produced to; it commits (or aborts) the records it seals."
+    },
+    {
+      "term": "Ghost field",
+      "meaning": "The index of the client transaction a request belongs to, carried in the request only for the two assertions and never read by the protocol logic."
+    },
+    {
+      "term": "Dirty-read boundary",
+      "meaning": "U = W + B + 5L: the smallest U at which the delayed EndTxn can reach the storage no earlier than the AddPartitionsToTxn of the next transaction. From this U on the timed side reports dirty reads."
+    },
+    {
+      "term": "Stray-commit boundary",
+      "meaning": "U = W + B + 7L: the smallest U at which the delayed EndTxn can reach the storage no earlier than the Produce of the next transaction. From this U on the timed side also reports stray commits."
+    },
+    {
+      "term": "Regime id",
+      "meaning": "Letter, digit, suffix. The letter names the setting of L, W and B (A: L=1 W=1 B=0; C: L=1 W=1 B=2; D: L=2 W=1 B=0; E: L=1 W=5 B=0; sd = 0 everywhere; the letter B is skipped so that it is not read as the backoff). The digit is the position of U: 0 one tick below the dirty-read boundary, 1 on it, 2 one tick below the stray-commit boundary, 3 on it. Suffix: safe, edge (on a boundary, the tool reports the violation there), viol, ctrl (epoch-bump fix)."
+    },
+    {
+      "term": "Epoch-bump fix",
+      "meaning": "--fix epoch-bump: a completed commit bumps the producer epoch, and a retry of the previous epoch's completed commit is answered without touching the new transaction. A late EndTxn of an older epoch is rejected as fenced. Comparison fix in the style of KIP-890, not nisshi code."
+    },
+    {
+      "term": "dirty_reads, stray_commits, violations",
+      "meaning": "Counters of the summary line. dirty_reads = executions with a P2 failure = the violating executions of the cell. stray_commits = executions with a P1 failure, a subset of them. violations = their sum, which counts the stray-commit executions twice: not a number of executions."
+    },
+    {
+      "term": "timeouts, completed_txns, fatal",
+      "meaning": "Other counters of the summary line: EndTxn timeouts taken, transactions the producer saw complete, and responses with an error that stop the producer, each summed over every program run the search makes. They are not execution counts and they change with the tool version (v8 and v9 differ while the execution counts are identical). fatal = 0 in every v9 run."
+    },
+    {
+      "term": "Blocked executions (this example)",
+      "meaning": "Executions that end early: a request or a response was dropped (every send may be dropped) and a wait without a timeout is never served; a message expired unread at sd = 0 (source header); or, under keep-going, an assertion failed."
+    },
+    {
+      "term": "shared4, shared8 (cell names)",
+      "meaning": "The run uses --parallel shared on 4 or 8 pinned cores. A cell name without it is a sequential run on one core."
+    },
+    {
+      "term": "no-keep-going (cell names)",
+      "meaning": "The run is started without --keep-going: it stops at the first violation with exit code 101; if there is none it explores everything and exits 0."
+    },
+    {
+      "term": "edge rung, timed only (cell names)",
+      "meaning": "A cell added on 2026-10-11 one rung above the top of a size ladder, run on the timed side only."
+    },
+    {
+      "term": "hold, larger W (cell name)",
+      "meaning": "Remark kept from the v8 plan in one cell name: the timed side is expected to report no violation at W = 5, U = 9."
+    }
+  ],
+  "cells": [
+    {
+      "cell": "T=2 R=3 L=1 U=5 W=1 B=0",
+      "regime": "A0-safe",
+      "label": "Headline cell: one tick below the dirty-read boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=312 blocked=39614 (explored 39926), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties. v9, 3 runs: execs=7539 blocked=322118 (explored 329657), violating executions=3272, dirty_reads=3272, stray_commits=2112",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8"
+    },
+    {
+      "cell": "T=2 R=5 L=1 U=5 W=1 B=0 shared4",
+      "regime": "A0-safe",
+      "label": "Headline cell at the largest retry budget with both sides",
+      "params": {
+        "T": 2,
+        "R": 5,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations expected; not measured yet (v8: execs=15840 blocked=11903928, dirty_reads=0, stray_commits=0)",
+      "expect_baseline": "spurious violations of both properties. v9, 1 run: execs=5181139 blocked=844538804 (explored 849719943), violating executions=1977470, dirty_reads=1977470, stray_commits=1149972",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8; timed side: no v9 row yet when this file was written"
+    },
+    {
+      "cell": "T=2 R=1 L=1 U=5 W=1 B=0",
+      "regime": "A0-safe",
+      "label": "Size ladder rung, below both boundaries",
+      "params": {
+        "T": 2,
+        "R": 1,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=6 blocked=198 (explored 204), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties. v9, 3 runs: execs=19 blocked=318 (explored 337), violating executions=6, dirty_reads=6, stray_commits=4",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8"
+    },
+    {
+      "cell": "T=2 R=2 L=1 U=5 W=1 B=0",
+      "regime": "A0-safe",
+      "label": "Size ladder rung, below both boundaries",
+      "params": {
+        "T": 2,
+        "R": 2,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=44 blocked=2609 (explored 2653), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties. v9, 4 runs: execs=355 blocked=8518 (explored 8873), violating executions=152, dirty_reads=152, stray_commits=102",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8"
+    },
+    {
+      "cell": "T=2 R=4 L=1 U=5 W=1 B=0 shared4",
+      "regime": "A0-safe",
+      "label": "Size ladder rung, below both boundaries",
+      "params": {
+        "T": 2,
+        "R": 4,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=2224 blocked=663807 (explored 666031), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties. v9, 3 runs: execs=184723 blocked=15196486 (explored 15381209), violating executions=75632, dirty_reads=75632, stray_commits=46344",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8"
+    },
+    {
+      "cell": "T=16 R=1 L=1 U=5 W=1 B=0",
+      "regime": "A0-safe",
+      "label": "Size ladder rung, below both boundaries",
+      "params": {
+        "T": 16,
+        "R": 1,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=6 blocked=1332 (explored 1338), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties. v9, 3 runs: execs=369 blocked=23754 (explored 24123), violating executions=720, dirty_reads=720, stray_commits=480",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8"
+    },
+    {
+      "cell": "T=64 R=1 L=1 U=5 W=1 B=0",
+      "regime": "A0-safe",
+      "label": "Size ladder rung, below both boundaries",
+      "params": {
+        "T": 64,
+        "R": 1,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=6 blocked=5220 (explored 5226), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties. v9, 3 runs: execs=4545 blocked=958218 (explored 962763), violating executions=12096, dirty_reads=12096, stray_commits=8064",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8"
+    },
+    {
+      "cell": "T=8 R=2 L=1 U=5 W=1 B=0",
+      "regime": "A0-safe",
+      "label": "Size ladder rung, below both boundaries",
+      "params": {
+        "T": 8,
+        "R": 2,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=44 blocked=7415 (explored 7459), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties. v9, 3 runs: execs=9569 blocked=357482 (explored 367051), violating executions=15288, dirty_reads=15288, stray_commits=9912",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8"
+    },
+    {
+      "cell": "T=16 R=2 L=1 U=5 W=1 B=0 shared4",
+      "regime": "A0-safe",
+      "label": "Size ladder rung, below both boundaries",
+      "params": {
+        "T": 16,
+        "R": 2,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=44 blocked=13823 (explored 13867), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties. v9, 3 runs: execs=79105 blocked=4170242 (explored 4249347), violating executions=168880, dirty_reads=168880, stray_commits=109680",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8"
+    },
+    {
+      "cell": "T=32 R=2 L=1 U=5 W=1 B=0 shared4",
+      "regime": "A0-safe",
+      "label": "Size ladder rung, below both boundaries",
+      "params": {
+        "T": 32,
+        "R": 2,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=44 blocked=26639 (explored 26683), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties. v9, 1 run: execs=844545 blocked=69320946 (explored 70165491), violating executions=2123872, dirty_reads=2123872, stray_commits=1389792",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8"
+    },
+    {
+      "cell": "T=4 R=3 L=1 U=5 W=1 B=0",
+      "regime": "A0-safe",
+      "label": "Size ladder rung, below both boundaries",
+      "params": {
+        "T": 4,
+        "R": 3,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=312 blocked=55328 (explored 55640), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties. v9, 3 runs: execs=53713 blocked=2471316 (explored 2525029), violating executions=52930, dirty_reads=52930, stray_commits=33408",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8"
+    },
+    {
+      "cell": "T=8 R=3 L=1 U=5 W=1 B=0 shared4",
+      "regime": "A0-safe",
+      "label": "Size ladder rung, below both boundaries",
+      "params": {
+        "T": 8,
+        "R": 3,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=312 blocked=86756 (explored 87068), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties expected; not measured yet (v8: execs=642673 blocked=33136942, dirty_reads=1023148, stray_commits=641088)",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8; baseline side: no v9 row yet when this file was written"
+    },
+    {
+      "cell": "T=16 R=3 L=1 U=5 W=1 B=0 shared4",
+      "regime": "A0-safe",
+      "label": "Size ladder rung, below both boundaries",
+      "params": {
+        "T": 16,
+        "R": 3,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=312 blocked=149612 (explored 149924), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties. v9, 1 run: execs=13023521 blocked=804546522 (explored 817570043), violating executions=27788792, dirty_reads=27788792, stray_commits=17582976",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8"
+    },
+    {
+      "cell": "T=4 R=4 L=1 U=5 W=1 B=0 shared4",
+      "regime": "A0-safe",
+      "label": "Size ladder rung, below both boundaries",
+      "params": {
+        "T": 4,
+        "R": 4,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=2224 blocked=818049 (explored 820273), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties. v9, 1 run: execs=1900529 blocked=160023738 (explored 161924267), violating executions=1773056, dirty_reads=1773056, stray_commits=1072170",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8"
+    },
+    {
+      "cell": "T=8 R=4 L=1 U=5 W=1 B=0 shared4",
+      "regime": "A0-safe",
+      "label": "Size ladder rung, below both boundaries; its baseline side is the ceiling run",
+      "params": {
+        "T": 8,
+        "R": 4,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=2224 blocked=1126533 (explored 1128757), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties expected; not measured yet (v8: DNF (did not finish; killed after 1 d 2 h 31 min), last progress line 408500000 explored (5165424 execs, 403334576 blocked))",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8; baseline side: did not finish in v8, still running in v9 when this file was written"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=6 W=1 B=0",
+      "regime": "A1-edge",
+      "label": "Boundary scan (base timers): exactly on the dirty-read boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 6,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations, dirty reads only. v9, 3 runs: execs=312 blocked=40426 (explored 40738), violating executions=178, dirty_reads=178, stray_commits=0",
+      "expect_baseline": "violations of both properties (the stray commits are spurious in this regime). v9, 3 runs: execs=7539 blocked=322118 (explored 329657), violating executions=3272, dirty_reads=3272, stray_commits=2112",
+      "note": "U=6 is on the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=7 W=1 B=0",
+      "regime": "A2-viol",
+      "label": "Boundary scan (base timers): between the boundaries, one tick below the stray-commit boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 7,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations, dirty reads only. v9, 3 runs: execs=456 blocked=51728 (explored 52184), violating executions=214, dirty_reads=214, stray_commits=0",
+      "expect_baseline": "violations of both properties (the stray commits are spurious in this regime). v9, 3 runs: execs=7539 blocked=322118 (explored 329657), violating executions=3272, dirty_reads=3272, stray_commits=2112",
+      "note": "U=7 is above the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=8 W=1 B=0",
+      "regime": "A3-edge",
+      "label": "Boundary scan (base timers): exactly on the stray-commit boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 8,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations of both properties. v9, 3 runs: execs=648 blocked=66592 (explored 67240), violating executions=798, dirty_reads=798, stray_commits=532",
+      "expect_baseline": "violations of both properties. v9, 3 runs: execs=7539 blocked=322118 (explored 329657), violating executions=3272, dirty_reads=3272, stray_commits=2112",
+      "note": "U=8 is above the dirty-read boundary W+B+5L=6 and on the stray-commit boundary W+B+7L=8; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=7 W=1 B=2",
+      "regime": "C0-safe",
+      "label": "Boundary scan (backoff 2): one tick below the dirty-read boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 7,
+        "W": 1,
+        "B": 2,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=136 blocked=23152 (explored 23288), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties. v9, 3 runs: execs=7539 blocked=322118 (explored 329657), violating executions=3272, dirty_reads=3272, stray_commits=2112",
+      "note": "U=7 is below the dirty-read boundary W+B+5L=8 and below the stray-commit boundary W+B+7L=10; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=8 W=1 B=2",
+      "regime": "C1-edge",
+      "label": "Boundary scan (backoff 2): exactly on the dirty-read boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 8,
+        "W": 1,
+        "B": 2,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations, dirty reads only. v9, 3 runs: execs=136 blocked=23576 (explored 23712), violating executions=106, dirty_reads=106, stray_commits=0",
+      "expect_baseline": "violations of both properties (the stray commits are spurious in this regime). v9, 3 runs: execs=7539 blocked=322118 (explored 329657), violating executions=3272, dirty_reads=3272, stray_commits=2112",
+      "note": "U=8 is on the dirty-read boundary W+B+5L=8 and below the stray-commit boundary W+B+7L=10; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=9 W=1 B=2",
+      "regime": "C2-viol",
+      "label": "Boundary scan (backoff 2): between the boundaries, one tick below the stray-commit boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 9,
+        "W": 1,
+        "B": 2,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations, dirty reads only. v9, 3 runs: execs=312 blocked=40504 (explored 40816), violating executions=178, dirty_reads=178, stray_commits=0",
+      "expect_baseline": "violations of both properties (the stray commits are spurious in this regime). v9, 3 runs: execs=7539 blocked=322118 (explored 329657), violating executions=3272, dirty_reads=3272, stray_commits=2112",
+      "note": "U=9 is above the dirty-read boundary W+B+5L=8 and below the stray-commit boundary W+B+7L=10; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=10 W=1 B=2",
+      "regime": "C3-edge",
+      "label": "Boundary scan (backoff 2): exactly on the stray-commit boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 10,
+        "W": 1,
+        "B": 2,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations of both properties. v9, 3 runs: execs=312 blocked=40960 (explored 41272), violating executions=534, dirty_reads=534, stray_commits=356",
+      "expect_baseline": "violations of both properties. v9, 3 runs: execs=7539 blocked=322118 (explored 329657), violating executions=3272, dirty_reads=3272, stray_commits=2112",
+      "note": "U=10 is above the dirty-read boundary W+B+5L=8 and on the stray-commit boundary W+B+7L=10; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=3 L=2 U=10 W=1 B=0",
+      "regime": "D0-safe",
+      "label": "Boundary scan (slower network floor, L = 2): one tick below the dirty-read boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 2,
+        "U": 10,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=312 blocked=39714 (explored 40026), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties. v9, 3 runs: execs=7539 blocked=322118 (explored 329657), violating executions=3272, dirty_reads=3272, stray_commits=2112",
+      "note": "U=10 is below the dirty-read boundary W+B+5L=11 and below the stray-commit boundary W+B+7L=15; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=3 L=2 U=11 W=1 B=0",
+      "regime": "D1-edge",
+      "label": "Boundary scan (slower network floor, L = 2): exactly on the dirty-read boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 2,
+        "U": 11,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations, dirty reads only. v9, 3 runs: execs=312 blocked=40426 (explored 40738), violating executions=178, dirty_reads=178, stray_commits=0",
+      "expect_baseline": "violations of both properties (the stray commits are spurious in this regime). v9, 3 runs: execs=7539 blocked=322118 (explored 329657), violating executions=3272, dirty_reads=3272, stray_commits=2112",
+      "note": "U=11 is on the dirty-read boundary W+B+5L=11 and below the stray-commit boundary W+B+7L=15; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=3 L=2 U=14 W=1 B=0",
+      "regime": "D2-viol",
+      "label": "Boundary scan (slower network floor, L = 2): between the boundaries, one tick below the stray-commit boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 2,
+        "U": 14,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations, dirty reads only. v9, 3 runs: execs=648 blocked=66138 (explored 66786), violating executions=266, dirty_reads=266, stray_commits=0",
+      "expect_baseline": "violations of both properties (the stray commits are spurious in this regime). v9, 3 runs: execs=7539 blocked=322118 (explored 329657), violating executions=3272, dirty_reads=3272, stray_commits=2112",
+      "note": "U=14 is above the dirty-read boundary W+B+5L=11 and below the stray-commit boundary W+B+7L=15; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=3 L=2 U=15 W=1 B=0",
+      "regime": "D3-edge",
+      "label": "Boundary scan (slower network floor, L = 2): exactly on the stray-commit boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 2,
+        "U": 15,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations of both properties. v9, 3 runs: execs=648 blocked=66670 (explored 67318), violating executions=798, dirty_reads=798, stray_commits=532",
+      "expect_baseline": "violations of both properties. v9, 3 runs: execs=7539 blocked=322118 (explored 329657), violating executions=3272, dirty_reads=3272, stray_commits=2112",
+      "note": "U=15 is above the dirty-read boundary W+B+5L=11 and on the stray-commit boundary W+B+7L=15; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=9 W=5 B=0",
+      "regime": "E0-safe",
+      "label": "Boundary scan (longer request timeout, W = 5): one tick below the dirty-read boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 9,
+        "W": 5,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=713 blocked=93716 (explored 94429), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties. v9, 3 runs: execs=7539 blocked=322118 (explored 329657), violating executions=3272, dirty_reads=3272, stray_commits=2112",
+      "note": "U=9 is below the dirty-read boundary W+B+5L=10 and below the stray-commit boundary W+B+7L=12; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=10 W=5 B=0",
+      "regime": "E1-edge",
+      "label": "Boundary scan (longer request timeout, W = 5): exactly on the dirty-read boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 10,
+        "W": 5,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations, dirty reads only. v9, 3 runs: execs=879 blocked=100438 (explored 101317), violating executions=122, dirty_reads=122, stray_commits=0",
+      "expect_baseline": "violations of both properties (the stray commits are spurious in this regime). v9, 3 runs: execs=7539 blocked=322118 (explored 329657), violating executions=3272, dirty_reads=3272, stray_commits=2112",
+      "note": "U=10 is on the dirty-read boundary W+B+5L=10 and below the stray-commit boundary W+B+7L=12; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=11 W=5 B=0",
+      "regime": "E2-viol",
+      "label": "Boundary scan (longer request timeout, W = 5): between the boundaries, one tick below the stray-commit boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 11,
+        "W": 5,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations, dirty reads only. v9, 3 runs: execs=879 blocked=106960 (explored 107839), violating executions=122, dirty_reads=122, stray_commits=0",
+      "expect_baseline": "violations of both properties (the stray commits are spurious in this regime). v9, 3 runs: execs=7539 blocked=322118 (explored 329657), violating executions=3272, dirty_reads=3272, stray_commits=2112",
+      "note": "U=11 is above the dirty-read boundary W+B+5L=10 and below the stray-commit boundary W+B+7L=12; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=12 W=5 B=0",
+      "regime": "E3-edge",
+      "label": "Boundary scan (longer request timeout, W = 5): exactly on the stray-commit boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 12,
+        "W": 5,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations of both properties. v9, 3 runs: execs=879 blocked=107252 (explored 108131), violating executions=414, dirty_reads=414, stray_commits=292",
+      "expect_baseline": "violations of both properties. v9, 3 runs: execs=7539 blocked=322118 (explored 329657), violating executions=3272, dirty_reads=3272, stray_commits=2112",
+      "note": "U=12 is above the dirty-read boundary W+B+5L=10 and on the stray-commit boundary W+B+7L=12; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=4 L=1 U=6 W=1 B=0 shared4",
+      "regime": "A1-edge",
+      "label": "Boundary scan (base timers): exactly on the dirty-read boundary",
+      "params": {
+        "T": 2,
+        "R": 4,
+        "L": 1,
+        "U": 6,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations, dirty reads only. v9, 3 runs: execs=2224 blocked=671781 (explored 674005), violating executions=1746, dirty_reads=1746, stray_commits=0",
+      "expect_baseline": "violations of both properties (the stray commits are spurious in this regime). v9, 3 runs: execs=184723 blocked=15196486 (explored 15381209), violating executions=75632, dirty_reads=75632, stray_commits=46344",
+      "note": "U=6 is on the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=4 L=1 U=7 W=1 B=0 shared4",
+      "regime": "A2-viol",
+      "label": "Boundary scan (base timers): between the boundaries, one tick below the stray-commit boundary",
+      "params": {
+        "T": 2,
+        "R": 4,
+        "L": 1,
+        "U": 7,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations, dirty reads only. v9, 3 runs: execs=3472 blocked=899459 (explored 902931), violating executions=2206, dirty_reads=2206, stray_commits=0",
+      "expect_baseline": "violations of both properties (the stray commits are spurious in this regime). v9, 3 runs: execs=184723 blocked=15196486 (explored 15381209), violating executions=75632, dirty_reads=75632, stray_commits=46344",
+      "note": "U=7 is above the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=4 L=1 U=8 W=1 B=0 shared4",
+      "regime": "A3-edge",
+      "label": "Boundary scan (base timers): exactly on the stray-commit boundary",
+      "params": {
+        "T": 2,
+        "R": 4,
+        "L": 1,
+        "U": 8,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations of both properties. v9, 3 runs: execs=6544 blocked=1438139 (explored 1444683), violating executions=10290, dirty_reads=10290, stray_commits=6860",
+      "expect_baseline": "violations of both properties. v9, 3 runs: execs=184723 blocked=15196486 (explored 15381209), violating executions=75632, dirty_reads=75632, stray_commits=46344",
+      "note": "U=8 is above the dirty-read boundary W+B+5L=6 and on the stray-commit boundary W+B+7L=8; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=4 L=1 U=9 W=5 B=0 (hold, larger W) shared4",
+      "regime": "E0-safe",
+      "label": "Boundary scan (longer request timeout, W = 5): one tick below the dirty-read boundary",
+      "params": {
+        "T": 2,
+        "R": 4,
+        "L": 1,
+        "U": 9,
+        "W": 5,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations. v9, 3 runs: execs=4441 blocked=1651830 (explored 1656271), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "spurious violations of both properties. v9, 3 runs: execs=184723 blocked=15196486 (explored 15381209), violating executions=75632, dirty_reads=75632, stray_commits=46344",
+      "note": "U=9 is below the dirty-read boundary W+B+5L=10 and below the stray-commit boundary W+B+7L=12; the baseline has no clock: its counts repeat those of the cell with the same T and R at U=5"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=8 W=1 B=0 fix=epoch-bump",
+      "regime": "A3-ctrl",
+      "label": "Epoch-bump fix on the stray-commit boundary (control)",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 8,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "epoch-bump",
+        "pool": "-"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations with the fix. v9, 3 runs: execs=952 blocked=84642 (explored 85594), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "0 violations with the fix. v9, 3 runs: execs=12875 blocked=525858 (explored 538733), violating executions=0, dirty_reads=0, stray_commits=0",
+      "note": "U=8 is above the dirty-read boundary W+B+5L=6 and on the stray-commit boundary W+B+7L=8; timing of A3-edge with --fix epoch-bump: both sides must report 0"
+    },
+    {
+      "cell": "T=2 R=4 L=1 U=8 W=1 B=0 fix=epoch-bump shared4",
+      "regime": "A3-ctrl",
+      "label": "Epoch-bump fix on the stray-commit boundary (control)",
+      "params": {
+        "T": 2,
+        "R": 4,
+        "L": 1,
+        "U": 8,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "epoch-bump",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations with the fix. v9, 3 runs: execs=9744 blocked=1891129 (explored 1900873), violating executions=0, dirty_reads=0, stray_commits=0",
+      "expect_baseline": "0 violations with the fix. v9, 3 runs: execs=364955 blocked=29088610 (explored 29453565), violating executions=0, dirty_reads=0, stray_commits=0",
+      "note": "U=8 is above the dirty-read boundary W+B+5L=6 and on the stray-commit boundary W+B+7L=8; timing of A3-edge with --fix epoch-bump: both sides must report 0"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=5 W=1 B=0 no-keep-going",
+      "regime": "A0-safe",
+      "label": "First-violation run (base timers): one tick below the dirty-read boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "first-violation",
+      "expect_timed": "exit 0 after the whole space, 0 violations. v9, 3 runs: exit 0, execs=312 blocked=39614 (explored 39926), violating executions=0",
+      "expect_baseline": "exit 101 at the first violation (spurious in this regime). v9, 3 runs: exit 101 (a run that stops has no counts)",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8; no --keep-going: a side that finds a violation exits 101 and has no counts in results_v9.csv; the exit code is the verdict"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=6 W=1 B=0 no-keep-going",
+      "regime": "A1-edge",
+      "label": "First-violation run (base timers): exactly on the dirty-read boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 6,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "first-violation",
+      "expect_timed": "exit 101 at the first certified violation. v9, 3 runs: exit 101 (a run that stops has no counts)",
+      "expect_baseline": "exit 101 at the first violation (the baseline cannot tell which of its violations are real). v9, 3 runs: exit 101 (a run that stops has no counts)",
+      "note": "U=6 is on the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8; no --keep-going: a side that finds a violation exits 101 and has no counts in results_v9.csv; the exit code is the verdict"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=8 W=1 B=0 no-keep-going",
+      "regime": "A3-edge",
+      "label": "First-violation run (base timers): exactly on the stray-commit boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 8,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "first-violation",
+      "expect_timed": "exit 101 at the first certified violation. v9, 3 runs: exit 101 (a run that stops has no counts)",
+      "expect_baseline": "exit 101 at the first violation (the baseline cannot tell which of its violations are real). v9, 3 runs: exit 101 (a run that stops has no counts)",
+      "note": "U=8 is above the dirty-read boundary W+B+5L=6 and on the stray-commit boundary W+B+7L=8; no --keep-going: a side that finds a violation exits 101 and has no counts in results_v9.csv; the exit code is the verdict"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=8 W=1 B=2 no-keep-going",
+      "regime": "C1-edge",
+      "label": "First-violation run (backoff 2): exactly on the dirty-read boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 8,
+        "W": 1,
+        "B": 2,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "first-violation",
+      "expect_timed": "exit 101 at the first certified violation. v9, 3 runs: exit 101 (a run that stops has no counts)",
+      "expect_baseline": "exit 101 at the first violation (the baseline cannot tell which of its violations are real). v9, 3 runs: exit 101 (a run that stops has no counts)",
+      "note": "U=8 is on the dirty-read boundary W+B+5L=8 and below the stray-commit boundary W+B+7L=10; no --keep-going: a side that finds a violation exits 101 and has no counts in results_v9.csv; the exit code is the verdict"
+    },
+    {
+      "cell": "T=2 R=3 L=1 U=10 W=1 B=2 no-keep-going",
+      "regime": "C3-edge",
+      "label": "First-violation run (backoff 2): exactly on the stray-commit boundary",
+      "params": {
+        "T": 2,
+        "R": 3,
+        "L": 1,
+        "U": 10,
+        "W": 1,
+        "B": 2,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "first-violation",
+      "expect_timed": "exit 101 at the first certified violation. v9, 3 runs: exit 101 (a run that stops has no counts)",
+      "expect_baseline": "exit 101 at the first violation (the baseline cannot tell which of its violations are real). v9, 3 runs: exit 101 (a run that stops has no counts)",
+      "note": "U=10 is above the dirty-read boundary W+B+5L=8 and on the stray-commit boundary W+B+7L=10; no --keep-going: a side that finds a violation exits 101 and has no counts in results_v9.csv; the exit code is the verdict"
+    },
+    {
+      "cell": "T=2 R=4 L=1 U=5 W=1 B=0 no-keep-going",
+      "regime": "A0-safe",
+      "label": "First-violation run (base timers): one tick below the dirty-read boundary",
+      "params": {
+        "T": 2,
+        "R": 4,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "first-violation",
+      "expect_timed": "exit 0 after the whole space, 0 violations. v9, 3 runs: exit 0, execs=2224 blocked=663807 (explored 666031), violating executions=0",
+      "expect_baseline": "exit 101 at the first violation (spurious in this regime). v9, 3 runs: exit 101 (a run that stops has no counts)",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8; no --keep-going: a side that finds a violation exits 101 and has no counts in results_v9.csv; the exit code is the verdict"
+    },
+    {
+      "cell": "T=2 R=4 L=1 U=8 W=1 B=0 no-keep-going",
+      "regime": "A3-edge",
+      "label": "First-violation run (base timers): exactly on the stray-commit boundary",
+      "params": {
+        "T": 2,
+        "R": 4,
+        "L": 1,
+        "U": 8,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "first-violation",
+      "expect_timed": "exit 101 at the first certified violation. v9, 3 runs: exit 101 (a run that stops has no counts)",
+      "expect_baseline": "exit 101 at the first violation (the baseline cannot tell which of its violations are real). v9, 3 runs: exit 101 (a run that stops has no counts)",
+      "note": "U=8 is above the dirty-read boundary W+B+5L=6 and on the stray-commit boundary W+B+7L=8; no --keep-going: a side that finds a violation exits 101 and has no counts in results_v9.csv; the exit code is the verdict"
+    },
+    {
+      "cell": "T=2 R=5 L=1 U=8 W=1 B=0 no-keep-going",
+      "regime": "A3-edge",
+      "label": "First-violation run (base timers): exactly on the stray-commit boundary",
+      "params": {
+        "T": 2,
+        "R": 5,
+        "L": 1,
+        "U": 8,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "first-violation",
+      "expect_timed": "exit 101 at the first certified violation. v9, 3 runs: exit 101 (a run that stops has no counts)",
+      "expect_baseline": "exit 101 at the first violation (the baseline cannot tell which of its violations are real). v9, 3 runs: exit 101 (a run that stops has no counts)",
+      "note": "U=8 is above the dirty-read boundary W+B+5L=6 and on the stray-commit boundary W+B+7L=8; no --keep-going: a side that finds a violation exits 101 and has no counts in results_v9.csv; the exit code is the verdict"
+    },
+    {
+      "cell": "T=32 R=2 L=1 U=8 W=1 B=0 no-keep-going",
+      "regime": "A3-edge",
+      "label": "First-violation run (base timers): exactly on the stray-commit boundary",
+      "params": {
+        "T": 32,
+        "R": 2,
+        "L": 1,
+        "U": 8,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": "-"
+      },
+      "kind": "first-violation",
+      "expect_timed": "exit 101 at the first certified violation. v9, 3 runs: exit 101 (a run that stops has no counts)",
+      "expect_baseline": "exit 101 at the first violation (the baseline cannot tell which of its violations are real). v9, 3 runs: exit 101 (a run that stops has no counts)",
+      "note": "U=8 is above the dirty-read boundary W+B+5L=6 and on the stray-commit boundary W+B+7L=8; no --keep-going: a side that finds a violation exits 101 and has no counts in results_v9.csv; the exit code is the verdict"
+    },
+    {
+      "cell": "T=4 R=5 L=1 U=5 W=1 B=0 shared4 (edge rung, timed only)",
+      "regime": "A0-safe",
+      "label": "Edge rung above the ladder top, timed side only",
+      "params": {
+        "T": 4,
+        "R": 5,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations expected; not measured yet (no v8 run either)",
+      "expect_baseline": "no baseline side in the plan (timed only)",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8; added on 2026-10-11, one rung above the top of the ladder; no baseline side"
+    },
+    {
+      "cell": "T=8 R=5 L=1 U=5 W=1 B=0 shared4 (edge rung, timed only)",
+      "regime": "A0-safe",
+      "label": "Edge rung above the ladder top, timed side only",
+      "params": {
+        "T": 8,
+        "R": 5,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations expected; not measured yet (no v8 run either)",
+      "expect_baseline": "no baseline side in the plan (timed only)",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8; added on 2026-10-11, one rung above the top of the ladder; no baseline side"
+    },
+    {
+      "cell": "T=16 R=4 L=1 U=5 W=1 B=0 shared4 (edge rung, timed only)",
+      "regime": "A0-safe",
+      "label": "Edge rung above the ladder top, timed side only",
+      "params": {
+        "T": 16,
+        "R": 4,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations expected; not measured yet (no v8 run either)",
+      "expect_baseline": "no baseline side in the plan (timed only)",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8; added on 2026-10-11, one rung above the top of the ladder; no baseline side"
+    },
+    {
+      "cell": "T=16 R=5 L=1 U=5 W=1 B=0 shared8 (edge rung, timed only)",
+      "regime": "A0-safe",
+      "label": "Edge rung above the ladder top, timed side only",
+      "params": {
+        "T": 16,
+        "R": 5,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 8
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations expected; not measured yet (no v8 run either)",
+      "expect_baseline": "no baseline side in the plan (timed only)",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8; added on 2026-10-11, one rung above the top of the ladder; no baseline side"
+    },
+    {
+      "cell": "T=32 R=4 L=1 U=5 W=1 B=0 shared4 (edge rung, timed only)",
+      "regime": "A0-safe",
+      "label": "Edge rung above the ladder top, timed side only",
+      "params": {
+        "T": 32,
+        "R": 4,
+        "L": 1,
+        "U": 5,
+        "W": 1,
+        "B": 0,
+        "sd": 0,
+        "property": "both",
+        "fix": "none",
+        "pool": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations expected; not measured yet (no v8 run either)",
+      "expect_baseline": "no baseline side in the plan (timed only)",
+      "note": "U=5 is below the dirty-read boundary W+B+5L=6 and below the stray-commit boundary W+B+7L=8; added on 2026-10-11, one rung above the top of the ladder; no baseline side"
+    }
+  ],
+  "notes": [
+    "Violation counter: use dirty_reads. It equals the tool's violating executions (viol_execs) on 206 of 206 finished v9 runs; violations= is stray_commits + dirty_reads and counts each stray-commit execution twice (206 of 206 runs satisfy violations = viol_execs + stray_commits). The v8 note that says the same is confirmed.",
+    "Runs without keep-going that found a violation (48 rows, status 'finished (assertion failed: FIRE)', exit 101): results_v9.csv has viol_execs = 0, empty execs, blocked and counters, and a piece of the printed graph in the summary column (for instance nisshi-072-r1). Read the exit code, not viol_execs; their parameter values here come from the arguments, not from a summary line.",
+    "Parameters were resolved from the arguments and cross-checked against the summary line of every finished run (fix, T, R, L, U, sd, W, B): no difference. No cell sets --sd or --property, so sd = 0 and property = both everywhere (defaults of lines 754 and 755). The two sides of every two-sided cell run the same arguments apart from --mode.",
+    "The baseline does not use L, U, W, B: 16 baseline sides at T=2 R=3 all report execs=7539 blocked=322118 dirty_reads=3272 stray_commits=2112, and 5 at T=2 R=4 all report execs=184723 blocked=15196486 dirty_reads=75632 stray_commits=46344. The baseline columns of the boundary rows are repetitions of one measurement, not new evidence.",
+    "W = 1 < 2L in every cell except the E regimes (W = 5). A response needs two hops, at least 2L, so with the clock an EndTxn sent while retries remain cannot be answered within W and always times out: the whole budget R is spent on the first transaction. This is visible in the data: in regime A0-safe the timed complete executions do not depend on T (R=1: 6, R=2: 44, R=3: 312, R=4: 2224) and the timed blocked executions grow linearly with T, while the baseline, where a timeout may or may not fire at each transaction, grows much faster. The explored ratios of the T ladders therefore reflect this timer setting as much as the size; the E regimes are the only cells where a timeout is a real choice on the timed side. A local check with the binary of 30 September (R=1, T=1 to 4) agrees: complete executions stay constant in T at W=1 and grow with T at W=2 and W=5. This is a parameter choice, not mode-dependent code, but it should be ruled on before the ladder is quoted as an efficiency result.",
+    "Source header against the current code: the paragraph 'Blocked executions' explains blocked executions by messages that expire at sd = 0 and quotes blocked counts of 6, 7 and 8. It predates the lossy sends (line 693, commit 60f262f of 2026-09-30): now every send may be dropped and the smallest cell (T=2 R=1) already has 198 blocked executions on the timed side and 318 on the baseline, which has no sd at all. The source wins; the header numbers are stale (so are its counts 'stray 1, dirty 2' for L=1 U=8 W=1: a local run of the 30 September binary does not reproduce them). The --help text omits --sd and --property, which the parser accepts.",
+    "Memory notes against the current code: the case-study note (2026-09-16) calls the example untracked and reports the laws on 90 of 90 sweep rows and the fix on 0 of 225 cells; the audit (2026-09-18) quotes 216 of 216. The file is tracked now (commits 697fc36 and 60f262f) and those sweeps predate the lossy sends and the current algorithm; they are not part of v9. The laws themselves are unchanged: every v9 cell agrees with them. The harness note (nisshi-tf, the real nisshi engine under TraceForge) concerns another crate and has no timed result; it is not this example.",
+    "Counter-based verdicts: timeline_impossible = 0 in all 206 finished runs, and on the timed side dirty_reads (raised when the code runs) equals the failing-task lines (printed only for an execution that has a timeline) on 111 of 111 finished timed runs, 45 of them with violations. So no violation count here comes from an execution without a timeline. In addition a timed run without keep-going stops with exit 101 in the regimes A1-edge, A3-edge, C1-edge, C3-edge; the other violating regimes (A2-viol, C2-viol, D1-edge, D2-viol, D3-edge, E1-edge, E2-viol, E3-edge) have keep-going counts only.",
+    "Which law belongs to which property: in v9 it shows in the counters of the timed side (stray_commits = 0 in the regimes with digit 1 or 2 and above 0 with digit 3; dirty_reads above 0 from digit 1 on). No v9 cell runs --property stray or --property dirty. A local check with the binary of 30 September (T=2 R=1 L=1 W=1 B=0, no keep-going) agrees: with --property stray the run exits 0 at U=6 and U=7 and 101 at U=8; with --property dirty it exits 0 at U=5 and 101 at U=6.",
+    "v8 against v9: complete and blocked counts, dirty_reads and stray_commits are identical on all 71 sides that finished in both campaigns; timeouts= and completed_txns= differ on 37 of them (they are summed over the program runs of the search and are not execution counts).",
+    "Sides without a v9 row when this file was written (2026-10-11 11:09): timed side of T=2 R=5 L=1 U=5 W=1 B=0 shared4 (v8 value quoted in the cell); baseline side of T=8 R=3 L=1 U=5 W=1 B=0 shared4; T=8 R=4 L=1 U=5 W=1 B=0 shared4 (T=8 R=3: v8 value quoted; T=8 R=4 is the ceiling run, not finished in v8, running in v9 since 2026-10-09 15:14 and expected to end as DNF). The five edge rungs have a timed side only and no result yet.",
+    "Workbook builder: the sheet 'The edge' groups a ladder by all other parameter columns, so the pool column splits the T and R ladders into a sequential part and a shared-pool part (for instance R=1, 2, 3 on one core and R=4, 5 on four cores at T=2). Leave pool out of the grouping to show whole ladders. The builder checks only the suffixes safe and viol against the timed count; the edge regimes (violating side) and the control were checked for this file by a script: no mismatch.",
+    "Wall times on the timed side of the T ladder: the shared pool does not keep its four workers busy there (T=32 R=2 timed: walls 77 s, 194 s, 79 s with cpu/wall 2.51, 1.00, 2.51; T=16 R=3 timed: walls 166 s, 281 s, 202 s with cpu/wall 3.32, 1.92, 2.70; T=8 R=3 timed: walls 53 s, 59 s, 79 s with cpu/wall 3.06, 2.67, 1.95; T=16 R=2 timed: walls 16 s, 16 s, 16 s with cpu/wall 2.50, 2.50, 2.50), so the wall time differs between repetitions by up to a factor of 2.5, although the counts are identical and the timing audit says clean. Every other shared-pool run of the example has cpu/wall of at least 3.72 on four cores. Do not quote a wall ratio for these 4 cells without the spread.",
+    "Regime letters: v8 had no regime names for this example, so they are new here. One regime per timing setting; the suffix edge is used twice per letter (digit 1: on the dirty-read boundary, digit 3: on the stray-commit boundary), both times with the tool on the violating side.",
+    "Wall time of a first-violation run is the time to the first violation and depends on the search order; it is not a performance result."
+  ]
+}

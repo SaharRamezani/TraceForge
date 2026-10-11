@@ -1,0 +1,495 @@
+{
+  "family": "opt",
+  "example": "yarn_scheduler_timed",
+  "title": "YARN job scheduler with deadlines (Timed Rebeca case study)",
+  "source": "Model: Khamespanah, Khosravi, Sirjani, 'An efficient TCTL model checking algorithm and a reduction technique for verification of timed actor models', Science of Computer Programming 153 (2018), Section 6.2, Listing 4 (the 3-AM Timed Rebeca file; the port follows the four files yarn-deadline-fifo-{1,2,3,4}AMs.rebeca), an abstraction of Apache Hadoop YARN (Vavilapalli et al., SoCC 2013). The property checked here (no deadline miss) and its timing rule are this example's own question: the published model checks only a reachability formula and reports state counts, no verdict, so no cell reproduces a published result. The network delay [L, U] is an extension; U = 0 is the zero-delay network of the Rebeca model.",
+  "property": "Property miss (the default of --property, used by every v9 cell): in every run in which the resource manager has collected every report, no waiting job's deadline runs out in the queue at a tick <= H (queue expiry) and no application master gives up a job handed out at a tick <= H (give-up). Asserted once, by the resource manager thread, when it finishes (source line 761).",
+  "citable": "with caveats",
+  "citable_note": "The 2026-09-18 citability audit gives no verdict for this example (it names it only under its reporting bugs: the 'verified nothing' warning was already right here, and the compare-mode ratio was changed to explored = execs + blocked; the current source has both). Checked against the current source: no mode-dependent protocol code, the assertion is falsifiable (three violating-side cells fire on the timed side) and every timed hold shows the tightest case (smallest dline handed out = work time 2). Caveats: the deadline property and the rule DD >= P + C_hi are the example's own, measured on a finite set of cells and not proved, not a published verdict; the transit window is an extension of the published zero-delay model; the verdict is for runs up to the horizon H and, because every send is lossy and the harness discards any run that loses or skips a tick, a job hand-off or a report, for runs without such a loss; at K=1 the timed side is slower in wall time than the baseline.",
+  "config_timed": "build_config, source lines 859 to 870: Config::builder().with_all_sends_lossy() (every send may be dropped, no budget), .with_progress_report(usize::MAX) (the builder's adaptive progress print is off; the campaign's progress lines come from the TF_PROGRESS environment hook), .with_thread_threshold(1000) (the tool's default per-thread event limit, pinned), .with_keep_going_after_error(true) when --keep-going is given (every v9 cell gives it), then .with_timed(L, U, sd) with the absolute values of --l, --u, --sd (line 868). Nothing else is set, so the tool defaults apply (traceforge/src/lib.rs lines 355, 356, 368): consistency model FIFO, scheduling policy LTR, no parallel exploration; the campaign runs every cell on 1 core. Per-send transit bounds in the program: Tick (clock to RM) is sent with transit exactly 0 (send_msg_timed(.., 0, 0), line 582); RunJob, Update and Done are plain sends and take the global window [L, U] (lines 687, 786, 802, 764). No finite-wait receive in these cells: RM and AMs use blocking receives (lines 669, 779).",
+  "config_baseline": "Same builder without with_timed (line 867): with_all_sends_lossy(), with_progress_report(usize::MAX), with_thread_threshold(1000), with_keep_going_after_error(true) under --keep-going; FIFO, LTR, no parallel exploration by default, 1 core. Same program: its timed calls (the transit bounds of Tick, sleep, the timed blocking receives) are kept, and a configuration without a clock ignores their timing information (lib.rs, doc comment of with_timed). L, U and sd have no effect on this side.",
+  "program_differs_between_modes": "no: the mode is read only in build_config (lines 866 to 868) and in main's dispatch (lines 1277 to 1300); no thread function receives it, and there is no mode-dependent branch or sleep in protocol code",
+  "failing_tasks": "Only the resource manager thread asserts in these cells (traceforge::assert(ok), line 761), once, after it has collected every report. Threads are unnamed and spawned in the order AM 0 .. AM K-1, RM, Clock (lines 905 to 912), so the RM's line is task-(K+1): task-2 for K=1, task-3 for K=2, task-4 for K=3 (confirmed on tiny local runs for K = 1, 2, 3: every violating execution printed that one line). The throughput monitor (assert(false), line 829) exists only with --property throughput, which no v9 cell uses.",
+  "counters": [
+    {
+      "key": "violations",
+      "counts": "executions",
+      "meaning": "raised once by the RM just before its failing assertion (lines 758 to 761), so one per violating execution. Equal to the tool's count of violating executions in all 47 finished v9 runs of this example. The binary's VIOLATIONS line prints this counter."
+    },
+    {
+      "key": "expired",
+      "counts": "events",
+      "meaning": "queue expiries: a waiting job's remaining deadline reached 0 at a tick <= H. Summed over the runs in which the RM finished; one execution can hold several, so it is not an execution count. Under property miss an execution with an expiry is a violating execution, so it is 0 wherever violations = 0."
+    },
+    {
+      "key": "late",
+      "counts": "events",
+      "meaning": "done reports that the RM read after it had already read Tick D+1, with D = dispatch tick + remaining deadline handed out; judged only for jobs with D < H. This is the event of property late-report, NOT part of property miss: informational in every v9 cell (it can be above 0 on a timed row, for instance late=10 at K=1 DD=11 U=1, and it stays 0 where no report is judged). Non-violating runs are counted 2^K times (see counter finished)."
+    },
+    {
+      "key": "preempted",
+      "counts": "events",
+      "meaning": "give-ups: reports with miss = true (an AM received a job whose remaining deadline was smaller than its work time). Printed in the summary line only (the campaign's counters column keeps violations, expired and late). Under property miss an execution with a give-up is a violating execution. In the three timed violating cells every violation is a give-up (preempted = violations, expired = 0)."
+    },
+    {
+      "key": "finished",
+      "counts": "executions",
+      "meaning": "executions in which the RM collected every report and made its judgement. Not the number of complete executions: after judging, the RM sends Done to each of the K AMs, each Done may be lost, and an AM that never gets it blocks, so every non-violating finished run appears as 2^K executions of which one is complete. In every finished v9 run: finished = violations + 2^K * execs. Summary line only."
+    },
+    {
+      "key": "dispatched",
+      "counts": "events",
+      "meaning": "jobs handed out, summed over finished runs (non-violating runs counted 2^K times). Summary line only."
+    },
+    {
+      "key": "done",
+      "counts": "events",
+      "meaning": "reports with miss = false (the job fitted its deadline at the AM), summed over finished runs. dispatched = done + preempted. Summary line only."
+    },
+    {
+      "key": "judged",
+      "counts": "events",
+      "meaning": "done reports whose deadline D lies inside the horizon (D < H), the ones the late-report rule looks at. 0 when DD is so large that no deadline falls inside H. Summary line only."
+    },
+    {
+      "key": "tick_skips",
+      "counts": "executions",
+      "meaning": "runs discarded by the harness's tick check: the RM read a tick out of sequence because an earlier one was lost or expired unread. They end blocked and never reach the judgement. Examples: 31,972 against 32,555 blocked executions at K=1 DD=8 H=12 timed; 552,194 against 6,983,805 at K=2 DD=8 H=8 baseline. Summary line only."
+    }
+  ],
+  "violation_counter": "violations",
+  "param_columns": [
+    {
+      "key": "K",
+      "header": "AMs K",
+      "meaning": "number of application masters (--ams, 1 to 4): the helpers, each runs one job at a time",
+      "size": true
+    },
+    {
+      "key": "QS",
+      "header": "Queue size QS",
+      "meaning": "number of slots of the resource manager's waiting line (--queue-size; default K+1 as in the four source files). The line is always full: a fresh job joins for every job handed out or expired",
+      "size": true
+    },
+    {
+      "key": "H",
+      "header": "Horizon H (ticks)",
+      "meaning": "last tick (--horizon): the clock sends ticks 0..H, one per time unit; after tick H the resource manager hands out no more jobs and only collects the outstanding reports. Misses are judged for ticks <= H",
+      "size": true
+    },
+    {
+      "key": "DD",
+      "header": "Deadline DD (ticks)",
+      "meaning": "the remaining time every new job starts with when it joins the waiting line (--deadline, DEFAULT_DEADLINE of the source; the source uses 3, and 5 with four AMs). It drops by one per tick while the job waits; what is left is handed to the AM with the job. The parameter the timing rule bounds",
+      "size": false
+    },
+    {
+      "key": "C",
+      "header": "Work time C",
+      "meaning": "completion options: the time a job needs at its AM, in ticks. lo..hi = any integer of the interval (--completion-lo, --completion-hi); {a,b} = one of the listed values (--completion-choice). No v9 cell sets these flags: 2..2 is the default, every job needs exactly 2 (the source's active code). C_hi, the largest value, enters the timing rule",
+      "size": false
+    },
+    {
+      "key": "L",
+      "header": "L (ticks)",
+      "meaning": "smallest transit time of a job hand-off (RM to AM) and of a report (AM to RM), absolute (--l, default 0; no v9 cell sets it). Ticks of the clock always travel in exactly 0. Timed side only",
+      "size": false
+    },
+    {
+      "key": "U",
+      "header": "U (ticks)",
+      "meaning": "largest transit time of a job hand-off and of a report, absolute (--u). U=0 is the zero-delay network of the Timed Rebeca model. Timed side only",
+      "size": false
+    },
+    {
+      "key": "sd",
+      "header": "sd (ticks)",
+      "meaning": "storage lifetime: how long a message stays readable after it arrives (--sd, default 0; no v9 cell sets it). With 0 a message is readable only at the instant it arrives. Timed side only",
+      "size": false
+    },
+    {
+      "key": "property",
+      "header": "Property",
+      "meaning": "which assertion the resource manager makes (--property). No v9 cell sets it: miss is the default = no queue expiry and no give-up. The other values (expiry, preempt, late-report, throughput) are not run in v9",
+      "size": false
+    }
+  ],
+  "boundary_law": "For sd = 0: let P = ceil(QS / K) * (C_hi + 2U + 1), the longest wait in the queue (C_hi = largest work time). Property miss holds iff DD >= P + C_hi; no measured boundary depended on L or on the smallest work time. Source: the example's own header, section 'Expected verdicts', HEADLINE (source lines 326 to 337). It is the example's own rule, fitted to the cells listed there and not proved; the published model gives no verdict to compare with. In every v9 cell QS = K + 1 (so ceil(QS/K) = 2) and C_hi = 2: the smallest safe deadline is 8 at U = 0 and 12 at U = 1. v9 checks both sides exhaustively at K=1 U=0 H=12 (DD 7 violates, 8 holds), K=1 U=1 H=12 (DD 11 violates, 12 holds) and K=2 U=0 H=8 (DD 7 violates, 8 holds); every other cell is on the hold side only. Valid up to the horizon H of the cell; no rule is claimed for sd > 0.",
+  "regimes": [
+    {
+      "id": "A-safe",
+      "name": "zero transit, deadline at the smallest safe value",
+      "params": "U=0, L=0, sd=0, tick period 1, work time 2, DD=8",
+      "rule": "DD = 8 = P + C_hi, with P = ceil(QS/K) * (C_hi + 2U + 1) = 2 * 3 = 6: DD equals the smallest deadline the rule calls safe (the equality case of DD >= P + C_hi), so this is the hold side of the boundary",
+      "expect_timed": "0 violations",
+      "expect_baseline": "spurious violations: without a clock the ticks can be read ahead of the reports, so jobs seem to wait too long; the baseline cannot prove a deadline safe unless the horizon is too short for any miss"
+    },
+    {
+      "id": "A-viol",
+      "name": "zero transit, deadline one unit below the smallest safe value",
+      "params": "U=0, L=0, sd=0, tick period 1, work time 2, DD=7",
+      "rule": "DD = 7 = P + C_hi - 1 (P = 6): the largest deadline the rule calls violating, so this is the violating side of the boundary. Mechanism (header, K=1 witness): a report and a tick arrive together, the tick is read first, the next job waits one more tick each cycle until an AM receives a job with less time left than its work time and gives up",
+      "expect_timed": "violations > 0 (real; in the measured cells all of them are give-ups)",
+      "expect_baseline": "violations > 0, many more than the timed side (measured: 2,028 against 16 at K=1, 32,330 against 28 at K=2); the count cannot tell the real ones from those that no timeline allows"
+    },
+    {
+      "id": "B-safe",
+      "name": "transit up to 1, deadline at the smallest safe value",
+      "params": "U=1, L=0, sd=0, tick period 1, work time 2, DD=12",
+      "rule": "DD = 12 = P + C_hi, with P = ceil(QS/K) * (C_hi + 2U + 1) = 2 * 5 = 10: DD equals the smallest deadline the rule calls safe, hold side of the boundary. Each unit of U costs 4 units of deadline (2U inside P, times ceil(QS/K) = 2)",
+      "expect_timed": "0 violations",
+      "expect_baseline": "spurious violations: without a clock the ticks can be read ahead of the reports, so jobs seem to wait too long"
+    },
+    {
+      "id": "B-viol",
+      "name": "transit up to 1, deadline one unit below the smallest safe value",
+      "params": "U=1, L=0, sd=0, tick period 1, work time 2, DD=11",
+      "rule": "DD = 11 = P + C_hi - 1 (P = 10): the largest deadline the rule calls violating, violating side of the boundary",
+      "expect_timed": "violations > 0 (real; in the measured cell all of them are give-ups)",
+      "expect_baseline": "violations > 0, many more than the timed side (measured: 142 against 4); the count cannot tell the real ones from those that no timeline allows"
+    }
+  ],
+  "glossary": [
+    {
+      "term": "RM (resource manager)",
+      "meaning": "the central thread: owns the waiting line, knows which AMs are free, and on every tick hands the job at the front of the line to each free AM. The only thread that asserts."
+    },
+    {
+      "term": "AM (application master)",
+      "meaning": "a helper thread that runs one job at a time. On a job it compares its work time with the remaining deadline it was handed: if the work fits it works for that long and reports done, else it waits until the deadline passes and reports a miss (give-up). Either report frees it."
+    },
+    {
+      "term": "Clock and tick",
+      "meaning": "a thread that sends tick 0, 1, .., H to the RM, one per time unit, with transit exactly 0. On each tick the RM hands out jobs to free AMs and then ages every waiting job by one unit."
+    },
+    {
+      "term": "dline (remaining deadline)",
+      "meaning": "what is left of a job's deadline DD when it is handed out; its absolute deadline is D = dispatch tick + dline, in ticks."
+    },
+    {
+      "term": "queue expiry",
+      "meaning": "a waiting job's remaining deadline reaches 0 in the waiting line: the job is thrown away and a fresh one takes its place (counter expired)."
+    },
+    {
+      "term": "give-up",
+      "meaning": "an AM receives a job whose remaining deadline is smaller than its work time, waits until the deadline passes and reports a miss (the source's self-preemption; counter preempted)."
+    },
+    {
+      "term": "deadline miss (property miss)",
+      "meaning": "a queue expiry or a give-up, at a tick <= H. A violating execution is one in which the RM finished and saw at least one."
+    },
+    {
+      "term": "P (longest wait in the queue)",
+      "meaning": "P = ceil(QS / K) * (C_hi + 2U + 1): the quantity the timing rule is built on. The header names it 'longest wait in the queue' and gives no derivation; one way to read it: ceil(QS / K) rounds of at most C_hi + 2U + 1 time units each (the work time, two transits, one tick)."
+    },
+    {
+      "term": "smallest safe deadline",
+      "meaning": "P + C_hi: by the example's rule property miss holds iff DD is at least this value (8 at U=0, 12 at U=1 in the v9 cells). Cells named 'hold side' have DD equal to it, cells named 'FIRE side' have DD one unit below."
+    },
+    {
+      "term": "hold / FIRE",
+      "meaning": "the words of the cell names: hold = the run reports 0 violating executions; FIRE = it reports at least one. All v9 cells of this example are exhaustive (keep-going), so the exit code is 0 in both cases and the verdict is the count."
+    },
+    {
+      "term": "spurious violation",
+      "meaning": "a violating execution of the baseline that no timeline allows: without a clock the RM may read many ticks before a report that in real time arrived earlier, so jobs seem to wait too long. On a -safe row every baseline violation is spurious (the timed side reports 0)."
+    },
+    {
+      "term": "horizon-trivial hold",
+      "meaning": "a hold that says nothing because no miss fits inside the horizon whatever the timing (DD > H + 1 and DD >= H + C_hi); the binary prints a WARNING for it. No v9 cell is horizon-trivial."
+    },
+    {
+      "term": "tightest case (min_dispatch_dline)",
+      "meaning": "the summary line prints the smallest remaining deadline handed out in any finished run. On a hold it equals the work time 2 in every timed v9 row: the search reached the case with no slack left, so the hold is not vacuous. min_queue_left (smallest remaining deadline of a waiting job) and min_report_slack are the same kind of evidence for the properties expiry and late-report."
+    },
+    {
+      "term": "harness (tick check, deferred judgement, Done)",
+      "meaning": "verification scaffolding that is not part of the protocol: the RM discards a run in which it reads a tick out of sequence (assume on the tick index), it judges the property only once every busy AM has reported, and it then sends Done so that the AMs end. A run that loses a tick, a job hand-off or a report never reaches the judgement and ends blocked; a run that loses a Done ends blocked after the judgement. This is why most explored executions of this example are blocked on both sides (for instance 141,835 of 143,097 timed and 174,373,851 of 193,610,691 baseline at K=2 H=10)."
+    },
+    {
+      "term": "ceiling run",
+      "meaning": "a baseline job started although it is predicted not to finish before the campaign deadline, to document that the baseline cannot do the cell (K=2 H=12 and K=3 H=7)."
+    },
+    {
+      "term": "edge rung",
+      "meaning": "a cell one step above the top of a ladder, added on 2026-10-11 (K=3 QS=4 DD=8 at H=9 and H=11, timed side only)."
+    }
+  ],
+  "cells": [
+    {
+      "cell": "K=1 QS=2 DD=8 U=0 H=12 (hold side)",
+      "regime": "A-safe",
+      "label": "1 AM, hold side of the boundary (smallest safe deadline)",
+      "params": {
+        "K": 1,
+        "QS": 2,
+        "H": 12,
+        "DD": 8,
+        "C": "2..2",
+        "L": 0,
+        "U": 0,
+        "sd": 0,
+        "property": "miss"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; execs=28 blocked=32,555 (explored 32,583); v9 r1 to r3 identical, same counts as v8",
+      "expect_baseline": "1,150 spurious violating executions; execs=2,946 blocked=110,593 (explored 113,539); v9 r1 to r3 identical, same counts as v8",
+      "note": "Hold side of the boundary: DD = 8 equals the smallest deadline the rule calls safe (P + C_hi = 6 + 2). Its violating neighbour is the DD=7 cell of the same K and H. The timed side explores 3.5 times fewer executions but takes about 5 times longer in wall time (about 47 s against about 10 s in v9): at K=1 the gain is precision, not time."
+    },
+    {
+      "cell": "K=1 QS=2 DD=7 U=0 H=12 (boundary FIRE side)",
+      "regime": "A-viol",
+      "label": "1 AM, violating side of the boundary (deadline one unit too short)",
+      "params": {
+        "K": 1,
+        "QS": 2,
+        "H": 12,
+        "DD": 7,
+        "C": "2..2",
+        "L": 0,
+        "U": 0,
+        "sd": 0,
+        "property": "miss"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "16 violating executions, all give-ups (preempted=16, expired=0); execs=16 blocked=32,704 (explored 32,720); v9 r1 to r3 identical, same counts as v8",
+      "expect_baseline": "2,028 violating executions; execs=2,068 blocked=110,593 (explored 112,661); v9 r1 to r3 identical, same counts as v8",
+      "note": "Violating side of the boundary: DD = 7 = (smallest safe deadline) - 1. Exhaustive run (keep-going), so the exit code is 0 on both sides although both report violations; the verdict is the count of violating executions."
+    },
+    {
+      "cell": "K=1 QS=2 DD=12 L=0 U=1 H=12 (transit)",
+      "regime": "B-safe",
+      "label": "1 AM, transit up to 1, hold side of the boundary (smallest safe deadline)",
+      "params": {
+        "K": 1,
+        "QS": 2,
+        "H": 12,
+        "DD": 12,
+        "C": "2..2",
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "property": "miss"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; execs=144 blocked=49,292 (explored 49,436); v9 r1 to r3 identical, same counts as v8",
+      "expect_baseline": "62 spurious violating executions; execs=4,034 blocked=110,593 (explored 114,627); v9 r1 to r3 identical, same counts as v8",
+      "note": "Hold side of the boundary for U=1: DD = 12 equals the smallest deadline the rule calls safe (P + C_hi = 10 + 2). The hold is not trivial for H=12 (no horizon warning applies; the smallest remaining deadline handed out is 2 = the work time). Its violating neighbour is the DD=11 cell. Timed wall time about 55 s against about 10 s for the baseline."
+    },
+    {
+      "cell": "K=1 QS=2 DD=11 L=0 U=1 H=12 (U=1 boundary FIRE side)",
+      "regime": "B-viol",
+      "label": "1 AM, transit up to 1, violating side of the boundary (deadline one unit too short)",
+      "params": {
+        "K": 1,
+        "QS": 2,
+        "H": 12,
+        "DD": 11,
+        "C": "2..2",
+        "L": 0,
+        "U": 1,
+        "sd": 0,
+        "property": "miss"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "4 violating executions, all give-ups (preempted=4, expired=0); execs=141 blocked=49,300 (explored 49,441); v9 r1 to r3 identical, same counts as v8",
+      "expect_baseline": "142 violating executions; execs=3,954 blocked=110,593 (explored 114,547); v9 r1 to r3 identical, same counts as v8",
+      "note": "Violating side of the boundary for U=1: DD = 11 = (smallest safe deadline) - 1. The timed side also prints late=10: late done reports are not part of property miss (see counter late), they are not what the assertion counts here."
+    },
+    {
+      "cell": "K=2 QS=3 DD=8 U=0 H=8 (hold side)",
+      "regime": "A-safe",
+      "label": "2 AMs, hold side of the boundary, shortest horizon of the ladder",
+      "params": {
+        "K": 2,
+        "QS": 3,
+        "H": 8,
+        "DD": 8,
+        "C": "2..2",
+        "L": 0,
+        "U": 0,
+        "sd": 0,
+        "property": "miss"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; execs=326 blocked=28,119 (explored 28,445); v9 r1 to r3 identical, same counts as v8",
+      "expect_baseline": "6,850 spurious violating executions; execs=774,400 blocked=6,983,805 (explored 7,758,205); v9 r1 to r3 identical, same counts as v8",
+      "note": "Hold side of the boundary: DD = 8 equals the smallest safe deadline (P + C_hi = 6 + 2). Its violating neighbour is the DD=7 cell of the same K and H. First rung of the horizon ladder K=2 QS=3 DD=8 (H = 8, 10, 12, 14, 16)."
+    },
+    {
+      "cell": "K=2 QS=3 DD=7 U=0 H=8 (boundary FIRE side)",
+      "regime": "A-viol",
+      "label": "2 AMs, violating side of the boundary (deadline one unit too short)",
+      "params": {
+        "K": 2,
+        "QS": 3,
+        "H": 8,
+        "DD": 7,
+        "C": "2..2",
+        "L": 0,
+        "U": 0,
+        "sd": 0,
+        "property": "miss"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "28 violating executions, all give-ups (preempted=28, expired=0); execs=278 blocked=28,197 (explored 28,475); v9 r1 to r3 identical, same counts as v8",
+      "expect_baseline": "32,330 violating executions; execs=748,920 blocked=6,932,845 (explored 7,681,765); v9 r1 to r3 identical, same counts as v8",
+      "note": "Violating side of the boundary: DD = 7 = (smallest safe deadline) - 1. Exit code 0 on both sides (keep-going). The baseline visits the same 781,250 finished runs as in the DD=8 cell of this K and H; only the number of them that violate changes (32,330 against 6,850)."
+    },
+    {
+      "cell": "K=2 QS=3 DD=8 U=0 H=10 (hold side, biggest two-sided)",
+      "regime": "A-safe",
+      "label": "2 AMs, hold side, largest cell that both sides finish",
+      "params": {
+        "K": 2,
+        "QS": 3,
+        "H": 10,
+        "DD": 8,
+        "C": "2..2",
+        "L": 0,
+        "U": 0,
+        "sd": 0,
+        "property": "miss"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; execs=1,262 blocked=141,835 (explored 143,097); v9 r1 to r3 identical, same counts as v8",
+      "expect_baseline": "294,410 spurious violating executions; execs=19,236,840 blocked=174,373,851 (explored 193,610,691); v9 r1 (24,426 s), same counts as v8; the second repetition (opt-002-r2) has no result yet",
+      "note": "Hold side (DD = 8 = smallest safe deadline). The largest instance with a finished baseline: about 6.8 hours on one core against about 85 s timed. The timed side has 3 repetitions, the baseline is reach-grade (2 runs planned)."
+    },
+    {
+      "cell": "K=2 QS=3 DD=8 U=0 H=12",
+      "regime": "A-safe",
+      "label": "2 AMs, hold side, horizon ladder (the baseline is a ceiling run)",
+      "params": {
+        "K": 2,
+        "QS": 3,
+        "H": 12,
+        "DD": 8,
+        "C": "2..2",
+        "L": 0,
+        "U": 0,
+        "sd": 0,
+        "property": "miss"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; execs=4,798 blocked=681,251 (explored 686,049); v9 r1 to r3 identical, same counts as v8",
+      "expect_baseline": "no result expected: ceiling run (opt-035-r1), predicted about 5 days on one core, more than the 3.7 days between its start and the campaign deadline; in v8 it was stopped after 1 d 11 h 50 min at 886,000,000 explored (109,507,781 complete, 776,492,219 blocked) with no verdict; violation count unknown",
+      "note": "Hold side (DD = 8 = smallest safe deadline). The baseline job is a ceiling: it is run to show that it does NOT finish (started 2026-10-09 15:14, still running on 2026-10-11 11:09, campaign deadline 2026-10-13 08:00). Read the baseline columns of this row as a lower bound on its cost, not as a result. The baseline's tree does not depend on DD, L or U (see the notes of this file), so this is also its cost for any deadline or transit window at K=2 QS=3 H=12."
+    },
+    {
+      "cell": "K=2 QS=3 DD=8 U=0 H=14 (timed-only)",
+      "regime": "A-safe",
+      "label": "2 AMs, hold side, horizon ladder (timed side only)",
+      "params": {
+        "K": 2,
+        "QS": 3,
+        "H": 14,
+        "DD": 8,
+        "C": "2..2",
+        "L": 0,
+        "U": 0,
+        "sd": 0,
+        "property": "miss"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations in v8: execs=18,160 blocked=3,163,131 (explored 3,181,291), 8,166 s; not measured yet in v9 (opt-012-r1 and r2 have no result row on 2026-10-11)",
+      "expect_baseline": "not planned: no baseline job for this cell (the baseline of the rung below, H=12, is already predicted at about 5 days)",
+      "note": "Timed side only: the baseline would need more than the about 5 days predicted for its H=12 ceiling run. Hold side (DD = 8 = smallest safe deadline). Reach-grade: 2 runs planned."
+    },
+    {
+      "cell": "K=2 QS=3 DD=8 U=0 H=16 (timed-only ladder top)",
+      "regime": "A-safe",
+      "label": "2 AMs, hold side, top of the horizon ladder (timed side only)",
+      "params": {
+        "K": 2,
+        "QS": 3,
+        "H": 16,
+        "DD": 8,
+        "C": "2..2",
+        "L": 0,
+        "U": 0,
+        "sd": 0,
+        "property": "miss"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; execs=68,858 blocked=14,327,547 (explored 14,396,405); v9 r1 (39,929 s, about 11.1 hours), same counts as v8",
+      "expect_baseline": "not planned: no baseline job for this cell (the baseline at H=12 is already predicted at about 5 days)",
+      "note": "Timed side only: the baseline would need far more than the about 5 days predicted for its H=12 ceiling run. Hold side (DD = 8 = smallest safe deadline). Reach-grade: one run."
+    },
+    {
+      "cell": "K=3 QS=4 DD=8 U=0 H=7",
+      "regime": "A-safe",
+      "label": "3 AMs, hold side (the baseline is a ceiling run)",
+      "params": {
+        "K": 3,
+        "QS": 4,
+        "H": 7,
+        "DD": 8,
+        "C": "2..2",
+        "L": 0,
+        "U": 0,
+        "sd": 0,
+        "property": "miss"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; execs=13,608 blocked=708,476 (explored 722,084); v9 r1 to r3 identical, same counts as v8",
+      "expect_baseline": "no result expected: ceiling run (opt-036-r1), predicted about 32 days on one core; in v8 it was stopped after 1 d 11 h 50 min at 1,009,600,000 explored (75,748,974 complete, 933,851,026 blocked) with no verdict; violation count unknown",
+      "note": "Hold side (DD = 8 = smallest safe deadline: P + C_hi = 6 + 2, with ceil(4/3) = 2). The baseline job is a ceiling: it is run to show that it does NOT finish (started 2026-10-09 15:14, still running on 2026-10-11 11:09, campaign deadline 2026-10-13 08:00). Read its columns as a lower bound on the cost, not as a result. v9 has no violating-side cell at K=3 (the example's header reports a violation at DD=7 for H=7 and H=9, from its author's earlier runs). First rung of the horizon ladder K=3 QS=4 DD=8 (H = 7, 9, 11)."
+    },
+    {
+      "cell": "K=3 QS=4 DD=8 U=0 H=9 (edge rung, timed only)",
+      "regime": "A-safe",
+      "label": "3 AMs, hold side, edge rung added 2026-10-11 (timed side only)",
+      "params": {
+        "K": 3,
+        "QS": 4,
+        "H": 9,
+        "DD": 8,
+        "C": "2..2",
+        "L": 0,
+        "U": 0,
+        "sd": 0,
+        "property": "miss"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "not measured yet (opt-e01-r1, added 2026-10-11; the rule and the plan say 0 violations)",
+      "expect_baseline": "not planned: no baseline job for this cell (the baseline of the rung below, H=7, is already predicted at about 32 days)",
+      "note": "Edge rung, timed side only: one horizon step above the K=3 cell of v8 (predicted about 2,500 s); the baseline would need far more than the about 32 days predicted at H=7. Hold side (DD = 8 = smallest safe deadline). No earlier measurement: the example's header lists this hold as not finished within its 120 s limit."
+    },
+    {
+      "cell": "K=3 QS=4 DD=8 U=0 H=11 (edge rung, timed only)",
+      "regime": "A-safe",
+      "label": "3 AMs, hold side, second edge rung added 2026-10-11 (timed side only)",
+      "params": {
+        "K": 3,
+        "QS": 4,
+        "H": 11,
+        "DD": 8,
+        "C": "2..2",
+        "L": 0,
+        "U": 0,
+        "sd": 0,
+        "property": "miss"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "not measured yet (opt-e02-r1, added 2026-10-11; the rule and the plan say 0 violations)",
+      "expect_baseline": "not planned: no baseline job for this cell (the baseline at H=7 is already predicted at about 32 days)",
+      "note": "Edge rung, timed side only: two horizon steps above the K=3 cell of v8 (predicted about 19,000 s); the baseline would need far more than the about 32 days predicted at H=7. Hold side (DD = 8 = smallest safe deadline). No earlier measurement."
+    }
+  ],
+  "notes": [
+    "All 13 cells use property miss, work time 2..2, L=0 and sd=0: no cell passes --property, --completion-lo, --completion-hi, --completion-choice, --l or --sd, and the columns Property, C, L and sd show the resolved defaults as printed in the summary line (prop=miss C=2..2 L=0 sd=0). The K=1 cells do not pass --queue-size: QS resolves to K+1 = 2. All times are absolute integers (this example has no ratio flags).",
+    "Every parameter value was cross-checked against the summary line of results_v9.csv for the 10 cells that have a v9 row, against the v8 summary line for K=2 H=14, and against the arguments plus the source defaults for the two edge cells (no result yet; the same flag combination at a tiny horizon prints K=3 QS=4 DD=8 C=2..2 L=0 U=0 sd=0 locally).",
+    "Without a v9 result on 2026-10-11 11:09: K=2 H=14 timed (opt-012-r1, r2), the second baseline repetition of K=2 H=10 (opt-002-r2), the two edge cells (opt-e01-r1, opt-e02-r1) and the two baseline ceiling runs (opt-035-r1, opt-036-r1, both running since 2026-10-09 15:14).",
+    "All cells run with --keep-going, so kind is exhaustive everywhere and the exit code is 0 on both sides even when violations are reported; the verdict is the number of violating executions (one task-(K+1) line each) and the VIOLATIONS line of the binary.",
+    "Counters: violations equals the tool's violating executions in all 47 finished v9 rows. The other counters are sums over the runs in which the RM finished, and finished = violations + 2^K * execs in all 47 rows (each non-violating finished run is explored 2^K times, once per loss pattern of the K Done messages), so dispatched, done, judged and late are inflated by that factor; do not read them as execution counts. timeline_impossible = 0 in every row.",
+    "The baseline's tree does not depend on L and U (a configuration without a clock ignores them) nor on DD (it changes only which runs violate): at K=1 QS=2 H=12, complete + violating = 4,096 and blocked = 110,593 in all four baseline cells (DD 7, 8, 11, 12; U 0 and 1); at K=2 QS=3 H=8, complete + violating = 781,250 in both (blocked differs only because a violating run stops before the Done messages: blocked + 2 * violating = 6,997,505 in both). So one baseline run gives the baseline cost of every deadline and transit window of that K, QS and H.",
+    "The two sides of every two-sided cell run the same arguments except the mode word.",
+    "Only -safe and -viol regimes: DD is an integer and the rule is DD >= P + C_hi, so the two boundary cells of a setting are neighbours, DD = bound (the equality case, which the rule and the tool put on the hold side: -safe) and DD = bound - 1 (-viol); no -edge and no -ctrl regime is needed. v9 has a violating-side cell only for K=1 (U=0 and U=1, H=12) and for K=2 at H=8; the K=2 ladder above H=8 and all K=3 cells are hold side only. Letter A = zero transit (U=0), letter B = transit up to 1 (U=1); L=0 and sd=0 in both.",
+    "Older than the code (the source's build_config wins): the example's header lists execution counts and wall times of its author's earlier runs (for instance 16 executions for K=1 DD=8 U=0 H=10, 'hold 9 s' at K=2, 'H=9 timed out' at K=3). They predate the decision that every send is lossy: commit 60f262f changed exactly one line of this file, adding with_all_sends_lossy() to build_config, and left the header as it was. Take counts and times only from the campaign. The header's verdicts agree with v9 where the cells coincide (K=2 DD=8 H=10 holds, K=3 DD=8 H=7 holds), and its rule predicts the verdict of all 10 cells measured so far.",
+    "The header's harness section speaks only of messages left unread (skipped). Since every send is lossy, a LOST tick, job hand-off or report has the same effect: the run never reaches the RM's judgement and ends blocked (lost tick: the next tick fails the tick check, or tick H never arrives; lost hand-off or report: the AM stays busy in the RM's table, so the RM waits forever). The verdict therefore covers runs in which every tick, hand-off and report was delivered and read. This is read from the source (lines 666 to 677 and 860), not a separate measurement.",
+    "Memory notes against the current source: no contradiction found for this example. The 2026-09-18 citability audit has no verdict line for it; it names it only under its reporting bugs (the 'verified nothing' warning was already right here, the compare-mode ratio was changed to explored = execs + blocked), and the current source has both; its instruction to quote explored = execs + blocked applies. The 2026-09-16 note calls the boundary 'our own result, fitted to cells, not proved', as the header does. The lossiness decision of 2026-09-29 (every send lossy) is what build_config does. The 2026-09-22 hazard (program counters also count endings that have no timeline, so a counter above 0 is an upper bound) does not bite here: timeline_impossible = 0 and the violations counter equals the tool's count in all 47 rows.",
+    "K=1 cells: the timed side explores 2.3 to 3.5 times fewer executions than the baseline but its wall time is 5 to 6 times longer (about 47 s to 56 s against about 10 s). From K=2 on the timed side wins on both: at K=2 H=8 it explores 273 times fewer executions (wall 79 times shorter), at K=2 H=10 1,353 times fewer (143,097 against 193,610,691; wall 286 times shorter).",
+    "Tool statistic pruned (not a workbook result): for K=3 H=7 timed it is 32,325 in v9 against 32,151 in v8 while execs and blocked are identical; every other cell has the same pruned value in v8 and v9."
+  ]
+}

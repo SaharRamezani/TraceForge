@@ -1,0 +1,1376 @@
+{
+  "family": "sensor",
+  "example": "sensor_network_timed",
+  "title": "Gas sensor network with rescue escalation (Timed Rebeca case study)",
+  "source": "Timed Rebeca sensor network case study. Aceto, Cimini, Ingolfsdottir, Reynisson, Sigurdarson and Sirjani, FOCLASA 2011 (EPTCS 58), Section 5 and Listing 5; journal version Reynisson et al., Science of Computer Programming 89 (2014) 41-68, Table 3 (p. 56) and Listing 6, which the --table3-row presets follow. The \"published model\" cells use the constants of the model file sensornetwork.rebeca on rebeca-lang.org (netDelay 1, sensor period 10, admin check 15, scientist deadline 5, admin rescue deadline 5, obstacle 0 or 1). The papers state no closed-form timing rule; the two laws are the example's own (header comment of the source file).",
+  "property": "No false alarm at the Admin: once it has read every message sent to it, it must not have recorded a sensor failure (no sensor ever breaks in this model) nor a dead scientist (the scientist always answers and the rescue team always arrives); --property selects which of the two is asserted.",
+  "citable": "with caveats",
+  "citable_note": "The audit of 2026-09-18 said citable with caveats, and that still holds for the current source: one program for both modes, both properties can fail, and v9 reproduces all six Table 3 verdicts. Caveats: (1) every published-model hold is weak on its own (no rescue is ever sent, no reading is ever late; the binary prints a NOTE), so quote it beside the row 2, row 4 and D-safe holds; (2) Table 3 is ten simulation runs per row, the holds here are bounded by R, and rows 3-6 and 3-7 fail only at R=4, shown on the reduced one-sensor model; (3) quote the tool's violating executions, not the event counters, and never the execution counts printed in the source header (they predate lossy sends); (4) the cells named exact compare different --readings values on the two sides.",
+  "config_timed": "build_config, sensor_network_timed.rs lines 1222 to 1238: Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX) (line 1223), then .with_timed(L, U, sd).build() (line 1236). Consistency model FIFO (library default, the example never calls with_cons_type). Global transit window [L, U], storage sd (0 in every v9 cell); the Admin's alarms and timers are sent with an exact per-send transit (send_msg_timed(d, d), lines 982, 1091, 1098, 1286). Every send is lossy, without a budget. Every receive is a blocking timed receive (recv_msg_block_timed), there is no timeout. --keep-going adds with_keep_going_after_error(true) (lines 1229 to 1233). Scheduling policy LTR (library default); seed random per process (library default, no --seed flag). --parallel none (default) is sequential; --parallel partitioned adds with_partitioned_parallelization(true) (line 1227), with RAYON_NUM_THREADS set by the campaign to the cores of the job.",
+  "config_baseline": "The same builder without with_timed (line 1235): Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX).build(). FIFO, every send lossy without a budget, LTR, random seed; keep-going and parallel options as on the timed side. Transit bounds, exact timer transits and sleeps carry no meaning without the clock.",
+  "program_differs_between_modes": "no: build_config is the only code that depends on the mode. But --readings random-relevant is refused in baseline mode (main, line 1771, exit 2), so in the five cells named exact with two sides the timed side runs random-relevant and the baseline side runs random: different arguments for the same model.",
+  "failing_tasks": "Only the Admin thread asserts (lines 1210 and 1214, its last statements, after the drain). It is an unnamed spawned thread, so its line is task-3 with --timers self (main 0, Scientist 1, Rescue 2, Admin 3, then the sensors) and task-5 with --timers separate, i.e. in every --table3-row cell (the two timer threads take 3 and 4). The main thread never asserts. One line per violating execution, also when both verdicts fail in it.",
+  "counters": [
+    {
+      "key": "dead",
+      "counts": "events",
+      "meaning": "missions whose rescue timer found no RescueReach (false deaths), summed over all executions in which the Admin finished its drain. With R=1 there is at most one mission per execution, so with --property rescue it equals the violating executions. With R >= 2 it can exceed them, and with --property both the violating executions also include those with a sensor failure"
+    },
+    {
+      "key": "sensor_failures",
+      "counts": "events",
+      "meaning": "(sensor, check) pairs in which a check found no report since the previous check, summed over all executions in which the Admin finished its drain. Counted whatever --property asserts, so it is above zero in rescue-property cells where nothing of the kind is asserted (Table 3 row 3: the first check comes before the first report)"
+    },
+    {
+      "key": "late_reports",
+      "counts": "events",
+      "meaning": "readings read after a check they could have been read before (computed from the send index, P, L, C and sd, never from a clock). Not a violation: above zero on a hold it shows the hold is not vacuous. On the baseline it changes with L although the exploration does not"
+    },
+    {
+      "key": "impossible",
+      "counts": "executions",
+      "meaning": "endings that admit no timeline (timeline_impossible). 0 in every v9 run of this example; if it were above zero, dead, sensor_failures and late_reports would be upper bounds"
+    }
+  ],
+  "violation_counter": null,
+  "param_columns": [
+    {
+      "key": "T3row",
+      "header": "Table 3 row",
+      "size": false,
+      "meaning": "Row of Table 3 of the SCP 2014 paper whose timer values the cell uses (--table3-row): 1, 2, 3-5, 3-6, 3-7 (row 3 with rescue deadline 5, 6 or 7) or 4; '-' for the cells on the published rebeca-lang.org timers and their two law-boundary variants"
+    },
+    {
+      "key": "S",
+      "header": "Sensors S",
+      "size": true,
+      "meaning": "number of sensor threads (--sensors, 1 or 2)"
+    },
+    {
+      "key": "R",
+      "header": "Rounds R",
+      "size": true,
+      "meaning": "number of admin check periods: the Admin's CheckSensors alarm rings R times, at C, 2C, ..., RC (--rounds)"
+    },
+    {
+      "key": "N",
+      "header": "Readings per sensor N",
+      "size": true,
+      "moves_with_size": "R",
+      "meaning": "number of readings each sensor sends, floor((R*C + sd) / P) + 2 (the last one is sent after the last check can be read); a/b = sensor 0 / sensor 1 when their periods differ. Derived from R, C and P, not a flag. It is the size the published-model ladder grows: 4, 5, 7 readings at P = 6, 5, 3"
+    },
+    {
+      "key": "readings",
+      "header": "Readings",
+      "size": false,
+      "meaning": "gas values the sensors report (--readings): danger = always dangerous, every check that saw a report starts a mission; random = the paper's free choice between safe and dangerous on every reading; random-relevant = random on the readings a check can observe, fixed on the others (exact, timed mode only); safe = never dangerous, no mission starts. Where the two sides of a cell differ, both values are given"
+    },
+    {
+      "key": "property",
+      "header": "Property",
+      "size": false,
+      "meaning": "asserted verdicts (--property): sensor = no false sensor failure; rescue = no false death; both = the two together. Both verdicts are always counted, whatever is asserted"
+    },
+    {
+      "key": "L",
+      "header": "L (ticks)",
+      "size": false,
+      "meaning": "lower bound of the transit time of a message between two threads (round(--l-ratio x U)); ignored by the baseline"
+    },
+    {
+      "key": "U",
+      "header": "U (ticks)",
+      "size": false,
+      "meaning": "upper bound of the transit time (--u); L = U is the paper's fixed netDelay; ignored by the baseline"
+    },
+    {
+      "key": "sd",
+      "header": "sd (ticks)",
+      "size": false,
+      "meaning": "storage: how long a message stays readable after it arrives (round(--sd-ratio x U)); 0 in every cell, i.e. a message is readable only at its arrival instant, as in Timed Rebeca"
+    },
+    {
+      "key": "P",
+      "header": "Sensor period P (ticks)",
+      "size": false,
+      "moves_with_size": "N",
+      "meaning": "time between two readings of a sensor; a/b = sensor 0 / sensor 1 when they differ (round(--period-ratio x U), --sensor0-period-ratio, --sensor1-period-ratio). A timer, but also the knob of the published-model ladder: a smaller P gives more readings per sensor, which is why the column is marked as moving with N"
+    },
+    {
+      "key": "C",
+      "header": "Check period C (ticks)",
+      "size": false,
+      "meaning": "adminCheckDelay: the Admin looks at the readings every C ticks (round(--check-ratio x U))"
+    },
+    {
+      "key": "Ds",
+      "header": "Scientist deadline Ds (ticks)",
+      "size": false,
+      "meaning": "scientistDeadline: time the Admin waits for the scientist's Ack after a warning (round(--ack-deadline-ratio x U)); not exercised with safe readings"
+    },
+    {
+      "key": "Dr",
+      "header": "Rescue deadline Dr (ticks)",
+      "size": false,
+      "meaning": "Admin rescueDeadline: time the Admin waits for the rescue team's call after sending it (round(--rescue-deadline-ratio x U)); not exercised with safe readings"
+    },
+    {
+      "key": "OBST",
+      "header": "Obstacle OBST (ticks)",
+      "size": false,
+      "meaning": "the rescue team is held up for 0 or OBST ticks, a free choice on every rescue (round(--obstacle-ratio x U)); not exercised with safe readings"
+    },
+    {
+      "key": "timers",
+      "header": "Timers",
+      "size": false,
+      "meaning": "how the Admin's two mission timers reach it (--timers): self = messages on the Admin's own channel (missions must not overlap); separate = one extra thread per timer kind, so timers ring in due-time order as in Timed Rebeca (set by --table3-row; needs sd = 0)"
+    }
+  ],
+  "boundary_law": "Two laws, both the example's own (header comment of the source; the papers publish no closed form), stated and grid-checked for one sensor and non-overlapping missions. False death: violation iff Ds <= 2U + 2sd and Dr <= 2U + 2sd + OBST (L plays no role). False sensor failure: violation iff C <= U + sd, or some check j in 2..R has (m+1)P + U + sd >= jC with m = floor(((j-1)C + sd - L) / P). Equality is on the violating side: a message that arrives when a timer rings may be handled after it. For the Table 3 rows the header adds the overlapping-mission failure, possible iff 2C <= Dr - 2 netDelay and only from 4 rounds on. How well checked: per the header, automated grids of 2026-09-16 (death law 216 and 72 cells, sensor law 576 cells, no disagreement), run with one sensor before every send became lossy. v9 has sd = 0 everywhere, so the sd terms are not exercised; it confirms both sides of one death boundary (regimes B, C), of one sensor boundary (D, E) and the six Table 3 rows (F to K) with two sensors.",
+  "regimes": [
+    {
+      "id": "A-safe",
+      "name": "Published model: exact netDelay 1, published alarm timers",
+      "params": "L=U=1, sd=0, C=15, Ds=5, Dr=5, OBST=1, timers on the Admin's own channel (self); sensor period P=10 as published, or P=6, 5, 3 (more readings per sensor: the size lever of the P ladder)",
+      "rule": "Death law: Ds=5 > 2U=2, the Ack is back 2 ticks after the warning, 3 ticks before the ack timer, so no rescue is ever sent. Sensor law: C=15 > U=1, and at P=10 every check j up to R=6 has (m+1)P + U < jC (21<30, 31<45, 51<60, 61<75, 81<90). The P=6, 5, 3 cells have R=1, where only C <= U + sd could violate.",
+      "expect_timed": "0 violations (no false sensor failure, no false death)",
+      "expect_baseline": "spurious violations: without a clock an alarm can be read before the reading it waits for and a timer before the reply; false sensor failures in every cell and false deaths where readings are danger"
+    },
+    {
+      "id": "B-safe",
+      "name": "Death-law boundary, safe side: published timers, netDelay 2",
+      "params": "L=U=2, sd=0, P=6, C=15, Ds=5, Dr=5, OBST=1 (CLI ratios over U=2), timers self, danger readings, both properties",
+      "rule": "First gate of the death law fails: Ds=5 > 2U=4. The Ack is back at 4, one tick before the ack timer, so no rescue is sent. One step of U below regime C.",
+      "expect_timed": "0 violations",
+      "expect_baseline": "spurious violations: without a clock an alarm can be read before the reading it waits for and a timer before the reply; the same counts as the published P=6 baseline, the baseline does not see U"
+    },
+    {
+      "id": "C-viol",
+      "name": "Death-law boundary, violating side: published timers, netDelay 3",
+      "params": "L=U=3, sd=0, P=6, C=15, Ds=5, Dr=5, OBST=1 (CLI ratios over U=3), timers self, danger readings, both properties",
+      "rule": "Both gates of the death law hold: Ds=5 <= 2U=6 (the Ack is back at 6, after the ack timer at 5) and Dr=5 <= 2U+OBST=7 (the rescue call is back at 6 or 7, after the rescue timer at 5). No tie is involved: every mission ends in a false death.",
+      "expect_timed": "violations (false deaths), in every mission",
+      "expect_baseline": "violations; the same counts as in regime B and as the published P=6 baseline"
+    },
+    {
+      "id": "D-safe",
+      "name": "Sensor-law boundary, safe side: a reading takes 0 to 4 ticks",
+      "params": "L=0, U=4, sd=0, P=10, C=15 (CLI ratios over U=4), R=3, safe readings, sensor property; Ds=Dr=20 and OBST=4 follow from the default ratios and are never used",
+      "rule": "Sensor law: C=15 > U, and (m+1)P + U < jC for both later checks (j=2: 24 < 30; j=3: 44 < 45). Reading 4, sent at 40, is in by 44, one tick before check 3. One step of U below regime E.",
+      "expect_timed": "0 violations, with late readings (late_reports above 0)",
+      "expect_baseline": "spurious violations: without a clock an alarm can be read before the reading it waits for and a timer before the reply (false sensor failures only: safe readings start no mission)"
+    },
+    {
+      "id": "E-viol",
+      "name": "Sensor-law boundary, violating side: a reading takes 0 to 5 ticks",
+      "params": "L=0, U=5, sd=0, P=10, C=15 (CLI ratios over U=5), R=3, safe readings, sensor property; Ds=Dr=25 and OBST=5 are never used",
+      "rule": "Sensor law at check 3: m=3 and (m+1)P + U = 45 >= 3C = 45. Reading 3 (sent at 30) can be read at 30 just before check 2 and reading 4 (sent at 40) at 45 just after check 3; equality counts because a message that arrives when the alarm rings may be handled after it. Needs R >= 3.",
+      "expect_timed": "violations (false sensor failures)",
+      "expect_baseline": "violations; the same counts as in regime D"
+    },
+    {
+      "id": "F-viol",
+      "name": "Table 3 row 1 (paper: mission failed)",
+      "params": "netDelay 1 (L=U=1), sd=0, C=4, sensor periods 2 and 3, Ds=2, Dr=3, OBST=1, separate timer threads, rescue property",
+      "rule": "Zero-margin ties on both gates of the death law: Ds = 2 netDelay = 2, so the Ack arrives at the instant the ack timer rings and may be handled after it, and Dr = 2 netDelay + OBST = 3, the same for the rescue call when the obstacle is taken. Violating from R=1.",
+      "expect_timed": "violations (false deaths)",
+      "expect_baseline": "violations; the same counts as in regime G (row 2), the baseline does not see Dr"
+    },
+    {
+      "id": "G-safe",
+      "name": "Table 3 row 2 (paper: mission success)",
+      "params": "netDelay 1 (L=U=1), sd=0, C=4, sensor periods 2 and 3, Ds=2, Dr=4, OBST=1, separate timer threads, rescue property",
+      "rule": "Row 1 with Dr=4 > 2 netDelay + OBST = 3: the rescue call is back at least one tick before the rescue timer. The Ack tie remains, so rescues are sent and all arrive in time. A bounded result: checked for R=1 and R=2.",
+      "expect_timed": "0 violations",
+      "expect_baseline": "spurious violations: without a clock an alarm can be read before the reading it waits for and a timer before the reply; the same counts as in regime F (row 1)"
+    },
+    {
+      "id": "H-viol",
+      "name": "Table 3 row 3 with rescue deadline 5 (paper: mission failed)",
+      "params": "netDelay 2 (L=U=2), sd=0, C=1, sensor periods 1 and 1, Ds=4, Dr=5, OBST=1, separate timer threads, rescue property, R >= 2",
+      "rule": "The tie race of row 1: Ds = 2 netDelay = 4 and Dr = 2 netDelay + OBST = 5. Needs R >= 2: with C=1 the first check (t=1) comes before the first report (t=2), so R=1 starts no mission.",
+      "expect_timed": "violations (false deaths)",
+      "expect_baseline": "violations"
+    },
+    {
+      "id": "I-safe",
+      "name": "Table 3 row 3 with rescue deadline 6, at most 3 rounds (bounded hold)",
+      "params": "netDelay 2 (L=U=2), sd=0, C=1, sensor periods 1 and 1, Ds=4, Dr=6, OBST=1, separate timer threads, rescue property, R=2 or 3",
+      "rule": "No single-mission race: Dr=6 > 2 netDelay + OBST = 5. The failure the paper reports for this row is the overlapping-mission one, which needs three missions, i.e. checks 2, 3 and 4, so it cannot happen within 3 rounds. Safe for this bound only; R=4 is regime I-viol.",
+      "expect_timed": "0 violations within the bound",
+      "expect_baseline": "spurious violations: without a clock an alarm can be read before the reading it waits for and a timer before the reply"
+    },
+    {
+      "id": "I-viol",
+      "name": "Table 3 row 3 with rescue deadline 6, 4 rounds (paper: mission failed)",
+      "params": "mission timers of I-safe (L=U=2, sd=0, C=1, Ds=4, Dr=6, OBST=1), R=4; run on the reduced model: one sensor with period 100, danger readings",
+      "rule": "Overlapping missions: 2C = 2 <= Dr - 2 netDelay = 2. A rescued mission's late Ack makes the next check count as acknowledged, so rescues are two checks apart; the rescues of missions 2 and 4 overlap and their two RescueReach messages land on the one flag scientistReached, which the first rescue timer consumes.",
+      "expect_timed": "violation (false death), certified at the first one",
+      "expect_baseline": "violation"
+    },
+    {
+      "id": "J-safe",
+      "name": "Table 3 row 3 with rescue deadline 7, at most 3 rounds (bounded hold)",
+      "params": "netDelay 2 (L=U=2), sd=0, C=1, sensor periods 1 and 1, Ds=4, Dr=7, OBST=1, separate timer threads, rescue property, R=2 or 3",
+      "rule": "As I-safe with Dr=7 > 5: the overlapping-mission failure needs checks 2, 3 and 4. Safe for this bound only; R=4 is regime J-viol.",
+      "expect_timed": "0 violations within the bound",
+      "expect_baseline": "spurious violations: without a clock an alarm can be read before the reading it waits for and a timer before the reply"
+    },
+    {
+      "id": "J-viol",
+      "name": "Table 3 row 3 with rescue deadline 7, 4 rounds (paper: mission failed)",
+      "params": "mission timers of J-safe (L=U=2, sd=0, C=1, Ds=4, Dr=7, OBST=1), R=4; run on the reduced model: one sensor with period 100, danger readings",
+      "rule": "Overlapping missions as in I-viol: 2C = 2 <= Dr - 2 netDelay = 3.",
+      "expect_timed": "violation (false death), certified at the first one",
+      "expect_baseline": "violation"
+    },
+    {
+      "id": "K-safe",
+      "name": "Table 3 row 4 (paper: mission success)",
+      "params": "netDelay 2 (L=U=2), sd=0, C=4, sensor periods 1 and 1, Ds=4, Dr=7, OBST=1, separate timer threads, rescue property, R=1",
+      "rule": "No single-mission race (Dr=7 > 2 netDelay + OBST = 5) and no overlapping-mission failure (2C = 8 > Dr - 2 netDelay = 3). A bounded result: checked for R=1 only.",
+      "expect_timed": "0 violations",
+      "expect_baseline": "spurious violations: without a clock an alarm can be read before the reading it waits for and a timer before the reply"
+    }
+  ],
+  "glossary": [
+    {
+      "term": "tick",
+      "meaning": "the integer time unit of the model. Every timer column is in ticks; the CLI takes ratios over U and rounds the product."
+    },
+    {
+      "term": "netDelay",
+      "meaning": "the fixed message delay of the paper's model. Here it is the transit window [L, U]; L = U = netDelay in every cell except regimes D and E (L = 0)."
+    },
+    {
+      "term": "Admin, Scientist, Rescue, sensors",
+      "meaning": "the threads of the model: the sensors report gas readings to the Admin every P ticks; the Admin checks them every C ticks, warns the Scientist when a reading is dangerous and sends the Rescue team when the Scientist does not answer in time."
+    },
+    {
+      "term": "mission",
+      "meaning": "what a check starts when the latest reading of some sensor is dangerous: the Admin warns the scientist and arms the ack timer (Ds); if no Ack was handled when it rings, it sends the rescue team and arms the rescue timer (Dr)."
+    },
+    {
+      "term": "false death",
+      "meaning": "the Admin records the scientist as dead although the scientist answered and the rescue team arrived: their messages were handled after the timers. The paper's \"mission failed\". Asserted by --property rescue and both."
+    },
+    {
+      "term": "false sensor failure",
+      "meaning": "a check finds no report from a sensor since the previous check although no sensor ever breaks in this model. Asserted by --property sensor and both."
+    },
+    {
+      "term": "drain",
+      "meaning": "harness rule: the Admin keeps receiving until it has read every message sent to it and asserts only then. An execution in which some message can no longer be read (passed over, or dropped by the lossy network) blocks and reaches no assertion; this is why blocked counts are large on both sides."
+    },
+    {
+      "term": "early drain cut",
+      "meaning": "the Admin blocks as soon as it reads a message out of its channel's send order, since such an execution could never finish the drain (cut=on in the summary line; it saves work and changes no count of complete executions, per the source header)."
+    },
+    {
+      "term": "Done",
+      "meaning": "harness messages the Admin sends after its drain to release the Scientist, the Rescue team and the timer threads. They are lossy like every send: an execution in which one is dropped ends blocked, also when it violates."
+    },
+    {
+      "term": "death law",
+      "meaning": "false death possible iff Ds <= 2U + 2sd and Dr <= 2U + 2sd + OBST (the example's own rule, one sensor, non-overlapping missions). Regimes B and C are its two sides."
+    },
+    {
+      "term": "sensor law",
+      "meaning": "false sensor failure possible iff C <= U + sd, or some check j in 2..R has (m+1)P + U + sd >= jC with m = floor(((j-1)C + sd - L) / P) (the example's own rule). Regimes D and E are its two sides."
+    },
+    {
+      "term": "tie",
+      "meaning": "a message that arrives at the very instant a timer or alarm rings may be handled before or after it; both orders are explored, and the late order is what makes Table 3 rows 1 and 3-5 fail."
+    },
+    {
+      "term": "Table 3",
+      "meaning": "Table 3 of Reynisson et al., Science of Computer Programming 89 (2014), p. 56: six timer settings with the verdict of ten McErlang simulation runs each (\"mission failed\" or \"mission success\"). --table3-row loads one setting; row 3 lists three rescue deadlines and is split into 3-5, 3-6 and 3-7."
+    },
+    {
+      "term": "Listing 6 verbatim",
+      "meaning": "in cell names: --table3-row with no override, i.e. two sensors, random readings, obstacle 0 or 1, rescue property, separate timers."
+    },
+    {
+      "term": "exact",
+      "meaning": "in cell names: the Listing 6 model with random readings, explored exhaustively by the timed side through --readings random-relevant."
+    },
+    {
+      "term": "random-relevant",
+      "meaning": "an exact reduction of random readings for the timed mode with L = U and sd = 0: a reading whose value no check can observe is fixed to safe. Each reduced execution stands for 2^k full ones, k = number of fixed readings (4 in rows 1 and 2 at R=1, 8 in row 4). Refused in baseline mode, where a fixed reading could be the last one a check sees."
+    },
+    {
+      "term": "reduced model",
+      "meaning": "in cell names: --sensors 1 --sensor0-period-ratio 50 --readings danger after a Table 3 preset, i.e. one sensor that reports once at t=0. The source header calls it sound for a violation and only supporting evidence for a hold."
+    },
+    {
+      "term": "weak hold",
+      "meaning": "a timed hold in which the dangerous path was never taken: no rescue sent, or no reading read late. The binary prints a NOTE for it. All regime A cells are weak holds, and so is the B-safe cell; the holds of Table 3 rows 2, 3-6, 3-7 and 4 and the D-safe hold are not."
+    },
+    {
+      "term": "FIRE, HOLD",
+      "meaning": "in cell names: FIRE = a violation exists (exit 101 without keep-going), HOLD = no violation in the explored state space."
+    },
+    {
+      "term": "kg, p8, p16",
+      "meaning": "in cell names: kg = --keep-going (explore everything, count the violations); p8, p16 = --parallel partitioned on 8 or 16 cores."
+    },
+    {
+      "term": "certification",
+      "meaning": "in cell names: the same arguments without keep-going; exit 101 with a printed witness timeline shows that the violation counted under keep-going is real."
+    },
+    {
+      "term": "ceiling",
+      "meaning": "a baseline-only cell run until the campaign deadline, to show that the baseline does not finish where the timed side does."
+    },
+    {
+      "term": "checks_ok, missions, acked, rescues, reached",
+      "meaning": "further event counters of the summary line: sensor checks that found a report, missions started, Acks handled before the ack timer, rescues sent, RescueReach handled before the rescue timer."
+    }
+  ],
+  "cells": [
+    {
+      "cell": "published model, P=6 (4 readings/sensor), S=2 R=1 danger, both properties, kg",
+      "regime": "A-safe",
+      "label": "Published model, 4 readings per sensor, both properties",
+      "params": {
+        "T3row": "-",
+        "S": 2,
+        "R": 1,
+        "N": 4,
+        "readings": "danger",
+        "property": "both",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": 6,
+        "C": 15,
+        "Ds": 5,
+        "Dr": 5,
+        "OBST": 1,
+        "timers": "self"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; v9 (3 identical runs): 16 complete + 49,913 blocked = 49,929 explored, 0 violating executions",
+      "expect_baseline": "spurious violations, exit 0 under keep-going; v9 (3 identical runs): 673,750 complete + 5,050,590 blocked = 5,724,340 explored, 2,084,440 violating executions",
+      "note": "Sensor period 6 instead of the published 10, which gives 4 readings per sensor instead of 3 (the size lever of this ladder). Weak hold on the timed side: no rescue is ever sent and no reading can straddle the check (rescues=0, late_reports=0; the binary prints a NOTE for each), so quote it beside a Table 3 row 2 or row 4 hold."
+    },
+    {
+      "cell": "published timers P=10 C=15, sensor property, S=2 R=3 kg",
+      "regime": "A-safe",
+      "label": "Published timers, sensor property, 3 rounds",
+      "params": {
+        "T3row": "-",
+        "S": 2,
+        "R": 3,
+        "N": 6,
+        "readings": "safe",
+        "property": "sensor",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": 10,
+        "C": 15,
+        "Ds": 5,
+        "Dr": 5,
+        "OBST": 1,
+        "timers": "self"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; v9 (3 identical runs): 64 complete + 527,845 blocked = 527,909 explored, 0 violating executions",
+      "expect_baseline": "spurious violations, exit 0 under keep-going; v9 (3 identical runs): 420,420 complete + 5,974,522 blocked = 6,394,942 explored, 1,529,072 violating executions",
+      "note": "Rung R=3 of the rounds ladder (R = 3, 4, 5, 6). Safe readings start no mission, so Ds, Dr and OBST are not exercised. Weak hold on the timed side: late_reports=0, no reading can straddle a check at exact netDelay 1 (NOTE printed); the D-safe cell is the hold in which readings do arrive late."
+    },
+    {
+      "cell": "published model, P=5 (5 readings/sensor), S=2 R=1 danger, both properties, kg, p8",
+      "regime": "A-safe",
+      "label": "Published model, 5 readings per sensor, both properties, 8 cores",
+      "params": {
+        "T3row": "-",
+        "S": 2,
+        "R": 1,
+        "N": 5,
+        "readings": "danger",
+        "property": "both",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": 5,
+        "C": 15,
+        "Ds": 5,
+        "Dr": 5,
+        "OBST": 1,
+        "timers": "self"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; v9 (3 identical runs): 32 complete + 321,329 blocked = 321,361 explored, 0 violating executions",
+      "expect_baseline": "spurious violations, exit 0 under keep-going; v9 (3 identical runs): 6,109,740 complete + 51,928,090 blocked = 58,037,830 explored, 18,246,312 violating executions",
+      "note": "Sensor period 5: 5 readings per sensor. Partitioned parallel exploration on 8 cores on both sides. Weak hold on the timed side: no rescue is ever sent and no reading can straddle the check (rescues=0, late_reports=0; the binary prints a NOTE for each), so quote it beside a Table 3 row 2 or row 4 hold."
+    },
+    {
+      "cell": "published timers, sensor property, S=2 R=4 kg, p8",
+      "regime": "A-safe",
+      "label": "Published timers, sensor property, 4 rounds, 8 cores",
+      "params": {
+        "T3row": "-",
+        "S": 2,
+        "R": 4,
+        "N": 8,
+        "readings": "safe",
+        "property": "sensor",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": 10,
+        "C": 15,
+        "Ds": 5,
+        "Dr": 5,
+        "OBST": 1,
+        "timers": "self"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; v9 (3 identical runs): 256 complete + 21,143,141 blocked = 21,143,397 explored, 0 violating executions",
+      "expect_baseline": "spurious violations, exit 0 under keep-going; no v9 result yet; v8: 62,355,150 complete + 1,001,174,733 blocked = 1,063,529,883 explored, counters dead=0 sensor_failures=665,121,600 (v8 has no tool count of violating executions)",
+      "note": "Rung R=4 of the rounds ladder. Weak hold on the timed side (late_reports=0, NOTE printed). The baseline side was still running in v9 when this file was written (reach-grade); v8 finished it."
+    },
+    {
+      "cell": "published model, 1 sensor, R=2 danger both, kg, p8",
+      "regime": "A-safe",
+      "label": "Published model, one sensor, 2 rounds, both properties, 8 cores",
+      "params": {
+        "T3row": "-",
+        "S": 1,
+        "R": 2,
+        "N": 5,
+        "readings": "danger",
+        "property": "both",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": 10,
+        "C": 15,
+        "Ds": 5,
+        "Dr": 5,
+        "OBST": 1,
+        "timers": "self"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; v9 (3 identical runs): 1 complete + 109,334 blocked = 109,335 explored, 0 violating executions",
+      "expect_baseline": "spurious violations, exit 0 under keep-going; v9 (3 identical runs): 1,130,976 complete + 12,216,961 blocked = 13,347,937 explored, 4,084,836 violating executions",
+      "note": "One sensor, two rounds. The timed side has a single complete execution; it is a weak hold (rescues=0, late_reports=0, NOTEs printed). On the baseline side dead counts missions, and with R=2 one execution can hold two: dead (4,176,248) is above the violating executions (4,084,836)."
+    },
+    {
+      "cell": "published model, P=3 (7 readings/sensor), S=2 R=1 danger, both properties, kg, p8 (REVIEW: top of PUB ladder)",
+      "regime": "A-safe",
+      "label": "Published model, 7 readings per sensor, both properties, 8 cores",
+      "params": {
+        "T3row": "-",
+        "S": 2,
+        "R": 1,
+        "N": 7,
+        "readings": "danger",
+        "property": "both",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": 3,
+        "C": 15,
+        "Ds": 5,
+        "Dr": 5,
+        "OBST": 1,
+        "timers": "self"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; v9 (3 identical runs): 128 complete + 4,022,465 blocked = 4,022,593 explored, 0 violating executions",
+      "expect_baseline": "spurious violations, exit 0 under keep-going; v9 (1 run): 354,789,864 complete + 3,870,392,382 blocked = 4,225,182,246 explored, 1,002,102,814 violating executions",
+      "note": "Sensor period 3: 7 readings per sensor, the top of the sensor-period ladder (P = 6, 5, 3). Weak hold on the timed side: no rescue is ever sent and no reading can straddle the check (rescues=0, late_reports=0; the binary prints a NOTE for each), so quote it beside a Table 3 row 2 or row 4 hold. The baseline side finished in v9 in one run of 16.8 h on 8 cores."
+    },
+    {
+      "cell": "published timers, sensor property, S=2 R=5 kg, p8 (top of timed ladder)",
+      "regime": "A-safe",
+      "label": "Published timers, sensor property, 5 rounds (timed side; baseline under the ceiling cell)",
+      "params": {
+        "T3row": "-",
+        "S": 2,
+        "R": 5,
+        "N": 9,
+        "readings": "safe",
+        "property": "sensor",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": 10,
+        "C": 15,
+        "Ds": 5,
+        "Dr": 5,
+        "OBST": 1,
+        "timers": "self"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; v9 (1 run): 512 complete + 184,913,765 blocked = 184,914,277 explored, 0 violating executions",
+      "expect_baseline": "not run: this cell has no baseline side",
+      "note": "Timed side only in the plan: its baseline run is planned under the separate cell name \"published timers, sensor property, S=2 R=5 kg, p8 (baseline ceiling)\", the same arguments with --mode baseline (same regime, kind and parameters: one instance, shown as one row in the workbook). That baseline is a ceiling: it runs until the campaign deadline and is not expected to finish (v8: stopped after 25.9 h). Rung R=5 of the rounds ladder, the last one the timed side finished in v8. Weak hold (late_reports=0, NOTE printed). Cores in v9: timed 7, baseline 8 (both cell names say p8)."
+    },
+    {
+      "cell": "published timers, sensor property, S=2 R=5 kg, p8 (baseline ceiling)",
+      "regime": "A-safe",
+      "label": "Published timers, sensor property, 5 rounds, baseline side only (ceiling)",
+      "params": {
+        "T3row": "-",
+        "S": 2,
+        "R": 5,
+        "N": 9,
+        "readings": "safe",
+        "property": "sensor",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": 10,
+        "C": 15,
+        "Ds": 5,
+        "Dr": 5,
+        "OBST": 1,
+        "timers": "self"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "not run: this cell has no timed side",
+      "expect_baseline": "not expected to finish before the campaign deadline; spurious violations if it does; no v9 result yet; v8: did not finish (stopped after 25.9 h)",
+      "note": "Baseline side only, a ceiling: the arguments of the timed cell \"published timers, sensor property, S=2 R=5 kg, p8 (top of timed ladder)\" with --mode baseline, run until the campaign deadline to show that the baseline does not finish there. v8: did not finish (stopped after 25.9 h). A stopped run prints no counters, so no violation count will exist for it. Cores in v9: timed 7, baseline 8 (both cell names say p8)."
+    },
+    {
+      "cell": "published timers, sensor property, S=2 R=6 kg, p16 (edge rung, timed only)",
+      "regime": "A-safe",
+      "label": "Published timers, sensor property, 6 rounds, timed side only (edge rung, 16 cores)",
+      "params": {
+        "T3row": "-",
+        "S": 2,
+        "R": 6,
+        "N": 11,
+        "readings": "safe",
+        "property": "sensor",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": 10,
+        "C": 15,
+        "Ds": 5,
+        "Dr": 5,
+        "OBST": 1,
+        "timers": "self"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; not measured yet",
+      "expect_baseline": "not run: this cell has no baseline side",
+      "note": "Timed side only. Edge rung added on 2026-10-11, one above the top of the rounds ladder; not measured yet. Same regime as the R=5 rung: the sensor law still gives no violation at R=6 (81 < 90 for check 6)."
+    },
+    {
+      "cell": "death law boundary, absolute P=6 C=15 Ds=Dr=5 OBST=1, L=U=2 (hold side: Ds > 2U)",
+      "regime": "B-safe",
+      "label": "Death law, safe side (netDelay 2)",
+      "params": {
+        "T3row": "-",
+        "S": 2,
+        "R": 1,
+        "N": 4,
+        "readings": "danger",
+        "property": "both",
+        "L": 2,
+        "U": 2,
+        "sd": 0,
+        "P": 6,
+        "C": 15,
+        "Ds": 5,
+        "Dr": 5,
+        "OBST": 1,
+        "timers": "self"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; v9 (3 identical runs): 48 complete + 75,433 blocked = 75,481 explored, 0 violating executions",
+      "expect_baseline": "spurious violations, exit 0 under keep-going; v9 (3 identical runs): 673,750 complete + 5,050,590 blocked = 5,724,340 explored, 2,084,440 violating executions",
+      "note": "The absolute timers of the published P=6 cell with netDelay 2 instead of 1 (the CLI takes ratios over U). Weak hold by construction: the first gate of the death law fails, so the Ack is always in time and no rescue is sent (rescues=0, NOTE printed). The baseline counts are identical to those of the published P=6 cell and of the C-viol cell: without a clock the value of U changes nothing."
+    },
+    {
+      "cell": "death law boundary, same absolute timers, L=U=3 (FIRE side: Ds <= 2U, Dr <= 2U+OBST)",
+      "regime": "C-viol",
+      "label": "Death law, violating side (netDelay 3), exhaustive count",
+      "params": {
+        "T3row": "-",
+        "S": 2,
+        "R": 1,
+        "N": 4,
+        "readings": "danger",
+        "property": "both",
+        "L": 3,
+        "U": 3,
+        "sd": 0,
+        "P": 6,
+        "C": 15,
+        "Ds": 5,
+        "Dr": 5,
+        "OBST": 1,
+        "timers": "self"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations (false deaths), exit 0 under keep-going; v9 (3 identical runs): 288 complete + 118,737 blocked = 119,025 explored, 1,152 violating executions",
+      "expect_baseline": "violations, exit 0 under keep-going; v9 (3 identical runs): 673,750 complete + 5,050,590 blocked = 5,724,340 explored, 2,084,440 violating executions",
+      "note": "Every mission ends in a false death on the timed side (missions=1,152, acked=0, rescues=1,152, reached=0, dead=1,152 = violating executions): with exact transit 3 the Ack is back at 6, after the ack timer at 5. All complete executions of the timed side are violating ones (see notes). Baseline counts identical to the B-safe and published P=6 baselines."
+    },
+    {
+      "cell": "death law boundary FIRE side, no keep-going (certification)",
+      "regime": "C-viol",
+      "label": "Death law, violating side, first violation (certified witness)",
+      "params": {
+        "T3row": "-",
+        "S": 2,
+        "R": 1,
+        "N": 4,
+        "readings": "danger",
+        "property": "both",
+        "L": 3,
+        "U": 3,
+        "sd": 0,
+        "P": 6,
+        "C": 15,
+        "Ds": 5,
+        "Dr": 5,
+        "OBST": 1,
+        "timers": "self"
+      },
+      "kind": "first-violation",
+      "expect_timed": "exit 101 at the first certified violation (false deaths); v9 (3 runs): exit 101",
+      "expect_baseline": "exit 101 at the first violation; v9 (3 runs): exit 101",
+      "note": "Certification run of the cell above: no keep-going, both sides stop at the first violation (exit 101), the timed side after printing a certified witness timeline. The wall time is a time to the first violation, not a search time; the only seeded choice is the obstacle. Do not compare the two sides on it."
+    },
+    {
+      "cell": "sensor law boundary, absolute P=10 C=15 R=3 L=0 U=4 (hold side)",
+      "regime": "D-safe",
+      "label": "Sensor law, safe side",
+      "params": {
+        "T3row": "-",
+        "S": 2,
+        "R": 3,
+        "N": 6,
+        "readings": "safe",
+        "property": "sensor",
+        "L": 0,
+        "U": 4,
+        "sd": 0,
+        "P": 10,
+        "C": 15,
+        "Ds": 20,
+        "Dr": 20,
+        "OBST": 4,
+        "timers": "self"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; v9 (3 identical runs): 192 complete + 624,055 blocked = 624,247 explored, 0 violating executions",
+      "expect_baseline": "spurious violations, exit 0 under keep-going; v9 (3 identical runs): 420,420 complete + 5,974,522 blocked = 6,394,942 explored, 1,529,072 violating executions",
+      "note": "Non-vacuous hold: late_reports=768 on the timed side (readings were read after a check they could have been read before, and the next reading still filled the window). Ds=Dr=20 and OBST=4 are the default ratios times U and are never used (safe readings). Baseline counts identical to the published R=3 sensor baseline and to the E-viol baseline; only late_reports differs, because that counter is computed from L."
+    },
+    {
+      "cell": "sensor law boundary, same absolute timers, L=0 U=5 (FIRE side)",
+      "regime": "E-viol",
+      "label": "Sensor law, violating side, exhaustive count",
+      "params": {
+        "T3row": "-",
+        "S": 2,
+        "R": 3,
+        "N": 6,
+        "readings": "safe",
+        "property": "sensor",
+        "L": 0,
+        "U": 5,
+        "sd": 0,
+        "P": 10,
+        "C": 15,
+        "Ds": 25,
+        "Dr": 25,
+        "OBST": 5,
+        "timers": "self"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations (false sensor failures), exit 0 under keep-going; v9 (3 identical runs): 1,728 complete + 929,487 blocked = 931,215 explored, 2,688 violating executions",
+      "expect_baseline": "violations, exit 0 under keep-going; v9 (3 identical runs): 420,420 complete + 5,974,522 blocked = 6,394,942 explored, 1,529,072 violating executions",
+      "note": "sensor_failures counts (sensor, check) pairs, not executions: 3,456 events in 2,688 violating executions on the timed side. Ds=Dr=25 and OBST=5 are never used (safe readings). Baseline counts identical to the D-safe baseline."
+    },
+    {
+      "cell": "sensor law boundary FIRE side, no keep-going (certification)",
+      "regime": "E-viol",
+      "label": "Sensor law, violating side, first violation (certified witness)",
+      "params": {
+        "T3row": "-",
+        "S": 2,
+        "R": 3,
+        "N": 6,
+        "readings": "safe",
+        "property": "sensor",
+        "L": 0,
+        "U": 5,
+        "sd": 0,
+        "P": 10,
+        "C": 15,
+        "Ds": 25,
+        "Dr": 25,
+        "OBST": 5,
+        "timers": "self"
+      },
+      "kind": "first-violation",
+      "expect_timed": "exit 101 at the first certified violation (false sensor failures); v9 (3 runs): exit 101",
+      "expect_baseline": "exit 101 at the first violation; v9 (3 runs): exit 101",
+      "note": "Certification run of the cell above: no keep-going, both sides stop at the first violation (exit 101), the timed side after printing a certified witness timeline. Safe readings start no mission, so no seeded choice is made. The wall time is a time to the first violation, not a search time; do not compare the two sides on it."
+    },
+    {
+      "cell": "T3 row1 (Dr=3, paper failed) danger S=2 R=1 kg (boundary vs row 2)",
+      "regime": "F-viol",
+      "label": "Table 3 row 1 (paper: mission failed), danger readings",
+      "params": {
+        "T3row": "1",
+        "S": 2,
+        "R": 1,
+        "N": "4/3",
+        "readings": "danger",
+        "property": "rescue",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": "2/3",
+        "C": 4,
+        "Ds": 2,
+        "Dr": 3,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations (false deaths), exit 0 under keep-going; v9 (3 identical runs): 32 complete + 61,771 blocked = 61,803 explored, 128 violating executions",
+      "expect_baseline": "violations, exit 0 under keep-going; v9 (3 identical runs): 197,015 complete + 3,943,803 blocked = 4,140,818 explored, 1,552,320 violating executions",
+      "note": "Boundary pair with the row 2 cell (Dr=3 against 4). Danger readings instead of the random ones of Listing 6: every check that saw a report starts a mission. With R=1 and the rescue property dead counts executions and equals the violating executions on both sides. The baseline counts are identical to those of the row 2 cell: the rows differ only in Dr, which the baseline does not see.",
+      "violation_counter": "dead"
+    },
+    {
+      "cell": "T3 row1 Listing 6 verbatim R=1, no keep-going",
+      "regime": "F-viol",
+      "label": "Table 3 row 1 as Listing 6 (random readings), first violation on both sides",
+      "params": {
+        "T3row": "1",
+        "S": 2,
+        "R": 1,
+        "N": "4/3",
+        "readings": "random",
+        "property": "rescue",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": "2/3",
+        "C": 4,
+        "Ds": 2,
+        "Dr": 3,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "first-violation",
+      "expect_timed": "exit 101 at the first certified violation (false deaths); v9 (3 runs): exit 101",
+      "expect_baseline": "exit 101 at the first violation; v9 (3 runs): exit 101",
+      "note": "Listing 6 exactly, no keep-going: both sides stop at the first violation (exit 101), the timed side with a certified witness timeline. Which value of each random reading (and of the obstacle) is tried first depends on a random seed (Config::seed, no --seed flag), so the time to the first violation changes from run to run and proves nothing about either side; only the exit code 101 is a result. Wall times of the v9 repetitions: timed 194.3, 59.3, 133.0 s, baseline 4.5, 4.7, 5.5 s. The exhaustive counts for this row are in the cells with keep-going.",
+      "violation_counter": "dead"
+    },
+    {
+      "cell": "T3 row1 R=1 exact: timed random-relevant kg vs baseline random (args differ in --readings)",
+      "regime": "F-viol",
+      "label": "Table 3 row 1 exact: timed exhaustive on the reduced readings, baseline first violation",
+      "params": {
+        "T3row": "1",
+        "S": 2,
+        "R": 1,
+        "N": "4/3",
+        "readings": "random-relevant (timed), random (baseline)",
+        "property": "rescue",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": "2/3",
+        "C": 4,
+        "Ds": 2,
+        "Dr": 3,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "first-violation",
+      "expect_timed": "violations (false deaths), exit 0 under keep-going; v9 (3 identical runs): 208 complete + 247,772 blocked = 247,980 explored, 768 violating executions",
+      "expect_baseline": "exit 101 at the first violation; v9 (3 runs): exit 101",
+      "note": "The two sides do not run the same arguments: --readings random-relevant is refused in baseline mode. The timed side runs random-relevant with keep-going (exhaustive; an exact reduction of the random readings of Listing 6), the baseline side runs --readings random without keep-going and stops at its first violation. The baseline time to that first violation depends on a random seed and proves nothing; no explored ratio and no wall ratio can be formed for this row. Each reduced execution stands for 16 full ones here (4 readings fixed).",
+      "violation_counter": "dead"
+    },
+    {
+      "cell": "T3 row1 Listing 6 verbatim (random) S=2 R=1 kg, p8",
+      "regime": "F-viol",
+      "label": "Table 3 row 1 as Listing 6 (random readings), exhaustive, 8 cores",
+      "params": {
+        "T3row": "1",
+        "S": 2,
+        "R": 1,
+        "N": "4/3",
+        "readings": "random",
+        "property": "rescue",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": "2/3",
+        "C": 4,
+        "Ds": 2,
+        "Dr": 3,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations (false deaths), exit 0 under keep-going; v9 (3 identical runs): 3,328 complete + 5,006,656 blocked = 5,009,984 explored, 12,288 violating executions",
+      "expect_baseline": "violations, exit 0 under keep-going; no v9 result yet; v8: 15,184,032 complete + 302,642,048 blocked = 317,826,080 explored, counters dead=119,454,720 sensor_failures=119,885,824 (v8 has no tool count of violating executions)",
+      "note": "Listing 6 exactly, both sides with full random readings and keep-going. Timed: dead = violating executions = 12,288 = 16 x 768, the count of the random-relevant cell (4 readings fixed). The baseline side had no v9 result when this file was written; v8 finished it with the same counts as the row 2 random baseline.",
+      "violation_counter": "dead"
+    },
+    {
+      "cell": "T3 row2 (Dr=4, paper success) danger S=2 R=1 kg",
+      "regime": "G-safe",
+      "label": "Table 3 row 2 (paper: mission success), danger readings",
+      "params": {
+        "T3row": "2",
+        "S": 2,
+        "R": 1,
+        "N": "4/3",
+        "readings": "danger",
+        "property": "rescue",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": "2/3",
+        "C": 4,
+        "Ds": 2,
+        "Dr": 4,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; v9 (3 identical runs): 24 complete + 61,659 blocked = 61,683 explored, 0 violating executions",
+      "expect_baseline": "spurious violations, exit 0 under keep-going; v9 (3 identical runs): 197,015 complete + 3,943,803 blocked = 4,140,818 explored, 1,552,320 violating executions",
+      "note": "Danger readings instead of the random ones of Listing 6. Non-vacuous hold on the timed side: rescues are sent (the Ack ties its timer) and every one arrives in time (rescues=256, reached=256, dead=0). The baseline counts are identical to those of the row 1 cell.",
+      "violation_counter": "dead"
+    },
+    {
+      "cell": "T3 row2 Listing 6 verbatim (random readings), S=2 R=1 kg, p8",
+      "regime": "G-safe",
+      "label": "Table 3 row 2 as Listing 6 (random readings), exhaustive, 8 cores",
+      "params": {
+        "T3row": "2",
+        "S": 2,
+        "R": 1,
+        "N": "4/3",
+        "readings": "random",
+        "property": "rescue",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": "2/3",
+        "C": 4,
+        "Ds": 2,
+        "Dr": 4,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; v9 (3 identical runs): 2,560 complete + 4,995,904 blocked = 4,998,464 explored, 0 violating executions",
+      "expect_baseline": "spurious violations, exit 0 under keep-going; no v9 result yet; v8: 15,184,032 complete + 302,642,048 blocked = 317,826,080 explored, counters dead=119,454,720 sensor_failures=119,885,824 (v8 has no tool count of violating executions)",
+      "note": "Listing 6 exactly, both sides with full random readings and keep-going. Non-vacuous hold on the timed side (rescues=24,576, all reached). The baseline side had no v9 result when this file was written; v8 finished it.",
+      "violation_counter": "dead"
+    },
+    {
+      "cell": "T3 row2 R=1 exact: timed random-relevant kg vs baseline random (args differ in --readings)",
+      "regime": "G-safe",
+      "label": "Table 3 row 2 exact: timed exhaustive on the reduced readings, baseline first violation",
+      "params": {
+        "T3row": "2",
+        "S": 2,
+        "R": 1,
+        "N": "4/3",
+        "readings": "random-relevant (timed), random (baseline)",
+        "property": "rescue",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": "2/3",
+        "C": 4,
+        "Ds": 2,
+        "Dr": 4,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations, exit 0; v9 (3 identical runs): 160 complete + 247,100 blocked = 247,260 explored, 0 violating executions",
+      "expect_baseline": "exit 101 at the first violation, a spurious one in this regime; v9 (3 runs): exit 101",
+      "note": "The two sides do not run the same arguments: --readings random-relevant is refused in baseline mode. The timed side runs random-relevant with keep-going (exhaustive; an exact reduction of the random readings of Listing 6), the baseline side runs --readings random without keep-going and stops at its first violation. The baseline time to that first violation depends on a random seed and proves nothing; no explored ratio and no wall ratio can be formed for this row. The violation the baseline stops at is spurious. Each reduced execution stands for 16 full ones.",
+      "violation_counter": "dead"
+    },
+    {
+      "cell": "T3 row2 R=2 exact: timed random-relevant kg, p8",
+      "regime": "G-safe",
+      "label": "Table 3 row 2 exact, 2 rounds, timed side only, 8 cores",
+      "params": {
+        "T3row": "2",
+        "S": 2,
+        "R": 2,
+        "N": "6/4",
+        "readings": "random-relevant",
+        "property": "rescue",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": "2/3",
+        "C": 4,
+        "Ds": 2,
+        "Dr": 4,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; v9 (1 run): 16,000 complete + 948,730,800 blocked = 948,746,800 explored, 0 violating executions",
+      "expect_baseline": "not run: this cell has no baseline side",
+      "note": "Timed side only (random-relevant is refused in baseline mode); the baseline counterpart is the separate cell \"T3 row2 R=2: baseline random, no keep-going\". Bounded hold at R=2, non-vacuous (rescues=245,760, all reached). One run of 13.4 h on 8 cores."
+    },
+    {
+      "cell": "T3 row2 R=2: baseline random, no keep-going",
+      "regime": "G-safe",
+      "label": "Table 3 row 2, 2 rounds, baseline side only (random readings), first violation",
+      "params": {
+        "T3row": "2",
+        "S": 2,
+        "R": 2,
+        "N": "6/4",
+        "readings": "random",
+        "property": "rescue",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": "2/3",
+        "C": 4,
+        "Ds": 2,
+        "Dr": 4,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "first-violation",
+      "expect_timed": "not run: this cell has no timed side",
+      "expect_baseline": "exit 101 at the first violation, a spurious one in this regime; v9 (3 runs): exit 101",
+      "note": "Baseline side only; the timed counterpart is the separate cell \"T3 row2 R=2 exact: timed random-relevant kg, p8\", which proves there is no violation, so the one this run stops at is spurious. No keep-going, random readings. Which value of each random reading (and of the obstacle) is tried first depends on a random seed (Config::seed, no --seed flag), so the time to the first violation changes from run to run and proves nothing about either side; only the exit code 101 is a result. Wall times of the v9 repetitions: 451.1, 352.9, 350.1 s."
+    },
+    {
+      "cell": "T3 row2 danger S=2 R=2 kg, p8",
+      "regime": "G-safe",
+      "label": "Table 3 row 2, danger readings, 2 rounds, 8 cores (timed side; baseline under the ceiling cell)",
+      "params": {
+        "T3row": "2",
+        "S": 2,
+        "R": 2,
+        "N": "6/4",
+        "readings": "danger",
+        "property": "rescue",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": "2/3",
+        "C": 4,
+        "Ds": 2,
+        "Dr": 4,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; no v9 result yet; v8: 840 complete + 73,287,179 blocked = 73,288,019 explored, counters dead=0 sensor_failures=0 (v8 has no tool count of violating executions)",
+      "expect_baseline": "not run: this cell has no baseline side",
+      "note": "Timed side only in the plan: its baseline run is planned under the separate cell name \"T3 row2 danger S=2 R=2 kg, p8 (baseline ceiling)\", the same arguments with --mode baseline (same regime, kind and parameters: one instance, shown as one row in the workbook). That baseline is a ceiling: it runs until the campaign deadline and is not expected to finish (v8: stopped after 26.0 h). The timed side had no v9 result when this file was written; v8 finished it with dead=0."
+    },
+    {
+      "cell": "T3 row2 danger S=2 R=2 kg, p8 (baseline ceiling)",
+      "regime": "G-safe",
+      "label": "Table 3 row 2, danger readings, 2 rounds, baseline side only (ceiling)",
+      "params": {
+        "T3row": "2",
+        "S": 2,
+        "R": 2,
+        "N": "6/4",
+        "readings": "danger",
+        "property": "rescue",
+        "L": 1,
+        "U": 1,
+        "sd": 0,
+        "P": "2/3",
+        "C": 4,
+        "Ds": 2,
+        "Dr": 4,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "not run: this cell has no timed side",
+      "expect_baseline": "not expected to finish before the campaign deadline; spurious violations if it does; no v9 result yet; v8: did not finish (stopped after 26.0 h)",
+      "note": "Baseline side only, a ceiling: the arguments of the timed cell \"T3 row2 danger S=2 R=2 kg, p8\" with --mode baseline, run until the campaign deadline. v8: did not finish (stopped after 26.0 h). A stopped run prints no counters."
+    },
+    {
+      "cell": "T3 row3 Dr=5 Listing 6 verbatim R=2, no keep-going",
+      "regime": "H-viol",
+      "label": "Table 3 row 3 with rescue deadline 5 as Listing 6, 2 rounds, first violation on both sides",
+      "params": {
+        "T3row": "3-5",
+        "S": 2,
+        "R": 2,
+        "N": 4,
+        "readings": "random",
+        "property": "rescue",
+        "L": 2,
+        "U": 2,
+        "sd": 0,
+        "P": 1,
+        "C": 1,
+        "Ds": 4,
+        "Dr": 5,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "first-violation",
+      "expect_timed": "exit 101 at the first certified violation (false deaths); v9 (3 runs): exit 101",
+      "expect_baseline": "exit 101 at the first violation; v9 (3 runs): exit 101",
+      "note": "Listing 6 exactly, no keep-going: both sides stop at the first violation (exit 101), the timed side with a certified witness timeline. Which value of each random reading (and of the obstacle) is tried first depends on a random seed (Config::seed, no --seed flag), so the time to the first violation changes from run to run and proves nothing about either side; only the exit code 101 is a result. Wall times of the v9 repetitions: timed 57.6, 47.5, 48.1 s, baseline 25.4, 25.1, 20.4 s."
+    },
+    {
+      "cell": "T3 row3-5 R=2 exact: timed random-relevant kg vs baseline random (args differ in --readings)",
+      "regime": "H-viol",
+      "label": "Table 3 row 3 with rescue deadline 5, exact, 2 rounds: timed exhaustive, baseline first violation",
+      "params": {
+        "T3row": "3-5",
+        "S": 2,
+        "R": 2,
+        "N": 4,
+        "readings": "random-relevant (timed), random (baseline)",
+        "property": "rescue",
+        "L": 2,
+        "U": 2,
+        "sd": 0,
+        "P": 1,
+        "C": 1,
+        "Ds": 4,
+        "Dr": 5,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "first-violation",
+      "expect_timed": "violations (false deaths), exit 0 under keep-going; v9 (3 identical runs): 432 complete + 320,390 blocked = 320,822 explored, 1,280 violating executions",
+      "expect_baseline": "exit 101 at the first violation; v9 (3 runs): exit 101",
+      "note": "The two sides do not run the same arguments: --readings random-relevant is refused in baseline mode. The timed side runs random-relevant with keep-going (exhaustive; an exact reduction of the random readings of Listing 6), the baseline side runs --readings random without keep-going and stops at its first violation. The baseline time to that first violation depends on a random seed and proves nothing; no explored ratio and no wall ratio can be formed for this row. R=2 because this row starts no mission at R=1. sensor_failures is above zero on the timed side (18,432) although the tool reports only the false deaths: the property asserted is rescue, and with C=1 the first check comes before the first report."
+    },
+    {
+      "cell": "T3 row3-6 R=2 exact: timed random-relevant kg vs baseline random (args differ in --readings)",
+      "regime": "I-safe",
+      "label": "Table 3 row 3 with rescue deadline 6, exact, 2 rounds: timed exhaustive, baseline first violation",
+      "params": {
+        "T3row": "3-6",
+        "S": 2,
+        "R": 2,
+        "N": 4,
+        "readings": "random-relevant (timed), random (baseline)",
+        "property": "rescue",
+        "L": 2,
+        "U": 2,
+        "sd": 0,
+        "P": 1,
+        "C": 1,
+        "Ds": 4,
+        "Dr": 6,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations, exit 0; v9 (3 identical runs): 352 complete + 319,270 blocked = 319,622 explored, 0 violating executions",
+      "expect_baseline": "exit 101 at the first violation, a spurious one in this regime; v9 (3 runs): exit 101",
+      "note": "The two sides do not run the same arguments: --readings random-relevant is refused in baseline mode. The timed side runs random-relevant with keep-going (exhaustive; an exact reduction of the random readings of Listing 6), the baseline side runs --readings random without keep-going and stops at its first violation. The baseline time to that first violation depends on a random seed and proves nothing; no explored ratio and no wall ratio can be formed for this row. Bounded hold on the timed side: the failure the paper reports for this row needs 4 rounds (regime I-viol), so the violation the baseline stops at is spurious for this bound. sensor_failures is above zero on the timed side although nothing is violated: the property asserted is rescue."
+    },
+    {
+      "cell": "T3 row3-6 R=3 exact HOLD bound: timed random-relevant kg, p8",
+      "regime": "I-safe",
+      "label": "Table 3 row 3 with rescue deadline 6, exact, 3 rounds, timed side only, 8 cores",
+      "params": {
+        "T3row": "3-6",
+        "S": 2,
+        "R": 3,
+        "N": 5,
+        "readings": "random-relevant",
+        "property": "rescue",
+        "L": 2,
+        "U": 2,
+        "sd": 0,
+        "P": 1,
+        "C": 1,
+        "Ds": 4,
+        "Dr": 6,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; v9 (1 run): 80,768 complete + 725,986,076 blocked = 726,066,844 explored, 0 violating executions",
+      "expect_baseline": "not run: this cell has no baseline side",
+      "note": "Timed side only (random-relevant is refused in baseline mode); the baseline counterpart is the separate cell \"T3 row3-6 R=3: baseline random, no keep-going\". Bounded hold at R=3, non-vacuous (rescues=1,064,960, all reached); the paper's failure for this row appears at R=4 (regime I-viol). One run of 14.4 h on 8 cores."
+    },
+    {
+      "cell": "T3 row3-6 R=3: baseline random, no keep-going",
+      "regime": "I-safe",
+      "label": "Table 3 row 3 with rescue deadline 6, 3 rounds, baseline side only, first violation",
+      "params": {
+        "T3row": "3-6",
+        "S": 2,
+        "R": 3,
+        "N": 5,
+        "readings": "random",
+        "property": "rescue",
+        "L": 2,
+        "U": 2,
+        "sd": 0,
+        "P": 1,
+        "C": 1,
+        "Ds": 4,
+        "Dr": 6,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "first-violation",
+      "expect_timed": "not run: this cell has no timed side",
+      "expect_baseline": "exit 101 at the first violation, a spurious one in this regime; v9 (3 runs): exit 101",
+      "note": "Baseline side only; the timed counterpart is the separate cell \"T3 row3-6 R=3 exact HOLD bound: timed random-relevant kg, p8\", which proves there is no violation within 3 rounds, so the one this run stops at is spurious. No keep-going, random readings. Which value of each random reading (and of the obstacle) is tried first depends on a random seed (Config::seed, no --seed flag), so the time to the first violation changes from run to run and proves nothing about either side; only the exit code 101 is a result. Wall times of the v9 repetitions: 515.1, 400.7, 399.6 s."
+    },
+    {
+      "cell": "T3 row3-6 R=4 FIRE via the header's reduced model (1 sensor, sound for FIRE), no keep-going",
+      "regime": "I-viol",
+      "label": "Table 3 row 3 with rescue deadline 6, 4 rounds, reduced one-sensor model, first violation",
+      "params": {
+        "T3row": "3-6",
+        "S": 1,
+        "R": 4,
+        "N": 2,
+        "readings": "danger",
+        "property": "rescue",
+        "L": 2,
+        "U": 2,
+        "sd": 0,
+        "P": 100,
+        "C": 1,
+        "Ds": 4,
+        "Dr": 6,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "first-violation",
+      "expect_timed": "exit 101 at the first certified violation (false deaths); v9 (3 runs): exit 101",
+      "expect_baseline": "exit 101 at the first violation; v9 (3 runs): exit 101",
+      "note": "The reduced model of the source header: one sensor with period 100 (one report at t=0, the second after the last check) and danger readings. The source header calls this model sound for a violation and only supporting evidence for a hold. This is the cell that reproduces the paper's 'mission failed' for this row; the exact two-sensor model at R=4 is not in the plan. No keep-going: both sides stop at the first violation (exit 101), the timed side with a certified witness; the wall time is a time to the first violation and proves nothing about either side (the obstacle choice is seeded)."
+    },
+    {
+      "cell": "T3 row3-7 R=2 exact: timed random-relevant kg vs baseline random (args differ in --readings)",
+      "regime": "J-safe",
+      "label": "Table 3 row 3 with rescue deadline 7, exact, 2 rounds: timed exhaustive, baseline first violation",
+      "params": {
+        "T3row": "3-7",
+        "S": 2,
+        "R": 2,
+        "N": 4,
+        "readings": "random-relevant (timed), random (baseline)",
+        "property": "rescue",
+        "L": 2,
+        "U": 2,
+        "sd": 0,
+        "P": 1,
+        "C": 1,
+        "Ds": 4,
+        "Dr": 7,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations, exit 0; v9 (3 identical runs): 352 complete + 319,270 blocked = 319,622 explored, 0 violating executions",
+      "expect_baseline": "exit 101 at the first violation, a spurious one in this regime; v9 (3 runs): exit 101",
+      "note": "The two sides do not run the same arguments: --readings random-relevant is refused in baseline mode. The timed side runs random-relevant with keep-going (exhaustive; an exact reduction of the random readings of Listing 6), the baseline side runs --readings random without keep-going and stops at its first violation. The baseline time to that first violation depends on a random seed and proves nothing; no explored ratio and no wall ratio can be formed for this row. Bounded hold on the timed side: the failure the paper reports for this row needs 4 rounds (regime J-viol), so the violation the baseline stops at is spurious for this bound. sensor_failures is above zero on the timed side although nothing is violated: the property asserted is rescue."
+    },
+    {
+      "cell": "T3 row3-7 R=3 exact HOLD bound: timed random-relevant kg, p8",
+      "regime": "J-safe",
+      "label": "Table 3 row 3 with rescue deadline 7, exact, 3 rounds, timed side only, 8 cores",
+      "params": {
+        "T3row": "3-7",
+        "S": 2,
+        "R": 3,
+        "N": 5,
+        "readings": "random-relevant",
+        "property": "rescue",
+        "L": 2,
+        "U": 2,
+        "sd": 0,
+        "P": 1,
+        "C": 1,
+        "Ds": 4,
+        "Dr": 7,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; v9 (1 run): 80,768 complete + 716,946,332 blocked = 717,027,100 explored, 0 violating executions",
+      "expect_baseline": "not run: this cell has no baseline side",
+      "note": "Timed side only (random-relevant is refused in baseline mode); the baseline counterpart is the separate cell \"T3 row3-7 R=3: baseline random, no keep-going\". Bounded hold at R=3, non-vacuous (rescues=1,064,960, all reached); the paper's failure for this row appears at R=4 (regime J-viol). One run of 13.9 h on 8 cores."
+    },
+    {
+      "cell": "T3 row3-7 R=3: baseline random, no keep-going",
+      "regime": "J-safe",
+      "label": "Table 3 row 3 with rescue deadline 7, 3 rounds, baseline side only, first violation",
+      "params": {
+        "T3row": "3-7",
+        "S": 2,
+        "R": 3,
+        "N": 5,
+        "readings": "random",
+        "property": "rescue",
+        "L": 2,
+        "U": 2,
+        "sd": 0,
+        "P": 1,
+        "C": 1,
+        "Ds": 4,
+        "Dr": 7,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "first-violation",
+      "expect_timed": "not run: this cell has no timed side",
+      "expect_baseline": "exit 101 at the first violation, a spurious one in this regime; v9 (3 runs): exit 101",
+      "note": "Baseline side only; the timed counterpart is the separate cell \"T3 row3-7 R=3 exact HOLD bound: timed random-relevant kg, p8\", which proves there is no violation within 3 rounds, so the one this run stops at is spurious. No keep-going, random readings. Which value of each random reading (and of the obstacle) is tried first depends on a random seed (Config::seed, no --seed flag), so the time to the first violation changes from run to run and proves nothing about either side; only the exit code 101 is a result. Wall times of the v9 repetitions: 407.1, 507.9, 506.7 s."
+    },
+    {
+      "cell": "T3 row3-7 R=4 FIRE via the header's reduced model (1 sensor, sound for FIRE), no keep-going",
+      "regime": "J-viol",
+      "label": "Table 3 row 3 with rescue deadline 7, 4 rounds, reduced one-sensor model, first violation",
+      "params": {
+        "T3row": "3-7",
+        "S": 1,
+        "R": 4,
+        "N": 2,
+        "readings": "danger",
+        "property": "rescue",
+        "L": 2,
+        "U": 2,
+        "sd": 0,
+        "P": 100,
+        "C": 1,
+        "Ds": 4,
+        "Dr": 7,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "first-violation",
+      "expect_timed": "exit 101 at the first certified violation (false deaths); v9 (3 runs): exit 101",
+      "expect_baseline": "exit 101 at the first violation; v9 (3 runs): exit 101",
+      "note": "The reduced model of the source header: one sensor with period 100 (one report at t=0, the second after the last check) and danger readings. The source header calls this model sound for a violation and only supporting evidence for a hold. This is the cell that reproduces the paper's 'mission failed' for this row; the exact two-sensor model at R=4 is not in the plan. No keep-going: both sides stop at the first violation (exit 101), the timed side with a certified witness; the wall time is a time to the first violation and proves nothing about either side (the obstacle choice is seeded)."
+    },
+    {
+      "cell": "T3 row4 (paper success) danger S=2 R=1 kg, p8",
+      "regime": "K-safe",
+      "label": "Table 3 row 4 (paper: mission success), danger readings, 8 cores",
+      "params": {
+        "T3row": "4",
+        "S": 2,
+        "R": 1,
+        "N": 6,
+        "readings": "danger",
+        "property": "rescue",
+        "L": 2,
+        "U": 2,
+        "sd": 0,
+        "P": 1,
+        "C": 4,
+        "Ds": 4,
+        "Dr": 7,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; v9 (3 identical runs): 576 complete + 2,316,593 blocked = 2,317,169 explored, 0 violating executions",
+      "expect_baseline": "spurious violations, exit 0 under keep-going; v9 (1 run): 48,769,644 complete + 1,102,522,030 blocked = 1,151,291,674 explored, 387,459,038 violating executions",
+      "note": "Danger readings instead of the random ones of Listing 6. Non-vacuous hold on the timed side (rescues=6,144, all reached). The baseline side finished in v9 in one run of 6.9 h on 8 cores. Its dead counter (387,459,072, the v8 value) is 34 above the violating executions the campaign counted (387,459,038); with R=1 and the rescue property the two are equal by construction, as on every other such side. The counter is the exact number here; the line count of an 8-thread pool run can fall short when two output lines merge (see notes).",
+      "violation_counter": "dead"
+    },
+    {
+      "cell": "T3 row4 R=1 exact: timed random-relevant kg, p8",
+      "regime": "K-safe",
+      "label": "Table 3 row 4 exact, timed side only, 8 cores",
+      "params": {
+        "T3row": "4",
+        "S": 2,
+        "R": 1,
+        "N": 6,
+        "readings": "random-relevant",
+        "property": "rescue",
+        "L": 2,
+        "U": 2,
+        "sd": 0,
+        "P": 1,
+        "C": 4,
+        "Ds": 4,
+        "Dr": 7,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations, exit 0; v9 (3 identical runs): 7,680 complete + 18,744,960 blocked = 18,752,640 explored, 0 violating executions",
+      "expect_baseline": "not run: this cell has no baseline side",
+      "note": "Timed side only (random-relevant is refused in baseline mode); the baseline counterpart is the separate cell \"T3 row4 R=1: baseline random (random-relevant refused), no keep-going, p8\". Non-vacuous hold (rescues=73,728, all reached). Each reduced execution stands for 256 executions of the full random readings (8 readings fixed).",
+      "violation_counter": "dead"
+    },
+    {
+      "cell": "T3 row4 R=1: baseline random (random-relevant refused), no keep-going, p8",
+      "regime": "K-safe",
+      "label": "Table 3 row 4, baseline side only (random readings), no keep-going, partitioned",
+      "params": {
+        "T3row": "4",
+        "S": 2,
+        "R": 1,
+        "N": 6,
+        "readings": "random",
+        "property": "rescue",
+        "L": 2,
+        "U": 2,
+        "sd": 0,
+        "P": 1,
+        "C": 4,
+        "Ds": 4,
+        "Dr": 7,
+        "OBST": 1,
+        "timers": "separate"
+      },
+      "kind": "first-violation",
+      "expect_timed": "not run: this cell has no timed side",
+      "expect_baseline": "exit 101 at the first violation, a spurious one in this regime; v9 (1 run): exit 101",
+      "note": "Baseline side only; the timed counterpart is the separate cell \"T3 row4 R=1 exact: timed random-relevant kg, p8\", which proves there is no violation, so the one reported here is spurious. No keep-going, random readings: the time to the first violation depends on a random seed and proves nothing. In addition this run uses --parallel partitioned, where a worker that meets a violation stops alone, the other workers continue, and the failure is raised again only after the whole pool has ended (parallel_verify.rs): the wall time (8,182 s in v9 on 5 cores, 15,279 s in v8) is therefore not a time to the first violation. The v9 row shows 155 failing-task lines; that is not a count of violating executions.",
+      "violation_counter": "dead"
+    }
+  ],
+  "notes": [
+    "Measured facts are taken from benchmarks/v9/results_v9.csv as it stood on 2026-10-11 11:09 (160 rows of this example, all finished, repetitions identical in complete, blocked and violating counts, timeline_impossible = 0 in every run) and from benchmarks/v8/results_v8.csv only for a side without a v9 row. Sides without a v9 result at that time: the baselines of the two Listing 6 random cells (rows 1 and 2), of the R=4 sensor cell and of the two ceilings, and the timed sides of the row 2 danger R=2 cell and of the R=6 edge rung.",
+    "Parameter columns: every value was resolved from the argument string with a transcription of the binary's parse_args and resolve (ratios times U, rounded) and agrees with every summary line of the example in results_v9.csv and results_v8.csv. A run that stops at a violation prints no summary line; the values of such cells rest on the same transcription, checked by one local run for the reduced model (S=1, P=100, C=1, Ds=4, Dr=6, OBST=1, timers separate). N (readings per sensor) is computed with the binary's formula, it is not printed.",
+    "Regimes: the letter fixes the network timing and the mission timers (L, U, sd, C, Ds, Dr, OBST); the sensor period P and the horizon R are given per cell. Rows 3-6 and 3-7 are on the safe side for R <= 3 and on the violating side at R = 4, hence two regime ids for one letter (I-safe / I-viol, J-safe / J-viol): the safe ones are bounded holds, not claims about the row. v8 used no regime letters for this example; A to K are new.",
+    "Table 3 has six presets, named 1, 2, 3-5, 3-6, 3-7 and 4 (there is no row 5, 6 or 7: 3-5, 3-6, 3-7 are row 3 with rescue deadline 5, 6 and 7). Row 3 at R=1 starts no mission and is not in the plan.",
+    "violation_counter is null: no summary counter equals the violating executions in every cell. dead and sensor_failures count events (missions, and sensor-check pairs), both are counted whatever --property asserts, and an execution is reported once even when both verdicts fail in it. Only for --property rescue at R=1 is dead the number of violating executions; those cells carry the extra field \"violation_counter\": \"dead\" (a per-cell hint, not part of FORMAT.md). It is equal on 10 of the 11 such sides measured in v9 (5 of them above zero). The exception is sensor-048-r1 (baseline of the row 4 danger cell, 8 worker threads, 1.15 billion explored): dead = 387,459,072 (also the v8 value, and equal to reached, as on every baseline side at R=1) against 387,459,038 failing-task lines, 34 fewer. That fits the merged output lines of a worker pool that build_v9_xlsx.py describes; the log is on the server and was not read. For that side dead is the exact count.",
+    "Complete executions include violating ones in this example. FORMAT.md and the comment at lines 1330 to 1332 of the source say that a violating execution is filed under blocked; the data say otherwise. The assertions are the Admin's last statements, after it has sent the Done messages, and under keep-going the search goes on past a failed assertion: an execution is complete exactly when every Done message is delivered (one in 4 with self timers, one in 16 with separate timers), whether or not an assertion failed in it. On all 37 finished keep-going sides of v9, complete = (checks_ok + sensor_failures) / (S x R) / 4 or 16. In the C-viol cell every mission is dead (missions = dead = 1,152 = violating executions) and 288 executions are complete: all of them violate. A local run of the one-sensor variant of that cell (not a campaign cell, binary of 30 September) gives the same complete and blocked counts with --property rescue (32 failing-task lines) and with --property sensor (none). So the violating executions are spread over the complete and the blocked columns, they can exceed the complete executions, and explored = complete + blocked still counts every execution once.",
+    "The baseline does not see the timing parameters: its complete, blocked and violating counts are identical across cells that differ only in U, L or a deadline (rows 1 and 2 with danger readings; the published P=6 cell and regimes B and C; the published R=3 sensor cell and regimes D and E). Only late_reports differs there, because that counter is computed from L.",
+    "kind: a cell is first-violation as soon as one of its sides runs without keep-going. That covers the five cells named 'exact: timed random-relevant kg vs baseline random', whose timed side is exhaustive (keep-going) and whose baseline side stops at its first violation; their two sides also differ in --readings, and the Readings column gives both values.",
+    "One-sided cells. (a) Two ceiling pairs: 'published timers, sensor property, S=2 R=5' and 'T3 row2 danger S=2 R=2' are each planned under two cell names, the timed run and, with '(baseline ceiling)' in the name, its baseline run with the same arguments; the two entries of a pair have the same regime, kind and parameters, so they can be shown as one row. The baseline of each is expected to run into the deadline. (b) Four exact pairs that are NOT the same instance run twice: row 4 R=1, row 2 R=2, rows 3-6 and 3-7 R=3. The timed cell runs random-relevant with keep-going on 8 cores, the baseline cell runs random without keep-going (1 core, or a 5-core pool for row 4); their Readings and kind differ on purpose so that they stay two rows. (c) The R=6 edge rung has a timed side only.",
+    "First-violation runs: the time to the first violation depends on the search order, which a random seed sets wherever the program calls nondet (random readings, the obstacle); Config::seed defaults to a fresh random number and the example has no --seed flag. The three timed repetitions of the row 1 Listing 6 cell took 194.3, 59.3, 133.0 s. Never compare the two sides on such a time.",
+    "The baseline row 4 random cell runs without keep-going under --parallel partitioned. There a worker that meets a violation stops alone, the others go on, and the failure is raised again after the pool has ended (traceforge/src/parallel_verify.rs: catch_unwind around each task, resume_unwind after the summary), so its wall time is not a time to the first violation, and its v9 row carries 155 failing-task lines although keep-going is off.",
+    "Ladders. Rounds R: published timers with the sensor property, R = 3, 4, 5, 6 on the timed side and R = 3, 4 plus the R=5 ceiling on the baseline; row 2 danger R = 1, 2. Readings per sensor N: the published model at N = 4, 5, 7 (P = 6, 5, 3), both sides finished. For the automatic ladder detection N is a size column marked moves_with_size (it follows R), and P is marked moves_with_size because lowering P is how N is raised. Not detected automatically: the timed exact rows (row 2: R = 1, 2; rows 3-6 and 3-7: R = 2, 3), because the Readings value of the two-sided cell names both sides; writing 'random-relevant' there would join them.",
+    "With safe readings (sensor-property cells) no mission starts: Ds, Dr, OBST and the timers mode are shown as the binary resolves them (default ratios times U) but have no effect.",
+    "sd = 0 in every cell, so the sd terms of the two laws are not exercised in v9. The grids that checked the laws (source header, 2026-09-16) used one sensor and predate the change that made every send lossy; v9 confirms the laws only at the cells of regimes B to K, with two sensors.",
+    "Notes older than the code. The execution counts in the source header and in the memory note on Table 3 (61620 against 8 complete at the defaults, 197015 against 737 explored and 97020 against 8 deaths for rows 1 and 2, 267x) were measured before every send became lossy. In v9 the same row 1 / row 2 danger pair is 4,140,818 explored on the baseline against 61,803 and 61,683 on the timed side, with 1,552,320 against 128 and 0 violating executions. The verdicts are unchanged; quote the v9 counts.",
+    "Cores: two cell names say p8 but the v9 plan gives fewer cores, 7 for the timed sensor-property R=5 run and 5 for the baseline row 4 random run.",
+    "Deviations of the model from the paper that a citation should mention (source header): the first sensor check is at time C, not 0; the Rescue's message expiry is not modelled (it cannot bind in any Table 3 row); sensors send a bounded number of readings and never fail; at most two sensors; the drain rule; ties are explored in both orders."
+  ]
+}

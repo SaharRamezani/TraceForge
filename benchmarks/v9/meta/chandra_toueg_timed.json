@@ -1,0 +1,709 @@
+{
+  "family": "ct",
+  "example": "chandra_toueg_timed",
+  "title": "Chandra-Toueg failure detector with a timeout threshold (two-process model of Tran, Konnov and Widder)",
+  "source": "Chandra and Toueg, JACM 43(2), 1996, Fig. 10 (eventually perfect failure detector), in the two-process cutoff model of Tran, Konnov and Widder, 'A Case Study on Parametric Verification of Failure Detectors', LMCS 19(1):17, 2023, Algorithm 1, ported from their TLA+ specification tlap/spec-inv/sa_fnc.tla (FORTE 2021 artifact, Zenodo 10.5281/zenodo.4687714). Their Table 1 verifies TODefault = 6*Phi + Delta (holds) and their Table 2 TODefault = Delta + 1 (violated). The least safe value in between (the timing rule) is not in their paper: it comes from TLC runs on their specification, recorded in the source header (lines 94 to 107).",
+  "property": "Strong Accuracy up to the horizon H: the correct sender is never suspected, i.e. no Comp step of the receiver finds its waiting time at the timeout. One assertion, traceforge::assert(!ever_suspected) in judge() (source line 366), made once per execution after every eviction guard has passed.",
+  "citable": "with caveats",
+  "citable_note": "A precision result with an external ground truth: 0 violations at to = thr and a certified counterexample at to = thr - 1 for five (Delta, Phi) pairs, where the baseline reports a violation at every timeout it can reach. Caveats: the timed side explores about 2 times MORE executions and needs 7 to 17 times the wall time (never quote a speed-up); the threshold is fitted to a TLC grid, not proven; it belongs to this two-process model and is not a bug in Chandra-Toueg (they prove eventual accuracy only); the tool's hold is bounded by H (the unbounded hold is TLC's). The 2026-09-18 audit predates this example and gives no verdict for it; checked against the current source: no mode-dependent protocol code, and the property is falsifiable (the crashed-sender control and every thr - 1 cell fire).",
+  "config_timed": "build_config, source lines 687 to 704. Line 689: Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX).with_cons_type(ConsType::FIFO): FIFO per (sender, destination) channel, every send may be dropped, without a budget. Line 702: .with_timed(0, 0, 0): global L = 0, U = 0, sd = 0; every send replaces the global transit window by its own (send_msg_timed(dest, msg, lo, hi), see 'per-send window' in the glossary), so only sd = 0 is used globally. Lines 690 to 692: --keep-going adds with_keep_going_after_error(true). Lines 693 to 695: --workers N with N > 1 adds with_parallel(true).with_parallel_workers(N) (shared pool); without the flag the run is sequential. Scheduling policy: not set, so the default LTR (left to right, traceforge/src/lib.rs line 140). --max-execs is never used. Every receive is a blocking timed receive without a timeout (recv_msg_block_timed, recv_tagged_msg_block_timed).",
+  "config_baseline": "The same builder without with_timed (line 700: Mode::Baseline | Mode::Rounds => b.build()): FIFO, every send lossy without a budget (line 689, so both sides check the same lossy network), the same keep-going and worker options, default LTR policy, no clock: the send windows are ignored. The two rounds cells use this same configuration on a different program (rounds_model, selected at line 711).",
+  "program_differs_between_modes": "no: timed and baseline run the same closure port(p) (line 712; program at lines 456 to 625) and no protocol code reads the mode; the only mode-dependent line is with_timed at line 702. The step caps (floor(H/3) Sends, H receiver ticks, lines 291 to 298) are the same on both sides: with the clock they never bind before H, without it they are what bounds the run. By design the two cells whose name starts with 'rounds' are filed on the baseline side but run --mode rounds, a different program (rounds_model, lines 635 to 681) without a timed counterpart.",
+  "failing_tasks": "One thread per program can fail the assertion. Port cells (every cell except the two rounds cells): the buffer thread, the first thread main spawns, which calls judge(); under keep-going each violating execution prints one line `task-1`. Rounds cells: the main thread itself, the line would be `main-thread-ThreadId(1)` (seen in a local run below the threshold; the campaign's rounds cells have no violation). Without keep-going no task line is printed: the run prints the execution graph (with `(t1, n): BLK Assert`), in timed mode also a 'Certified witness timeline', panics ('assertion failed (certified timed counterexample; graph and witness above)' in timed mode, 'assertion failed: cond' in baseline mode) and exits with code 101 before any summary line. The assert_eq! and panic! on an unexpected message in sender, receiver and buffer are harness sanity checks (ordinary Rust panics) and were never hit.",
+  "counters": [
+    {
+      "key": "violations",
+      "counts": "executions",
+      "meaning": "Judged executions in which some Comp step suspected the sender, the same executions that fail the assertion. Equal to the tool's violating executions on every finished keep-going run of v9. Raised by program code, so it would also count endings that admit no timeline (an upper bound when impossible > 0); impossible = 0 on every run of this example. Absent in a first-violation run (exit code 101 before the summary line)."
+    },
+    {
+      "key": "impossible",
+      "counts": "executions",
+      "meaning": "The tool's timeline_impossible: endings explored to completion and then discarded because they admit no timeline. 0 on every run of this example."
+    },
+    {
+      "key": "explored",
+      "counts": "executions",
+      "meaning": "execs + blocked + impossible as the example prints it; equal to the workbook's explored (execs + blocked) because impossible = 0."
+    },
+    {
+      "key": "completed",
+      "counts": "executions",
+      "meaning": "Summary line only (not in the CSV counters): judged executions, those that reached judge() after every guard. In the port cells completed = execs: a violating execution is counted among the complete executions, not among the blocked ones (the buffer thread fails at its last action and the other threads still finish). In the rounds model a violating execution is filed under blocked (completed = execs + blocked)."
+    },
+    {
+      "key": "W*",
+      "counts": "a value, not a count",
+      "meaning": "Summary line only: the largest waiting time compared with the timeout at a Comp step (see the glossary). With violations it is capped by the timeout: it reads to, or to + 1 after a trust-again step raised the timeout (14 in the v8 baseline run at H = 34)."
+    },
+    {
+      "key": "guard_seq_events",
+      "counts": "events",
+      "meaning": "Summary line only: hits of the sequence-number guard on 'p-is-alive' (a message evicted or dropped before the one just read). Events, not executions; each hit blocks its execution."
+    },
+    {
+      "key": "guard_done_events",
+      "counts": "events",
+      "meaning": "Summary line only: hits of the Done-count guard (a 'p-is-alive' lost after the last one read). Events, not executions; each hit blocks its execution."
+    }
+  ],
+  "violation_counter": "violations",
+  "param_columns": [
+    {
+      "key": "D",
+      "header": "Delta D (rounds)",
+      "size": false,
+      "meaning": "--delta: the message delay bound of the model. A 'p-is-alive' message sent in round s must be delivered at the receiver's first Receive step in a round >= s + Delta. In the port its transit window is [0, Delta - 1] (source line 467). The baseline ignores it."
+    },
+    {
+      "key": "P",
+      "header": "Phi P (rounds)",
+      "size": false,
+      "meaning": "--phi: the relative speed bound of the model: every process takes a step at least every Phi rounds. In the port: receiver step gap in [1, Phi] (line 493), sender Send gap in [3, 3*Phi] (line 461). The baseline ignores it."
+    },
+    {
+      "key": "to",
+      "header": "Timeout to (TODefault)",
+      "size": false,
+      "meaning": "--to: the initial timeout of the detector (TODefault), counted in receiver steps: the receiver suspects the sender when its waiting time has reached the timeout at a Comp step. Every campaign cell sets the flag (its default would be 6*Phi + Delta)."
+    },
+    {
+      "key": "thr",
+      "header": "thr(D,P): least safe to",
+      "size": false,
+      "meaning": "Derived, not a flag: the threshold of the timing rule for this (Delta, Phi), 3*Phi + Delta - [Delta mod 3 = 2] for Phi >= 2. to >= thr is the safe side, to = thr - 1 the largest violating timeout."
+    },
+    {
+      "key": "H",
+      "header": "Horizon H (rounds)",
+      "size": true,
+      "meaning": "--horizon: the length of the run in rounds, the size of the instance. The main thread's EndOfRun message arrives at exactly time H and stops the receiver; the sender makes floor(H/3) Sends and the receiver at most H steps (lines 291 to 298, 621)."
+    },
+    {
+      "key": "encoding",
+      "header": "Encoding",
+      "size": false,
+      "meaning": "The enc= word of the summary line. buffer: the port, with the model's message buffer as its own thread (default of --encoding; no campaign cell sets the flag and its other value, direct, is not run). rounds: --mode rounds, the explicit-time round model in one thread (the --encoding flag has no effect there)."
+    },
+    {
+      "key": "control",
+      "header": "Control",
+      "size": false,
+      "meaning": "--control: none (default), or crashed-sender: the sender never sends 'p-is-alive', a sanity control in which the property must fail on both sides."
+    },
+    {
+      "key": "kg",
+      "header": "Keep-going",
+      "size": false,
+      "meaning": "on: --keep-going, an exhaustive run that counts every violating execution (exit code 0). off: the run stops at the first violation with exit code 101 (certified in timed mode) and prints no counts."
+    },
+    {
+      "key": "workers",
+      "header": "Pool workers",
+      "size": false,
+      "meaning": "--workers: 1 = sequential run on one core (flag absent); 7 = shared pool with 7 worker threads on 7 physical cores (with_parallel(true).with_parallel_workers(7)). Both sides of a cell use the same value."
+    }
+  ],
+  "boundary_law": "Strong Accuracy holds iff to >= thr(Delta, Phi), with thr = 3*Phi + Delta - [Delta mod 3 = 2] for Phi >= 2 and thr = 3 + 3*ceil(max(Delta - 2, 0)/3) for Phi = 1 (source header, lines 94 to 107). Origin: TLC on the original TLA+ specification with the timeout as a parameter, 1,350 runs (Delta 0 to 8, Phi 1 to 6), verdict monotone in to for every pair; the formula was derived by hand from the two worst silences and agrees with all 54 pairs of that grid (rechecked against the local grid files); it is fitted, not proven beyond the grid, and belongs to this two-process model. The original paper verifies only 6*Phi + Delta (26 at Delta 2, Phi 4, where thr = 13). Checked in v9 on five pairs, each with one cell on either side: (Delta, Phi) = (2,4): to=13 safe, to=12 violating; (1,4): 13 safe, 12 violating; (3,4): 15 safe, 14 violating; (2,3): 10 safe, 9 violating; (2,2): 7 safe, 6 violating. All ten timed verdicts are as the rule says (0 violations with W* = thr - 1 in an exhaustive run up to the TLC diameter; exit code 101 with a certified counterexample one below). The pairs cover Delta mod 3 = 1, 2, 0 at Phi 4 and Phi = 2, 3, 4 at Delta 2; the Phi = 1 branch is not run in the campaign. The tool's verdicts are bounded by the horizon H (a counterexample at thr - 1 needs H >= h_min). Baseline: without a clock the verdict depends on H and to only, violation iff to <= 3*floor(H/3) - 1, so every baseline cell of the campaign reports a violation.",
+  "regimes": [
+    {
+      "id": "A-safe",
+      "name": "Table 1 setting of Tran, Konnov and Widder, timeout exactly at the threshold",
+      "params": "Delta=2, Phi=4, to=13 (= thr), control=none; per-send windows: 'p-is-alive' transit [0, 1], sender Send gap [3, 12], receiver step gap [1, 4], horizon message at exactly H; storage delay sd=0",
+      "rule": "thr = 3*Phi + Delta - [Delta mod 3 = 2] = 12 + 2 - 1 = 13 (Delta mod 3 = 2, so minus 1). to = thr is the least safe timeout: exactly on the boundary, safe side (integer timeouts, so the boundary runs between 12 and 13). Cost, measured in v9: this is a precision result, not an efficiency one. The timed side explores MORE than the baseline, timed / baseline explored = 2.19 (H=16), 2.22 (H=19), 2.18 (H=22), 2.12 (H=25), 1.96 (H=31), and takes 10.9 to 16.7 times the wall time.",
+      "expect_timed": "0 violations (summary line: violations=0 and W*=12, so W* + 1 = 13 = thr; measured at every horizon of the campaign: H = 16 (= h_min), 19, 22, 25, 31, 34 in v9, H = 28 in v8 so far)",
+      "expect_baseline": "spurious violations at every horizon of the campaign: without a clock the sender may stay silent for the whole run, so the baseline reports a violation whenever to <= 3*floor(H/3) - 1 (14 at H = 16, 32 at H = 34), whatever Delta and Phi are."
+    },
+    {
+      "id": "A-viol",
+      "name": "Table 1 setting of Tran, Konnov and Widder, timeout one below the threshold",
+      "params": "Delta=2, Phi=4, to=12 (= thr - 1), control=none; per-send windows: 'p-is-alive' transit [0, 1], sender Send gap [3, 12], receiver step gap [1, 4], horizon message at exactly H; storage delay sd=0",
+      "rule": "to = thr - 1 = 12 < 13: violating side, the largest unsafe timeout. The counterexample needs a horizon H >= h_min = 16 (source lines 307 to 313; H = 25 here).",
+      "expect_timed": "violation: the first-violation run stops with exit code 101 and a certified counterexample (execution graph plus witness timeline)",
+      "expect_baseline": "violation: exit code 101. Real here, but it carries no timing information: the baseline fires at every to <= 3*floor(H/3) - 1 = 23 at H = 25."
+    },
+    {
+      "id": "A-ctrl",
+      "name": "crashed-sender control at the A setting",
+      "params": "Delta=2, Phi=4, to=13 (= thr), control=crashed-sender (the sender never sends 'p-is-alive'); per-send windows: 'p-is-alive' transit [0, 1], sender Send gap [3, 12], receiver step gap [1, 4], horizon message at exactly H; storage delay sd=0",
+      "rule": "Sanity control, no timing boundary: with a silent sender the receiver must suspect as soon as it can take 3*ceil((to+1)/3) = 15 steps within H (H = 25), with or without the clock. It shows that the property can fail at the safe timeout, so the 0 violations of A-safe are not vacuous.",
+      "expect_timed": "violation: exit code 101 with a certified counterexample",
+      "expect_baseline": "violation: exit code 101 (time adds no information, the two sides agree)"
+    },
+    {
+      "id": "R-ctrl",
+      "name": "the explicit-time model without a clock, at the A-safe setting (baseline side only)",
+      "params": "Delta=2, Phi=4, to=13 (= thr), control=none, --mode rounds; no send and no receive, so no window and no sd",
+      "rule": "What the model is: the TLA+ specification sa_fnc.tla of Tran, Konnov and Widder transliterated sub-round by sub-round into ONE Rust thread (rounds_model, source lines 635 to 681). Time is explicit program data: a loop over the rounds 1..H in which the timers sTimer and rTimer and the age of every message are ordinary variables, and every disjunction of the specification (the sender resets its timer or not, the receiver is active or not, each young message is delivered or kept) is a nondet() choice. The checker enumerates every such choice sequence one by one (no state hashing). Why it has no timed counterpart: the program contains no send and no receive, so there is no transit window, storage delay or arrival order for the clock to constrain; --mode rounds always builds the configuration without a clock (line 700) and a clock would change nothing. The same question with the clock is the timed side of the A-safe cell at the same H, which gets the same verdict from event orders alone. Filed on the baseline side of the plan although it is a different program from the port.",
+      "expect_timed": "no timed run exists (see the rule); compare with the timed side of the A-safe cell at the same horizon",
+      "expect_baseline": "0 violations (summary line: violations=0, W*=12): the timing constraints live in the program state, so this run reaches the true verdict without a clock, at the price of enumerating explicit time: 27,445,895 executions at H = 16 in v9, 161 times the 170,291 the timed port explores (and 743,277,142 at H = 19 in v8, 1,070 times the timed port's 694,564)."
+    },
+    {
+      "id": "B-safe",
+      "name": "Delta 1, Phi 4, timeout exactly at the threshold",
+      "params": "Delta=1, Phi=4, to=13 (= thr), control=none; per-send windows: 'p-is-alive' transit [0, 0], sender Send gap [3, 12], receiver step gap [1, 4], horizon message at exactly H; storage delay sd=0",
+      "rule": "thr = 3*Phi + Delta - [Delta mod 3 = 2] = 12 + 1 - 0 = 13 (Delta mod 3 = 1, no correction). to = thr is the least safe timeout: exactly on the boundary, safe side (integer timeouts, so the boundary runs between 12 and 13). Cost, measured in v9: a precision result, not an efficiency one. The timed side explores 1.91 times the baseline's executions and takes 12.1 times its wall time.",
+      "expect_timed": "0 violations (summary line: violations=0 and W*=12, so W* + 1 = 13 = thr; measured at H = 26, the diameter TLC reports)",
+      "expect_baseline": "spurious violations (to = 13 <= 3*floor(26/3) - 1 = 23 at H = 26)."
+    },
+    {
+      "id": "B-viol",
+      "name": "Delta 1, Phi 4, timeout one below the threshold",
+      "params": "Delta=1, Phi=4, to=12 (= thr - 1), control=none; per-send windows: 'p-is-alive' transit [0, 0], sender Send gap [3, 12], receiver step gap [1, 4], horizon message at exactly H; storage delay sd=0",
+      "rule": "to = thr - 1 = 12 < 13: violating side, the largest unsafe timeout. The counterexample needs a horizon H >= h_min = 16 (source lines 307 to 313; H = 26 here).",
+      "expect_timed": "violation: the first-violation run stops with exit code 101 and a certified counterexample (execution graph plus witness timeline)",
+      "expect_baseline": "violation: exit code 101. Real here, but it carries no timing information: the baseline fires at every to <= 3*floor(H/3) - 1 = 23 at H = 26."
+    },
+    {
+      "id": "C-safe",
+      "name": "Delta 3, Phi 4, timeout exactly at the threshold",
+      "params": "Delta=3, Phi=4, to=15 (= thr), control=none; per-send windows: 'p-is-alive' transit [0, 2], sender Send gap [3, 12], receiver step gap [1, 4], horizon message at exactly H; storage delay sd=0",
+      "rule": "thr = 3*Phi + Delta - [Delta mod 3 = 2] = 12 + 3 - 0 = 15 (Delta mod 3 = 0, no correction). to = thr is the least safe timeout: exactly on the boundary, safe side (integer timeouts, so the boundary runs between 14 and 15). Cost, measured in v9: a precision result, not an efficiency one. The timed side explores 2.24 times the baseline's executions and takes 14.7 times its wall time.",
+      "expect_timed": "0 violations (summary line: violations=0 and W*=14, so W* + 1 = 15 = thr; measured at H = 24, the diameter TLC reports)",
+      "expect_baseline": "spurious violations (to = 15 <= 3*floor(24/3) - 1 = 23 at H = 24)."
+    },
+    {
+      "id": "C-viol",
+      "name": "Delta 3, Phi 4, timeout one below the threshold",
+      "params": "Delta=3, Phi=4, to=14 (= thr - 1), control=none; per-send windows: 'p-is-alive' transit [0, 2], sender Send gap [3, 12], receiver step gap [1, 4], horizon message at exactly H; storage delay sd=0",
+      "rule": "to = thr - 1 = 14 < 15: violating side, the largest unsafe timeout. The counterexample needs a horizon H >= h_min = 15 (source lines 307 to 313; H = 24 here).",
+      "expect_timed": "violation: the first-violation run stops with exit code 101 and a certified counterexample (execution graph plus witness timeline)",
+      "expect_baseline": "violation: exit code 101. Real here, but it carries no timing information: the baseline fires at every to <= 3*floor(H/3) - 1 = 23 at H = 24."
+    },
+    {
+      "id": "D-safe",
+      "name": "Delta 2, Phi 3, timeout exactly at the threshold",
+      "params": "Delta=2, Phi=3, to=10 (= thr), control=none; per-send windows: 'p-is-alive' transit [0, 1], sender Send gap [3, 9], receiver step gap [1, 3], horizon message at exactly H; storage delay sd=0",
+      "rule": "thr = 3*Phi + Delta - [Delta mod 3 = 2] = 9 + 2 - 1 = 10 (Delta mod 3 = 2, so minus 1). to = thr is the least safe timeout: exactly on the boundary, safe side (integer timeouts, so the boundary runs between 9 and 10). Cost, measured in v9: a precision result, not an efficiency one. The timed side explores 1.97 times the baseline's executions and takes 11.4 times its wall time.",
+      "expect_timed": "0 violations (summary line: violations=0 and W*=9, so W* + 1 = 10 = thr; measured at H = 19, the diameter TLC reports)",
+      "expect_baseline": "spurious violations (to = 10 <= 3*floor(19/3) - 1 = 17 at H = 19)."
+    },
+    {
+      "id": "D-viol",
+      "name": "Delta 2, Phi 3, timeout one below the threshold",
+      "params": "Delta=2, Phi=3, to=9 (= thr - 1), control=none; per-send windows: 'p-is-alive' transit [0, 1], sender Send gap [3, 9], receiver step gap [1, 3], horizon message at exactly H; storage delay sd=0",
+      "rule": "to = thr - 1 = 9 < 10: violating side, the largest unsafe timeout. The counterexample needs a horizon H >= h_min = 13 (source lines 307 to 313; H = 19 here).",
+      "expect_timed": "violation: the first-violation run stops with exit code 101 and a certified counterexample (execution graph plus witness timeline)",
+      "expect_baseline": "violation: exit code 101. Real here, but it carries no timing information: the baseline fires at every to <= 3*floor(H/3) - 1 = 17 at H = 19."
+    },
+    {
+      "id": "E-safe",
+      "name": "Delta 2, Phi 2, timeout exactly at the threshold",
+      "params": "Delta=2, Phi=2, to=7 (= thr), control=none; per-send windows: 'p-is-alive' transit [0, 1], sender Send gap [3, 6], receiver step gap [1, 2], horizon message at exactly H; storage delay sd=0",
+      "rule": "thr = 3*Phi + Delta - [Delta mod 3 = 2] = 6 + 2 - 1 = 7 (Delta mod 3 = 2, so minus 1). to = thr is the least safe timeout: exactly on the boundary, safe side (integer timeouts, so the boundary runs between 6 and 7). Cost, measured in v9: a precision result, not an efficiency one. The timed side explores 1.46 times the baseline's executions and takes 6.8 times its wall time.",
+      "expect_timed": "0 violations (summary line: violations=0 and W*=6, so W* + 1 = 7 = thr; measured at H = 14, the diameter TLC reports)",
+      "expect_baseline": "spurious violations (to = 7 <= 3*floor(14/3) - 1 = 11 at H = 14)."
+    },
+    {
+      "id": "E-viol",
+      "name": "Delta 2, Phi 2, timeout one below the threshold",
+      "params": "Delta=2, Phi=2, to=6 (= thr - 1), control=none; per-send windows: 'p-is-alive' transit [0, 1], sender Send gap [3, 6], receiver step gap [1, 2], horizon message at exactly H; storage delay sd=0",
+      "rule": "to = thr - 1 = 6 < 7: violating side, the largest unsafe timeout. The counterexample needs a horizon H >= h_min = 10 (source lines 307 to 313; H = 14 here).",
+      "expect_timed": "violation: the first-violation run stops with exit code 101 and a certified counterexample (execution graph plus witness timeline)",
+      "expect_baseline": "violation: exit code 101. Real here, but it carries no timing information: the baseline fires at every to <= 3*floor(H/3) - 1 = 11 at H = 14."
+    }
+  ],
+  "glossary": [
+    {
+      "term": "Strong Accuracy",
+      "meaning": "The property checked: a correct process is never suspected. Here: in no execution up to the horizon H does the receiver suspect the (correct) sender."
+    },
+    {
+      "term": "the model (two-process model of Tran, Konnov and Widder)",
+      "meaning": "One sender and one receiver of the Chandra-Toueg detector under partial synchrony, the cutoff instance their paper verifies: global rounds, message delay bound Delta, relative speed bound Phi, both holding from time 1. One time unit of the timed run is one round."
+    },
+    {
+      "term": "the detector (Chandra-Toueg, Fig. 10)",
+      "meaning": "The sender repeatedly sends 'p-is-alive'. The receiver suspects the sender when it has heard nothing for timeout steps, and on a message from a suspected sender trusts it again and raises its timeout by one."
+    },
+    {
+      "term": "receiver step cycle (NoSnd, Rcv, Comp)",
+      "meaning": "The receiver's steps cycle through three phases. Its waiting time grows by one per step while it is below the timeout, a Receive (Rcv) step that delivers a message resets it to 0, and a Comp step suspects when the waiting time has reached the timeout. With nothing delivered, the j-th Comp step (step 3j) compares a waiting time of 3j - 1 with the timeout (source lines 299 to 303): this is where the baseline rule 3*floor(H/3) - 1 comes from."
+    },
+    {
+      "term": "to (TODefault)",
+      "meaning": "The initial timeout of the detector, the parameter whose least safe value the benchmark locates."
+    },
+    {
+      "term": "thr, thr-1 (in cell names)",
+      "meaning": "thr = the least timeout for which Strong Accuracy holds for the given Delta and Phi (see the timing rule). '(thr)' cells run to = thr with keep-going and must show 0 violations on the timed side; '(thr-1)' cells run to = thr - 1 without keep-going and must fire."
+    },
+    {
+      "term": "W*",
+      "meaning": "Printed in the summary line: the largest waiting time any judged execution compared with the timeout at a Comp step. The property is violated iff W* >= to; when it holds, W* + 1 is the least safe timeout at this horizon, so one run at to = thr shows the whole threshold (W* = thr - 1). 'attained by n' = the number of executions that reach W*."
+    },
+    {
+      "term": "horizon H",
+      "meaning": "Length of the run in rounds. All verdicts of the tool are bounded by H; the unbounded hold at to = thr is the result of the model checker TLC on the original specification."
+    },
+    {
+      "term": "R_diam (in cell names)",
+      "meaning": "The diameter of the state graph TLC reports for the model at this (Delta, Phi), in rounds: 25 for (2,4), 26 for (1,4), 24 for (3,4), 19 for (2,3), 14 for (2,2). A hold up to H = R_diam covers every reachable state of the model."
+    },
+    {
+      "term": "h_min",
+      "meaning": "The round of TLC's shortest counterexample at to = thr - 1 (source lines 307 to 313): 16 for (2,4) and (1,4), 15 for (3,4), 13 for (2,3), 10 for (2,2). Below it a run can under-report the threshold; every campaign cell has H >= h_min."
+    },
+    {
+      "term": "TLC",
+      "meaning": "The explicit-state model checker of TLA+. It supplies the ground truth of this benchmark: 1,350 runs of the original specification with the timeout as a parameter (Delta 0 to 8, Phi 1 to 6). It is not part of the campaign."
+    },
+    {
+      "term": "the port (encoding buffer)",
+      "meaning": "The program both sides of an ordinary cell run: sender, receiver and message buffer as three threads that exchange messages, every timing constraint written as a window on a send. The timed side enumerates event orders and solves the times symbolically; the baseline ignores the windows."
+    },
+    {
+      "term": "per-send window",
+      "meaning": "send_msg_timed(dest, msg, lo, hi): this message arrives between lo and hi time units after it is sent. Here: sender self-tick [3, 3*Phi] (next Send round), receiver self-tick [1, Phi] (next step), 'p-is-alive' [0, Delta - 1], Done [Delta - 1, Delta - 1], Query, Answer and Stop [0, 0], EndOfRun [H, H]. The global with_timed(0, 0, 0) only sets sd = 0."
+    },
+    {
+      "term": "sd = 0",
+      "meaning": "Storage delay 0: a message can be read only at the instant it arrives; a receive that reads a later message from another channel evicts an earlier unread one."
+    },
+    {
+      "term": "eviction guards, blocked executions",
+      "meaning": "Harness checks (sequence numbers on 'p-is-alive', the Done count, drain loops) that end an execution as blocked whenever a message was evicted or dropped, before the single judgement. So a judged (complete) execution never contains a lost message, and the verdicts are those of the loss-free model. Because every send is lossy, most explored executions end this way: 98.5 to 99.7% of the timed side's explored executions and 92.7 to 94.9% of the baseline's are blocked."
+    },
+    {
+      "term": "explicit-time model without a clock (rounds cells)",
+      "meaning": "The original round-based specification as a single-thread program in which time is ordinary data (round counter, timers, message ages) and every choice is nondeterministic. Run with --mode rounds on the baseline side only; see regime R-ctrl."
+    },
+    {
+      "term": "crashed-sender control",
+      "meaning": "--control crashed-sender: the sender never sends 'p-is-alive'. The receiver must then suspect, on both sides: a check that the property can fail."
+    },
+    {
+      "term": "certified counterexample",
+      "meaning": "In a timed first-violation run the tool reports a violation only for an execution that admits a timeline, prints that witness timeline and exits with code 101."
+    },
+    {
+      "term": "kg, no-kg, w7 (in cell names)",
+      "meaning": "kg = --keep-going (exhaustive); no-kg = first-violation run; w7 = --workers 7 (shared pool); no w = sequential."
+    },
+    {
+      "term": "precision result",
+      "meaning": "What this benchmark shows: the timed side gives the exact verdict on both sides of the threshold where the baseline reports a violation at every timeout it can reach. It is not an efficiency result: the timed side explores about twice as many executions as the baseline."
+    }
+  ],
+  "cells": [
+    {
+      "cell": "D2 P4 to=13 H=16 kg",
+      "regime": "A-safe",
+      "label": "Threshold timeout, horizon ladder (sequential)",
+      "params": {
+        "D": 2,
+        "P": 4,
+        "to": 13,
+        "thr": 13,
+        "H": 16,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "on",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; v9 (all finished runs identical): execs=1,978 blocked=168,313 explored=170,291, W*=12",
+      "expect_baseline": "spurious violations; v9 (all finished runs identical): violations=14, execs=5,138 blocked=72,534 explored=77,672",
+      "note": "H = 16 is the smallest horizon at which the threshold shows (h_min). Timed explores 2.19 times the baseline's executions and takes 10.9 times its wall time (72.9 s against 6.7 s, medians)."
+    },
+    {
+      "cell": "D2 P4 to=13 H=19 kg",
+      "regime": "A-safe",
+      "label": "Threshold timeout, horizon ladder (sequential)",
+      "params": {
+        "D": 2,
+        "P": 4,
+        "to": 13,
+        "thr": 13,
+        "H": 19,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "on",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; v9 (all finished runs identical): execs=6,151 blocked=688,413 explored=694,564, W*=12",
+      "expect_baseline": "spurious violations; v9 (all finished runs identical): violations=190, execs=19,294 blocked=293,918 explored=313,212",
+      "note": "Timed explores 2.22 times the baseline's executions and takes 12.7 times its wall time (387 s against 30.4 s, medians)."
+    },
+    {
+      "cell": "D2 P4 to=13 H=22 kg (smallest both >=1 min, sequential)",
+      "regime": "A-safe",
+      "label": "Threshold timeout, smallest horizon where both sides need a minute or more (sequential)",
+      "params": {
+        "D": 2,
+        "P": 4,
+        "to": 13,
+        "thr": 13,
+        "H": 22,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "on",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; v9 (all finished runs identical): execs=18,999 blocked=2,717,493 explored=2,736,492, W*=12",
+      "expect_baseline": "spurious violations; v9 (all finished runs identical): violations=1,413, execs=72,918 blocked=1,180,443 explored=1,253,361",
+      "note": "Timed explores 2.18 times the baseline's executions and takes 14.7 times its wall time (1,949 s against 133 s, medians)."
+    },
+    {
+      "cell": "D2 P4 to=13 H=25 kg w7 (TLC diameter)",
+      "regime": "A-safe",
+      "label": "Threshold timeout at the diameter TLC reports for the model (pool of 7)",
+      "params": {
+        "D": 2,
+        "P": 4,
+        "to": 13,
+        "thr": 13,
+        "H": 25,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "on",
+        "workers": 7
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; v9 (all finished runs identical): execs=58,533 blocked=10,552,083 explored=10,610,616, W*=12",
+      "expect_baseline": "spurious violations; v9 (all finished runs identical): violations=8,442, execs=277,121 blocked=4,721,000 explored=4,998,121",
+      "note": "H = 25 is the diameter of TLC's state graph for Delta 2, Phi 4, so the bounded hold coincides with TLC's unbounded hold. Timed explores 2.12 times the baseline's executions and takes 14.2 times its wall time (1,402 s against 98.8 s on 7 cores, medians)."
+    },
+    {
+      "cell": "D2 P4 to=13 H=28 kg w7",
+      "regime": "A-safe",
+      "label": "Threshold timeout, horizon ladder (pool of 7)",
+      "params": {
+        "D": 2,
+        "P": 4,
+        "to": 13,
+        "thr": 13,
+        "H": 28,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "on",
+        "workers": 7
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; no v9 result yet (queued on 2026-10-11); v8: execs=179,646 blocked=40,550,528 explored=40,730,174, W*=12",
+      "expect_baseline": "spurious violations; v9 (all finished runs identical): violations=45,064, execs=1,058,134 blocked=18,845,188 explored=19,903,322",
+      "note": "Timed side not measured yet in v9. With the v8 timed count the timed side explores 2.05 times the baseline's executions."
+    },
+    {
+      "cell": "D2 P4 to=13 H=31 kg w7 (largest timed that finishes)",
+      "regime": "A-safe",
+      "label": "Threshold timeout, largest horizon the timed side finished in v8 (pool of 7)",
+      "params": {
+        "D": 2,
+        "P": 4,
+        "to": 13,
+        "thr": 13,
+        "H": 31,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "on",
+        "workers": 7
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; v9 (1 run): execs=549,919 blocked=154,497,322 explored=155,047,241, W*=12",
+      "expect_baseline": "spurious violations; v9 (all finished runs identical): violations=224,861, execs=4,056,219 blocked=75,168,794 explored=79,225,013",
+      "note": "The cell name is from v8. In v9 the timed side also finished H = 34 (the ceiling cell), so H = 31 is no longer the largest. Timed explores 1.96 times the baseline's executions and takes 16.7 times its wall time (8.15 h against 29.2 min on 7 cores)."
+    },
+    {
+      "cell": "D2 P4 to=13 H=34 kg w7",
+      "regime": "A-safe",
+      "label": "Threshold timeout, top of the horizon ladder (pool of 7)",
+      "params": {
+        "D": 2,
+        "P": 4,
+        "to": 13,
+        "thr": 13,
+        "H": 34,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "on",
+        "workers": 7
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; planned under the cell name 'D2 P4 to=13 H=34 kg w7 (ceiling)'; v9 (1 run): execs=1,680,243 blocked=585,851,744 explored=587,531,987, W*=12, wall 37.3 h on 7 cores",
+      "expect_baseline": "spurious violations; planned under the cell name 'D2 P4 to=13 H=34 kg w7'; no v9 result yet (running on 2026-10-11); v8: violations=1,073,254, execs=15,600,884 blocked=299,765,359 explored=315,366,243",
+      "note": "One instance planned under two cell names: 'D2 P4 to=13 H=34 kg w7 (ceiling)' holds the timed run and 'D2 P4 to=13 H=34 kg w7' the baseline run, with the same arguments apart from the mode. The plan expected the timed run not to finish (v8 stopped it after 26 h at 56.7 million explored); in v9 it finished in 37.3 h, so H = 34 is the largest horizon the timed side finished. With the v8 baseline count the timed side explores 1.86 times the baseline's executions at H = 34 (and took about 10 times the 3.7 h of the v8 baseline run)."
+    },
+    {
+      "cell": "D2 P4 to=13 H=34 kg w7 (ceiling)",
+      "regime": "A-safe",
+      "label": "Threshold timeout, top of the horizon ladder (pool of 7)",
+      "params": {
+        "D": 2,
+        "P": 4,
+        "to": 13,
+        "thr": 13,
+        "H": 34,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "on",
+        "workers": 7
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; planned under the cell name 'D2 P4 to=13 H=34 kg w7 (ceiling)'; v9 (1 run): execs=1,680,243 blocked=585,851,744 explored=587,531,987, W*=12, wall 37.3 h on 7 cores",
+      "expect_baseline": "spurious violations; planned under the cell name 'D2 P4 to=13 H=34 kg w7'; no v9 result yet (running on 2026-10-11); v8: violations=1,073,254, execs=15,600,884 blocked=299,765,359 explored=315,366,243",
+      "note": "One instance planned under two cell names: 'D2 P4 to=13 H=34 kg w7 (ceiling)' holds the timed run and 'D2 P4 to=13 H=34 kg w7' the baseline run, with the same arguments apart from the mode. The plan expected the timed run not to finish (v8 stopped it after 26 h at 56.7 million explored); in v9 it finished in 37.3 h, so H = 34 is the largest horizon the timed side finished. With the v8 baseline count the timed side explores 1.86 times the baseline's executions at H = 34 (and took about 10 times the 3.7 h of the v8 baseline run)."
+    },
+    {
+      "cell": "boundary D2 P4 H=25 to=12 (thr-1) no-kg",
+      "regime": "A-viol",
+      "label": "One below the threshold, first-violation run",
+      "params": {
+        "D": 2,
+        "P": 4,
+        "to": 12,
+        "thr": 13,
+        "H": 25,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "off",
+        "workers": 1
+      },
+      "kind": "first-violation",
+      "expect_timed": "violation: exit code 101, certified counterexample; v9: every run fired (about 18 s)",
+      "expect_baseline": "violation: exit code 101; v9: every run fired (0.3 s)",
+      "note": "First-violation run: it stops at the first violation, so there are no execution counts, no summary line and no counters (the CSV shows viol_execs = 0; the verdict is the exit code 101). Its wall time is the time to the first violation, not a cost of the instance. The source header reports 943 of 58,533 judged executions suspecting at to = 12; the v9 run at to = 13 agrees (W*=12 attained by 943 of its 58,533 complete executions; the explored set does not depend on to)."
+    },
+    {
+      "cell": "control crashed-sender D2 P4 to=13 H=25 no-kg",
+      "regime": "A-ctrl",
+      "label": "Crashed-sender control, first-violation run",
+      "params": {
+        "D": 2,
+        "P": 4,
+        "to": 13,
+        "thr": 13,
+        "H": 25,
+        "encoding": "buffer",
+        "control": "crashed-sender",
+        "kg": "off",
+        "workers": 1
+      },
+      "kind": "first-violation",
+      "expect_timed": "violation: exit code 101, certified counterexample; v9: every run fired (0.07 s)",
+      "expect_baseline": "violation: exit code 101; v9: every run fired (under 0.01 s)",
+      "note": "First-violation run: it stops at the first violation, so there are no execution counts, no summary line and no counters (the CSV shows viol_execs = 0; the verdict is the exit code 101). Its wall time is the time to the first violation, not a cost of the instance. Filed under purpose 'boundary' in the plan, but it is a sanity control, not a boundary cell."
+    },
+    {
+      "cell": "rounds (TKW explicit-time model, untimed) D2 P4 to=13 H=16",
+      "regime": "R-ctrl",
+      "label": "Explicit-time round model without a clock (baseline side only, sequential)",
+      "params": {
+        "D": 2,
+        "P": 4,
+        "to": 13,
+        "thr": 13,
+        "H": 16,
+        "encoding": "rounds",
+        "control": "none",
+        "kg": "on",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "no timed run exists: the model has no send or receive for a clock to act on",
+      "expect_baseline": "0 violations; v9 (all finished runs identical): execs=27,445,895 blocked=0 explored=27,445,895, W*=12",
+      "note": "Filed on the baseline side of the plan but run with --mode rounds: the explicit-time model without a clock, a different program from the port, with no timed side. Its 0 violations are the true verdict, not a baseline artefact. Compare with the cell 'D2 P4 to=13 H=16 kg': its timed side explores 170,291 executions (161 times fewer) for the same verdict, and its baseline side 77,672 with 14 spurious violations."
+    },
+    {
+      "cell": "rounds (TKW explicit-time model, untimed) D2 P4 to=13 H=19",
+      "regime": "R-ctrl",
+      "label": "Explicit-time round model without a clock (baseline side only, sequential)",
+      "params": {
+        "D": 2,
+        "P": 4,
+        "to": 13,
+        "thr": 13,
+        "H": 19,
+        "encoding": "rounds",
+        "control": "none",
+        "kg": "on",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "no timed run exists: the model has no send or receive for a clock to act on",
+      "expect_baseline": "0 violations; no v9 result yet (queued on 2026-10-11); v8: execs=743,277,142 blocked=0, W*=12 (wall 3.4 h in v8)",
+      "note": "Filed on the baseline side of the plan but run with --mode rounds: the explicit-time model without a clock, a different program from the port, with no timed side. Its 0 violations are the true verdict, not a baseline artefact. Compare with the cell 'D2 P4 to=13 H=19 kg': its timed side explores 694,564 executions (1,070 times fewer than the v8 count of this cell) for the same verdict."
+    },
+    {
+      "cell": "boundary D1 P4 H=26 (R_diam) to=13 (thr) kg w7",
+      "regime": "B-safe",
+      "label": "At the threshold, exhaustive up to the diameter TLC reports (pool of 7)",
+      "params": {
+        "D": 1,
+        "P": 4,
+        "to": 13,
+        "thr": 13,
+        "H": 26,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "on",
+        "workers": 7
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; v9 (all finished runs identical): execs=70,647 blocked=12,559,125 explored=12,629,772, W*=12 (W* + 1 = 13 = thr)",
+      "expect_baseline": "spurious violations; v9 (all finished runs identical): violations=14,520, execs=369,499 blocked=6,257,367 explored=6,626,866",
+      "note": "Timed explores 1.91 times the baseline's executions and takes 12.1 times its wall time (1,762 s against 146 s on 7 cores, medians)."
+    },
+    {
+      "cell": "boundary D1 P4 H=26 to=12 (thr-1) no-kg",
+      "regime": "B-viol",
+      "label": "One below the threshold, first-violation run",
+      "params": {
+        "D": 1,
+        "P": 4,
+        "to": 12,
+        "thr": 13,
+        "H": 26,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "off",
+        "workers": 1
+      },
+      "kind": "first-violation",
+      "expect_timed": "violation: exit code 101, certified counterexample; v9: every run fired (about 25 s)",
+      "expect_baseline": "violation: exit code 101; v9: every run fired (0.3 s)",
+      "note": "First-violation run: it stops at the first violation, so there are no execution counts, no summary line and no counters (the CSV shows viol_execs = 0; the verdict is the exit code 101). Its wall time is the time to the first violation, not a cost of the instance."
+    },
+    {
+      "cell": "boundary D3 P4 H=24 (R_diam) to=15 (thr) kg w7",
+      "regime": "C-safe",
+      "label": "At the threshold, exhaustive up to the diameter TLC reports (pool of 7)",
+      "params": {
+        "D": 3,
+        "P": 4,
+        "to": 15,
+        "thr": 15,
+        "H": 24,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "on",
+        "workers": 7
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; v9 (all finished runs identical): execs=49,772 blocked=9,817,843 explored=9,867,615, W*=14 (W* + 1 = 15 = thr)",
+      "expect_baseline": "spurious violations; v9 (all finished runs identical): violations=4,377, execs=228,501 blocked=4,176,364 explored=4,404,865",
+      "note": "Timed explores 2.24 times the baseline's executions and takes 14.7 times its wall time (1,299 s against 88.6 s on 7 cores, medians)."
+    },
+    {
+      "cell": "boundary D3 P4 H=24 to=14 (thr-1) no-kg",
+      "regime": "C-viol",
+      "label": "One below the threshold, first-violation run",
+      "params": {
+        "D": 3,
+        "P": 4,
+        "to": 14,
+        "thr": 15,
+        "H": 24,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "off",
+        "workers": 1
+      },
+      "kind": "first-violation",
+      "expect_timed": "violation: exit code 101, certified counterexample; v9: every run fired (about 124 s)",
+      "expect_baseline": "violation: exit code 101; v9: every run fired (0.3 s)",
+      "note": "First-violation run: it stops at the first violation, so there are no execution counts, no summary line and no counters (the CSV shows viol_execs = 0; the verdict is the exit code 101). Its wall time is the time to the first violation, not a cost of the instance."
+    },
+    {
+      "cell": "boundary D2 P3 H=19 (R_diam) to=10 (thr) kg",
+      "regime": "D-safe",
+      "label": "At the threshold, exhaustive up to the diameter TLC reports (sequential)",
+      "params": {
+        "D": 2,
+        "P": 3,
+        "to": 10,
+        "thr": 10,
+        "H": 19,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "on",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; v9 (all finished runs identical): execs=5,610 blocked=610,479 explored=616,089, W*=9 (W* + 1 = 10 = thr)",
+      "expect_baseline": "spurious violations; v9 (all finished runs identical): violations=1,026, execs=19,294 blocked=293,918 explored=313,212",
+      "note": "Timed explores 1.97 times the baseline's executions and takes 11.4 times its wall time (347 s against 30.6 s, medians). The baseline's execs and blocked are the same as in 'D2 P4 to=13 H=19 kg': without a clock the explored set depends on H only."
+    },
+    {
+      "cell": "boundary D2 P3 H=19 to=9 (thr-1) no-kg",
+      "regime": "D-viol",
+      "label": "One below the threshold, first-violation run",
+      "params": {
+        "D": 2,
+        "P": 3,
+        "to": 9,
+        "thr": 10,
+        "H": 19,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "off",
+        "workers": 1
+      },
+      "kind": "first-violation",
+      "expect_timed": "violation: exit code 101, certified counterexample; v9: every run fired (0.8 s)",
+      "expect_baseline": "violation: exit code 101; v9: every run fired (under 0.1 s)",
+      "note": "First-violation run: it stops at the first violation, so there are no execution counts, no summary line and no counters (the CSV shows viol_execs = 0; the verdict is the exit code 101). Its wall time is the time to the first violation, not a cost of the instance."
+    },
+    {
+      "cell": "boundary D2 P2 H=14 (R_diam) to=7 (thr) kg",
+      "regime": "E-safe",
+      "label": "At the threshold, exhaustive up to the diameter TLC reports (sequential)",
+      "params": {
+        "D": 2,
+        "P": 2,
+        "to": 7,
+        "thr": 7,
+        "H": 14,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "on",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations; v9 (all finished runs identical): execs=555 blocked=36,070 explored=36,625, W*=6 (W* + 1 = 7 = thr)",
+      "expect_baseline": "spurious violations; v9 (all finished runs identical): violations=205, execs=1,839 blocked=23,273 explored=25,112",
+      "note": "Timed explores 1.46 times the baseline's executions and takes 6.8 times its wall time (12.8 s against 1.9 s, medians)."
+    },
+    {
+      "cell": "boundary D2 P2 H=14 to=6 (thr-1) no-kg",
+      "regime": "E-viol",
+      "label": "One below the threshold, first-violation run",
+      "params": {
+        "D": 2,
+        "P": 2,
+        "to": 6,
+        "thr": 7,
+        "H": 14,
+        "encoding": "buffer",
+        "control": "none",
+        "kg": "off",
+        "workers": 1
+      },
+      "kind": "first-violation",
+      "expect_timed": "violation: exit code 101, certified counterexample; v9: every run fired (0.5 s)",
+      "expect_baseline": "violation: exit code 101; v9: every run fired (0.01 s)",
+      "note": "First-violation run: it stops at the first violation, so there are no execution counts, no summary line and no counters (the CSV shows viol_execs = 0; the verdict is the exit code 101). Its wall time is the time to the first violation, not a cost of the instance."
+    }
+  ],
+  "notes": [
+    "PRECISION, NOT EFFICIENCY. On this example the timed side explores more than the baseline. Measured in results_v9.csv (explored = execs + blocked, both sides finished, same cores): timed / baseline = 2.19 (D2 P4 H=16), 2.22 (H=19), 2.18 (H=22), 2.12 (H=25), 1.96 (H=31), 1.91 (D1 P4 H=26), 2.24 (D3 P4 H=24), 1.97 (D2 P3 H=19), 1.46 (D2 P2 H=14): about 2 times, slowly falling with H. The workbook's column 'Explored ratio (baseline / timed)' therefore reads 0.45 to 0.69. Wall time: the timed side takes 6.8 to 16.7 times longer (per explored execution the timed side spends 4.6 to 8.6 times the CPU). Only the complete executions are fewer on the timed side (2.6 to 7.4 times); the difference is blocked executions. With counts from two campaigns: 2.05 at H=28 (timed v8, baseline v9) and 1.86 at H=34 (timed v9, baseline v8).",
+    "What the example shows instead: the timed side is exact on both sides of the threshold for all five (Delta, Phi) pairs, while the baseline reports violations in every cell (it fires whenever to <= 3*floor(H/3) - 1, a rule rechecked with local baseline runs at H = 10, 13, 14, 16: W* = 8, 11, 11, 14).",
+    "The source header and the memory note chandra_toueg_b41.md are older than the code on cost. Their cost table (timed 235,230 against 277,121 at H = 25, 'timed explores fewer from H = 25 on', '70 to 75% of timed explored are blocked', '56 to 3,800 times fewer than the rounds enumeration') predates the change that made every send lossy (line 689 and with_timed). The code and v9 win: at H = 25 the timed side explores 10,610,616 and the baseline 4,998,121, and the timed port explores 161 times fewer executions than the rounds enumeration at H = 16. The complete executions are unchanged (58,533 timed and 277,121 baseline at H = 25, the header's numbers): the lossy sends added blocked executions only, and the verdicts, W* values and thresholds of the header still hold in v9.",
+    "Every send is lossy on both sides (decision of 2026-09-29; line 689 for the baseline, forced by with_timed for the timed side). An execution with a dropped message always ends blocked before the judgement (the eviction guards and drain loops), so the judged executions are loss-free.",
+    "Two cells are filed on the baseline side but do not run '--mode baseline': the cells whose name starts with 'rounds' run '--mode rounds' (regime R-ctrl) and have no timed side. The workbook's header 'the baseline run is the same line with --mode baseline' does not apply to them, and their 0 violations must not be read as a baseline that happens to be right: it is a different program.",
+    "H = 34 is split over two cell names: 'D2 P4 to=13 H=34 kg w7' holds the baseline run only and 'D2 P4 to=13 H=34 kg w7 (ceiling)' the timed run only; the arguments are the same apart from the mode. Both entries carry the same regime, kind, parameters, label, expectations and note, so the workbook builder can show them as one row.",
+    "Surprise of v9: the timed ceiling run at H = 34 finished (37.3 h on 7 cores, 587,531,987 explored, 0 violations); the plan expected it not to finish and v8 stopped it after 26 h. The name of the H = 31 cell ('largest timed that finishes') is therefore out of date.",
+    "First-violation cells (kg = off): the CSV has exit code 101, viol_execs = 0, no counts and no counters, because the run panics before the summary line and prints no task line; the summary column holds the last lines of the printed execution graph. The verdict of these rows is the exit code alone.",
+    "Violation counter against the tool: on all 59 keep-going runs of v9 finished by 2026-10-11 (21 sides) the counter violations equals viol_execs, repetitions give identical counts, and impossible = 0 everywhere, so the counter is not inflated by endings without a timeline. No timed keep-going cell of the campaign has a violation; the timed violations are all shown by first-violation runs (exit code 101), which is the confirmation the counter hazard asks for.",
+    "In the port cells a violating execution is counted among the COMPLETE executions (execs), not among the blocked ones, on both sides: completed = execs in the summary line of all 59 keep-going runs, also where violations > 0 (the buffer thread fails at its last action and every other thread still runs to its end). The workbook's general glossary sentence 'They are part of the blocked executions' does not hold for these rows; it does hold for the rounds model, where the main thread fails.",
+    "Counts that do not depend on a parameter: the baseline's execs and blocked depend on H only (the cells D2 P4 H=19 and D2 P3 H=19 have the same 19,294 and 293,918), and on either side they do not depend on to (control flow never reads the timeout or the waiting time).",
+    "State of the campaign when this file was written (results_v9.csv of 2026-10-11 11:09, plan_v9.csv of 11:16): 133 plan rows for this example, 20 distinct cells, no edge row and no keeper row; repetitions 4 to 7 are planned for the pool cells. 95 result rows on 33 sides, every one with the exit code the plan expects (the ceiling run had no expectation). No v9 result yet for three sides: timed H=28 (queued), baseline H=34 (running), rounds H=19 (queued); their expectations are the v8 results and are marked as such in the cells.",
+    "v9 against v8: every finished v9 run has the execs, blocked and violation counts of the same v8 cell (58 keep-going runs) or fired like it (36 first-violation runs); the only new result is the timed ceiling at H = 34. The v8 statement 'the timed side lost at H = 34 (did not finish)' is superseded: it finishes, about 10 times slower than the v8 baseline run (37.3 h against 3.7 h).",
+    "Ground truth files (local, under the ignored docs directory): docs/research/ta_problems/need-from-user-papers/tkw-forte2021-fd-artifact/sweep, grid.csv, grid_ext.csv and grid_phi6.csv. Rechecked for this file: 1,350 TLC runs, 0 errors, the least holding timeout equals the formula on all 54 (Delta, Phi) pairs, and the diameters of the five campaign pairs are the H of the '(R_diam)' cells.",
+    "Local runs (binary of 30 September, verdicts and line formats only, no counts taken): baseline and timed D2 P2 H=14 with keep-going (task line `task-1`), rounds D2 P2 to=6 H=12 (task line `main-thread-ThreadId(1)`, and the rounds model does report violations below the threshold), the crashed-sender control on both sides (exit code 101), and the four baseline runs at to=26 named above.",
+    "The v8 plan warns that the baseline keep-going runs with many violations write a large amount of unwinding noise to stderr under the pool (about 550 MB at H = 31, about 2.2 GB at H = 34); the campaign filters it. Not rechecked here.",
+    "All parameters resolved: every cell's delta, phi, to, H, enc and control were read from its v9 summary line (v8 for the three sides without a v9 row; from the arguments for the first-violation cells, which print no summary line)."
+  ]
+}

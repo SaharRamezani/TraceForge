@@ -1,0 +1,147 @@
+{
+  "family": "legacy",
+  "example": "two_pc_timed",
+  "title": "Two-phase commit (one round, staggered votes)",
+  "source": "Own model of textbook two-phase commit: one coordinator, N participants, one round, no crashes and no timeouts (the file cites no paper). The stagger unit delta and the bounds L = 0, U = 1, sd = 0 are ours.",
+  "property": "A participant that receives Commit must have voted Yes (std assert!(yes) in the participant, line 137).",
+  "citable": "no",
+  "citable_note": "The timed mode runs a different program: only there participant i sleeps (i + 1) * delta before voting and the coordinator sleeps delta before each vote receive (lines 120-125 and 89-93), which builds by hand the vote order that the clock is then credited with removing (2^N * N! complete executions down to 2^N). The 2026-09-18 audit verdict (not citable) holds on the current source; in addition the assertion cannot fail in this model.",
+  "config_timed": "build_config, line 149: Config::builder().with_all_sends_lossy().with_timed(0, 1, 0), so L = 0, U = 1, sd = 0, fixed in the source (no flag). Tool defaults for the rest (lib.rs, ConfigBuilder::new, lines 347-383): consistency model FIFO, scheduling policy LTR, keep-going off, sequential (the binary has no parallel option). Every send may be dropped, without a budget. Every receive is blocking (recv_msg_block_timed, lines 77, 94, 115, 135): the protocol has no timeout. delta = --delta; the source requires delta >= 2 (lines 267-270).",
+  "config_baseline": "build_config, line 145: Config::builder().with_all_sends_lossy().build(): FIFO, LTR, keep-going off, sequential; every send may be dropped, without a budget. No clock. --delta is parsed and checked but has no effect in this mode.",
+  "program_differs_between_modes": "yes: two timed-only sleeps in the protocol code. (1) coordinator, lines 89-93: if mode == Mode::Timed, traceforge::sleep(delta) before each of the N vote receives. (2) participant, lines 120-125: if mode == Mode::Timed, traceforge::sleep(delta * (index + 1)) before the vote is chosen and sent. Both functions take the mode as a parameter (lines 76 and 114). The source comment at lines 90-91 gives the purpose: stagger the receive windows so that only one participant's vote is consistent with each receive.",
+  "failing_tasks": "Participant threads only: std assert!(yes) at line 137. A failure would be a Rust panic in that thread and exit code 101. It is not a traceforge::assert, so keep-going could not count it (lib.rs, lines 463-465) and no task-N line would be printed; whether such a panic is checked against the timeline in timed mode was not examined. The coordinator and the main thread assert nothing. It never fired.",
+  "counters": [
+    {
+      "key": "commit",
+      "counts": "executions",
+      "meaning": "COMMITS (line 103): explored executions, complete or blocked, in which the coordinator decided Commit. Measured: 2^N on the timed side (64, 128) and 2^N * N! on the baseline (46080; 645120 in v8), that is the one all-Yes vote vector times the 2^N loss patterns of the N decision messages (times the N! vote arrival orders in the baseline). It equals execs only by coincidence of the two formulas. Not a violation count."
+    },
+    {
+      "key": "abort",
+      "counts": "executions",
+      "meaning": "ABORTS (line 106): explored executions, complete or blocked, in which the coordinator decided Abort: (2^N - 1) vote vectors times 2^N loss patterns (times N! in the baseline), for example 63 * 64 = 4032 at N=6 timed. It exceeds execs. Not a violation count."
+    }
+  ],
+  "violation_counter": null,
+  "param_columns": [
+    {
+      "key": "N",
+      "header": "Participants N",
+      "meaning": "number of participants (--participants); one coordinator in addition",
+      "size": true
+    },
+    {
+      "key": "delta",
+      "header": "delta (ticks)",
+      "meaning": "stagger unit (--delta): participant i (from 0) sleeps (i + 1) * delta before it votes and the coordinator sleeps delta before each vote receive; timed side only",
+      "size": false
+    },
+    {
+      "key": "L",
+      "header": "L (ticks)",
+      "meaning": "transit lower bound, fixed 0 in the source; timed side only",
+      "size": false
+    },
+    {
+      "key": "U",
+      "header": "U (ticks)",
+      "meaning": "transit upper bound, fixed 1 in the source; timed side only",
+      "size": false
+    },
+    {
+      "key": "sd",
+      "header": "sd (ticks)",
+      "meaning": "storage delay, fixed 0 in the source; timed side only",
+      "size": false
+    }
+  ],
+  "boundary_law": null,
+  "regimes": [
+    {
+      "id": "S-ctrl",
+      "name": "staggered votes",
+      "params": "L=0, U=1, sd=0, delta=5 (timed side only: participant i, counted from 0, sleeps (i + 1) * 5 ticks before it votes; the coordinator sleeps 5 ticks before each vote receive)",
+      "rule": "No timing boundary: the assertion holds with and without the clock. Control for the verdict only (the two sides must agree on 0 violations). With delta >= 2 the sleeps leave one possible sender for each vote receive (file header, lines 19-32), so the N! arrival orders of the baseline collapse to one, as the measured 2^N complete executions confirm; this comes from sleeps that only the timed program contains, so the two counts do not measure what the clock removes from one program.",
+      "expect_timed": "0 violations (exit code 0); 2^N complete executions",
+      "expect_baseline": "0 violations (exit code 0); 2^N * N! complete executions"
+    }
+  ],
+  "glossary": [
+    {
+      "term": "Prepare",
+      "meaning": "the coordinator asks every participant for its vote"
+    },
+    {
+      "term": "Vote (Yes / No)",
+      "meaning": "each participant chooses its vote nondeterministically (traceforge::nondet(), line 127) and sends it once: 2^N vote vectors"
+    },
+    {
+      "term": "Decision (Commit / Abort)",
+      "meaning": "the coordinator reads N votes with blocking receives and sends Commit to all if all N are Yes, else Abort"
+    },
+    {
+      "term": "delta / stagger",
+      "meaning": "timed side only: sleeps that spread the votes and the vote receives delta ticks apart. They are part of the timed program only, which is why the comparison is not citable."
+    },
+    {
+      "term": "2^N and 2^N * N!",
+      "meaning": "complete executions of the timed side (one per vote vector) and of the baseline (vote vectors times the arrival orders of the N votes at the coordinator)"
+    },
+    {
+      "term": "commit / abort",
+      "meaning": "explored executions (complete or blocked) in which the coordinator decided Commit or Abort; they are not violation counts"
+    },
+    {
+      "term": "Blocked (in this example)",
+      "meaning": "a thread waits forever on a blocking receive because the message it needs was dropped. With every send lossy and no timeout in the protocol this is almost all of the explored executions (timed N=6: 79722 blocked, 64 complete)."
+    }
+  ],
+  "cells": [
+    {
+      "cell": "N=6 delta=5",
+      "regime": "S-ctrl",
+      "label": "6 participants",
+      "params": {
+        "N": 6,
+        "delta": 5,
+        "L": 0,
+        "U": 1,
+        "sd": 0
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=64 (2^6) blocked=79722 (explored 79786) (v9, three repetitions identical; same counts as v8)",
+      "expect_baseline": "0 violations (exit code 0); execs=46080 (2^6 * 6!) blocked=3063286 (explored 3109366) (v9, three repetitions identical; same counts as v8)",
+      "note": "The two sides run different programs (timed-only sleeps). Explored: 39 times fewer on the timed side. Not citable."
+    },
+    {
+      "cell": "N=7 delta=5 (biggest N)",
+      "regime": "S-ctrl",
+      "label": "7 participants (largest N)",
+      "params": {
+        "N": 7,
+        "delta": 5,
+        "L": 0,
+        "U": 1,
+        "sd": 0
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=128 (2^7) blocked=545914 (explored 546042) (v9, three repetitions identical; same counts as v8)",
+      "expect_baseline": "0 violations (exit code 0); execs=645120 (2^7 * 7!) blocked=84175858 (explored 84820978) (v8 and the rerun of 2026-10-08 on commit e96fe7a; no v9 result on 2026-10-11, two runs are planned)",
+      "note": "The two sides run different programs (timed-only sleeps). With the v8 baseline count the timed side explores 155 times fewer executions. Not citable."
+    }
+  ],
+  "notes": [
+    "Not citable. Audit of 2026-09-18 checked against the current source: it names lines 89 and 123; the two timed-only blocks are now at lines 89-93 (coordinator) and 120-125 (participant), the sleeps themselves at lines 92 and 124. The standing rule (memory note three_pc_delta_commit_feasibility, 2026-07-05) forbids mode-conditional sleeps in a benchmark that compares the two modes; this example breaks it by design, as its header (lines 13-32) describes.",
+    "The older memory note feedback_raft_temporal_framing describes the 2PC stagger as a reduction on the same protocol. The rule of 2026-07-05 and the audit come later and decide the matter: the sleeps exist only in the timed program.",
+    "The assertion cannot fail here: every participant sends exactly one vote and the coordinator commits only after reading N Yes votes, so a Commit implies that the receiving participant voted Yes. The binary has no switch that breaks the rule, so nothing shows the assertion failing.",
+    "The header's claim, total exploration shrinks from 2^N * N! to 2^N, is about complete executions. With every send lossy the explored counts are dominated by blocked executions: 79786 against 3109366 at N=6 (39 times), 546042 against 84820978 at N=7 (155 times, baseline from v8).",
+    "Counters: the compare output of the binary labels commit and abort \"(complete execs)\" (line 220); that label is wrong, they include blocked executions (abort=4032 with execs=64 at N=6 timed). commit + abort = 2^N * 2^N on the timed side (4096 at N=6, 16384 at N=7): every vote vector times every loss pattern of the N decision messages.",
+    "The counters are not in the counters column of results_v9.csv: the plan's counters_spec has no pattern for commit or abort, so that column is empty for this example. They are only in the summary column.",
+    "The summary line prints only the number of participants (line 179): delta, L, U and sd do not appear in it. They are resolved from the arguments (--delta 5) and from the source (with_timed(0, 1, 0), line 149). There are no ratio flags.",
+    "violation_counter is null: no summary counter counts violations. The violating-execution count 0 comes from the exit code.",
+    "kind: the binary has no keep-going option (ConfigBuilder default, lib.rs line 353), so every cell is first-violation by the rule of FORMAT.md; all finished runs exit with code 0, which means that no violation exists and the whole space was explored.",
+    "No v9 result on 2026-10-11 for the N=7 baseline (legacy-018, two runs planned); its entry uses v8.",
+    "Wall time, N=6 (medians of three v9 repetitions): timed 21 s, baseline 231 s.",
+    "Regime: one timing setting in both cells and no timing boundary, so there is one regime, S (staggered), with the suffix -ctrl (the two sides agree on 0 violations)."
+  ]
+}

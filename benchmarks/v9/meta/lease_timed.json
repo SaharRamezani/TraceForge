@@ -1,0 +1,1173 @@
+{
+  "family": "lease",
+  "example": "lease_timed",
+  "title": "TTL lease lock with fencing tokens",
+  "source": "Own model (traceforge/examples/lease_timed.rs). The scenario is the paused lease holder of M. Kleppmann, 'How to do distributed locking' (blog post, 2016), also the subject of the Jepsen etcd analyses: a client is granted a lease, pauses longer than the lease lives, and then writes with its stale token. The timing rule (the PAUSE bound) is derived in the header of the source file (lines 154 to 167); it does not come from a published table, and there are no external reference numbers.",
+  "property": "At the storage, every applied write carries a token strictly greater than the last applied one, that is, a write of a superseded lease holder is never applied after a newer holder's write (one traceforge::assert in the Storage thread, line 441).",
+  "citable": "with caveats",
+  "citable_note": "The 2026-09-18 audit lists lease as citable with the wording 'matrix-verified', not 'exact'; the current source still passes its identical-program check (the mode is read only in build_config and in main; the only sleep is the pause under study, unconditional in both modes). Caveats: own model without external reference numbers; the boundary law is pinned by measurement at five settings (C=5, R=1), not proven; with fencing off the gain is the verdict only (the timed side needs 2.0 to 6.5 times the wall time of the baseline in every unfenced cell); with fencing on, 0 violations holds by construction and the result is the smaller exploration.",
+  "config_timed": "lease_timed.rs build_config (lines 469 to 481): Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX) (line 470); .with_keep_going_after_error(true) only when --keep-going is given (lines 471 to 476); then .with_timed(L, U, sd) with the resolved ticks (line 479). All else is the tool default (traceforge/src/lib.rs, ConfigBuilder::new, lines 347 to 386): FIFO channels (line 355), scheduling policy LTR (line 356), no symmetry reduction, no loss budget: every send may be dropped, without a bound. Exploration is sequential unless --parallel shared is given, which sets .with_parallel(true) (apply_parallel, lines 460 to 467): the shared work-queue pool, sized by MUST_PARALLEL_WORKERS or else by the number of CPUs the process may use (exec_pool.rs lines 379 to 385); the campaign scripts do not set the variable and pin every job to its cores, so the pool has one worker per core of the job. Timers of the program: the service waits TTL ticks for the holder's Release (WaitTime::Finite(ttl), lines 340 to 343) and client 0 sleeps PAUSE ticks after reading its Grant (lines 406 to 408); every other receive is a blocking timed receive.",
+  "config_baseline": "The same builder without .with_timed (line 478: builder.build()): FIFO channels, scheduling policy LTR, every send lossy (with_all_sends_lossy at line 470 is set for both modes so that both check the same network), keep-going and --parallel exactly as on the timed side of the same cell. No clock: the tool ignores all timing information (lib.rs lines 549 to 551), so U, L, sd, TTL and PAUSE have no effect, the service's wait for the Release may end at any moment, and the baseline result depends only on C, R and fencing (measured: identical counts in settings A to E).",
+  "program_differs_between_modes": "no: the mode is read only in build_config (lines 477 to 480) and in the dispatch of main; no protocol function takes it, and the only sleep (client 0's pause, lines 406 to 408) is unconditional",
+  "failing_tasks": "Only the Storage thread asserts (line 441). It is the first thread the main closure spawns (line 523), so under keep-going every violating execution prints the line `task-1` (seen in local runs of the C=2 cells in both modes). Clients and the service contain only panics on messages the protocol cannot produce. Without --keep-going the first violation ends the process with exit code 101 and no summary line; in timed mode the message is 'assertion failed (certified timed counterexample; graph and witness above)' after a block 'Certified witness timeline'.",
+  "counters": [
+    {
+      "key": "violations",
+      "counts": "executions",
+      "meaning": "STALE_APPLIED: raised just before the assertion when the storage is about to apply a write whose token is not above the last applied one (lines 437 to 441). The failed assertion ends the execution, so it counts each violating execution once. Equal to the tool's count in every sequential v9 run; in some shared-pool runs the tool's line count is lower by a few (see notes). Always 0 with fencing on."
+    },
+    {
+      "key": "stale",
+      "counts": "events",
+      "meaning": "STALE_REJECTED: writes the storage refused because their token was below the last applied one (fencing check, lines 431 to 435), summed over all explored executions, complete and blocked; several per execution are possible. Always 0 with fencing off. Not a violation: it shows that the stale write was reached and defused."
+    },
+    {
+      "key": "expired",
+      "counts": "events",
+      "meaning": "EXPIRED: waits of the lock service for a Release that ended without one (lines 349 to 354), summed over all explored executions; up to C*R per execution. Not a violation, and not evidence that the pause made a lease expire: every send may be dropped, and a dropped Grant or Release also ends in an expiry."
+    }
+  ],
+  "violation_counter": "violations",
+  "param_columns": [
+    {
+      "key": "C",
+      "header": "Clients C",
+      "meaning": "number of clients competing for the lease (--clients); client 0 is the one that pauses, the others never pause",
+      "size": true
+    },
+    {
+      "key": "R",
+      "header": "Rounds R",
+      "meaning": "lease rounds (--rounds): in every round each client acquires the lease, writes once and releases; the threads live across rounds",
+      "size": true
+    },
+    {
+      "key": "fencing",
+      "header": "Fencing",
+      "meaning": "on: the storage rejects a write whose token is below the last applied one (counted in stale); off: it applies every write, and the assertion is the mutual-exclusion property (--fencing)",
+      "size": false
+    },
+    {
+      "key": "U",
+      "header": "U (ticks)",
+      "meaning": "upper bound of the transit time of every message (--u); like every tick value it matters on the timed side only",
+      "size": false
+    },
+    {
+      "key": "L",
+      "header": "L (ticks)",
+      "meaning": "lower bound of the transit time, round(l-ratio * U) (--l-ratio)",
+      "size": false
+    },
+    {
+      "key": "sd",
+      "header": "sd (ticks)",
+      "meaning": "storage delay: how long a message stays readable after it arrived, round(sd-ratio * U) (--sd-ratio)",
+      "size": false
+    },
+    {
+      "key": "TTL",
+      "header": "TTL (ticks)",
+      "meaning": "lifetime of a lease = how long the lock service waits for the holder's Release before it grants the next client, round(ttl-ratio * U) (--ttl-ratio)",
+      "size": false
+    },
+    {
+      "key": "PAUSE",
+      "header": "PAUSE (ticks)",
+      "meaning": "how long client 0 stalls between reading its Grant and sending its write, round(pause-ratio * U) (--pause-ratio)",
+      "size": false
+    },
+    {
+      "key": "bound",
+      "header": "PAUSE bound (ticks)",
+      "meaning": "derived, not a flag: TTL - 2(U - L + sd), the smallest PAUSE at which the unfenced protocol violates in timed mode; any PAUSE below it is safe",
+      "size": false
+    }
+  ],
+  "boundary_law": "With fencing off, the timed side reports a violation exactly when PAUSE >= TTL - 2(U - L + sd) (all in ticks), at every round count R; with fencing on there is no boundary. Origin: the header of lease_timed.rs (lines 154 to 167): the write of the paused holder can still be read at the storage up to grant_send + PAUSE + 2(U + sd), the next holder's write cannot be read before grant_send + TTL + 2L, and the violation is realizable exactly when the first reaches the second (equality counts as a violation). The source calls the rule matrix-verified, for R in {1,2}, U in {1,2}, L in {0,U}, sd in {0,1}. Checked in v9 (commit b67ccf7, C=5, R=1, exhaustive runs, timed side): in each of the five settings 0 violating executions at PAUSE = bound - 1 and above 0 at PAUSE = bound. A: bound 4, PAUSE 3 safe (0), PAUSE 4 violating (48240). B: bound 8, PAUSE 7 safe (0), PAUSE 8 violating (41760). C: bound 6, PAUSE 5 safe (0), PAUSE 6 violating (34416). D: bound 2, PAUSE 1 safe (0), PAUSE 2 violating (48240). E: bound 10, PAUSE 9 safe (0), PAUSE 10 violating (29160). Also at setting A: without keep-going the timed side explores everything at PAUSE 3 (C=4, exit code 0) and stops with a certified counterexample at PAUSE 4 (C=6, exit code 101); the safe side (PAUSE 3) has 0 violations at every size measured: C=2 R=1, C=2 R=3, C=2 R=4, C=2 R=5, C=2 R=6, C=3 R=1, C=3 R=2, C=4 R=1, C=4 R=2, C=5 R=1 in v9, C=3 R=3, C=6 R=1 in v8 only so far. Not measured in this campaign: pauses further away from the bound, the violating side with R >= 2, settings B, C, D with fencing on, and TTL varied independently of U.",
+  "regimes": [
+    {
+      "id": "A-safe",
+      "name": "Unfenced, setting A (transit 0 to 2 ticks, storage delay 1, TTL 10), pause one tick below the bound",
+      "params": "U=2, L=0, sd=1, TTL=10, PAUSE=3, fencing off",
+      "rule": "bound = TTL - 2(U - L + sd) = 10 - 2(2 - 0 + 1) = 4; PAUSE = 3 = bound - 1: the largest safe pause, safe side of the boundary",
+      "expect_timed": "0 violations (v9, C=5 R=1: 0 violating executions, execs=29160 blocked=1601917)",
+      "expect_baseline": "violations above 0, for a reason that has nothing to do with the setting: the baseline has no clock, its wait for the Release can end at any moment, so the write of a superseded holder can always arrive after the next holder's. The count is the same in every setting (C=5, R=1: 943680); in this regime they are spurious: real time rules them out"
+    },
+    {
+      "id": "A-viol",
+      "name": "Unfenced, setting A (transit 0 to 2 ticks, storage delay 1, TTL 10), pause at the bound",
+      "params": "U=2, L=0, sd=1, TTL=10, PAUSE=4, fencing off",
+      "rule": "bound = TTL - 2(U - L + sd) = 10 - 2(2 - 0 + 1) = 4; PAUSE = 4 = bound: exactly on the boundary (the tie), which the rule and the tool put on the violating side; it is the smallest violating pause",
+      "expect_timed": "violations above 0 (v9, C=5 R=1: 48240 violating executions, execs=29160 blocked=1650157); without keep-going the run stops with exit code 101 and a certified witness timeline",
+      "expect_baseline": "violations above 0, for a reason that has nothing to do with the setting: the baseline has no clock, its wait for the Release can end at any moment, so the write of a superseded holder can always arrive after the next holder's. The count is the same in every setting (C=5, R=1: 943680); in this regime a violation is real, but the baseline number is not the number of real ones (timed: 48240)"
+    },
+    {
+      "id": "A-ctrl",
+      "name": "Fenced, setting A (transit 0 to 2 ticks, storage delay 1, TTL 10), pause at the bound",
+      "params": "U=2, L=0, sd=1, TTL=10, PAUSE=4, fencing on",
+      "rule": "bound = TTL - 2(U - L + sd) = 10 - 2(2 - 0 + 1) = 4; PAUSE = 4 = bound, the pause at which the unfenced protocol breaks; with fencing on the protocol is safe without any timing assumption, so there is no boundary: control regime for the verdict",
+      "expect_timed": "0 violations (the assertion cannot fail with fencing on); stale above 0: the stale write is reached and rejected by the storage",
+      "expect_baseline": "0 violations (same reason); stale above 0. The two sides agree on the verdict, not on the counts: the baseline explores 0.95 to 12.40 times the executions of the timed side (only at C=2 R=1 the timed side explores slightly more)"
+    },
+    {
+      "id": "B-safe",
+      "name": "Unfenced, setting B (transit exactly 2 ticks, storage delay 1, TTL 10), pause one tick below the bound",
+      "params": "U=2, L=2, sd=1, TTL=10, PAUSE=7, fencing off",
+      "rule": "bound = TTL - 2(U - L + sd) = 10 - 2(2 - 2 + 1) = 8; PAUSE = 7 = bound - 1: the largest safe pause, safe side of the boundary",
+      "expect_timed": "0 violations (v9, C=5 R=1: 0 violating executions, execs=19440 blocked=1356981)",
+      "expect_baseline": "violations above 0, for a reason that has nothing to do with the setting: the baseline has no clock, its wait for the Release can end at any moment, so the write of a superseded holder can always arrive after the next holder's. The count is the same in every setting (C=5, R=1: 943680); in this regime they are spurious: real time rules them out"
+    },
+    {
+      "id": "B-viol",
+      "name": "Unfenced, setting B (transit exactly 2 ticks, storage delay 1, TTL 10), pause at the bound",
+      "params": "U=2, L=2, sd=1, TTL=10, PAUSE=8, fencing off",
+      "rule": "bound = TTL - 2(U - L + sd) = 10 - 2(2 - 2 + 1) = 8; PAUSE = 8 = bound: exactly on the boundary (the tie), which the rule and the tool put on the violating side; it is the smallest violating pause",
+      "expect_timed": "violations above 0 (v9, C=5 R=1: 41760 violating executions, execs=19440 blocked=1398741); without keep-going the run stops with exit code 101 and a certified witness timeline",
+      "expect_baseline": "violations above 0, for a reason that has nothing to do with the setting: the baseline has no clock, its wait for the Release can end at any moment, so the write of a superseded holder can always arrive after the next holder's. The count is the same in every setting (C=5, R=1: 943680); in this regime a violation is real, but the baseline number is not the number of real ones (timed: 41760)"
+    },
+    {
+      "id": "C-safe",
+      "name": "Unfenced, setting C (transit 0 to 2 ticks, no storage delay, TTL 10), pause one tick below the bound",
+      "params": "U=2, L=0, sd=0, TTL=10, PAUSE=5, fencing off",
+      "rule": "bound = TTL - 2(U - L + sd) = 10 - 2(2 - 0 + 0) = 6; PAUSE = 5 = bound - 1: the largest safe pause, safe side of the boundary",
+      "expect_timed": "0 violations (v9, C=5 R=1: 0 violating executions, execs=5760 blocked=840133)",
+      "expect_baseline": "violations above 0, for a reason that has nothing to do with the setting: the baseline has no clock, its wait for the Release can end at any moment, so the write of a superseded holder can always arrive after the next holder's. The count is the same in every setting (C=5, R=1: 943680); in this regime they are spurious: real time rules them out"
+    },
+    {
+      "id": "C-viol",
+      "name": "Unfenced, setting C (transit 0 to 2 ticks, no storage delay, TTL 10), pause at the bound",
+      "params": "U=2, L=0, sd=0, TTL=10, PAUSE=6, fencing off",
+      "rule": "bound = TTL - 2(U - L + sd) = 10 - 2(2 - 0 + 0) = 6; PAUSE = 6 = bound: exactly on the boundary (the tie), which the rule and the tool put on the violating side; it is the smallest violating pause",
+      "expect_timed": "violations above 0 (v9, C=5 R=1: 34416 violating executions, execs=5760 blocked=874549); without keep-going the run stops with exit code 101 and a certified witness timeline",
+      "expect_baseline": "violations above 0, for a reason that has nothing to do with the setting: the baseline has no clock, its wait for the Release can end at any moment, so the write of a superseded holder can always arrive after the next holder's. The count is the same in every setting (C=5, R=1: 943680); in this regime a violation is real, but the baseline number is not the number of real ones (timed: 34416)"
+    },
+    {
+      "id": "D-safe",
+      "name": "Unfenced, setting D (transit 0 to 1 tick, storage delay 1, TTL 6), pause one tick below the bound",
+      "params": "U=1, L=0, sd=1, TTL=6, PAUSE=1, fencing off",
+      "rule": "bound = TTL - 2(U - L + sd) = 6 - 2(1 - 0 + 1) = 2; PAUSE = 1 = bound - 1: the largest safe pause, safe side of the boundary",
+      "expect_timed": "0 violations (v9, C=5 R=1: 0 violating executions, execs=29160 blocked=1601917)",
+      "expect_baseline": "violations above 0, for a reason that has nothing to do with the setting: the baseline has no clock, its wait for the Release can end at any moment, so the write of a superseded holder can always arrive after the next holder's. The count is the same in every setting (C=5, R=1: 943680); in this regime they are spurious: real time rules them out"
+    },
+    {
+      "id": "D-viol",
+      "name": "Unfenced, setting D (transit 0 to 1 tick, storage delay 1, TTL 6), pause at the bound",
+      "params": "U=1, L=0, sd=1, TTL=6, PAUSE=2, fencing off",
+      "rule": "bound = TTL - 2(U - L + sd) = 6 - 2(1 - 0 + 1) = 2; PAUSE = 2 = bound: exactly on the boundary (the tie), which the rule and the tool put on the violating side; it is the smallest violating pause",
+      "expect_timed": "violations above 0 (v9, C=5 R=1: 48240 violating executions, execs=29160 blocked=1650157); without keep-going the run stops with exit code 101 and a certified witness timeline",
+      "expect_baseline": "violations above 0, for a reason that has nothing to do with the setting: the baseline has no clock, its wait for the Release can end at any moment, so the write of a superseded holder can always arrive after the next holder's. The count is the same in every setting (C=5, R=1: 943680); in this regime a violation is real, but the baseline number is not the number of real ones (timed: 48240)"
+    },
+    {
+      "id": "E-safe",
+      "name": "Unfenced, setting E (transit exactly 2 ticks, no storage delay, TTL 10), pause one tick below the bound",
+      "params": "U=2, L=2, sd=0, TTL=10, PAUSE=9, fencing off",
+      "rule": "bound = TTL - 2(U - L + sd) = 10 - 2(2 - 2 + 0) = 10; PAUSE = 9 = bound - 1: the largest safe pause, safe side of the boundary",
+      "expect_timed": "0 violations (v9, C=5 R=1: 0 violating executions, execs=3840 blocked=702016)",
+      "expect_baseline": "violations above 0, for a reason that has nothing to do with the setting: the baseline has no clock, its wait for the Release can end at any moment, so the write of a superseded holder can always arrive after the next holder's. The count is the same in every setting (C=5, R=1: 943680); in this regime they are spurious: real time rules them out"
+    },
+    {
+      "id": "E-viol",
+      "name": "Unfenced, setting E (transit exactly 2 ticks, no storage delay, TTL 10), pause at the bound",
+      "params": "U=2, L=2, sd=0, TTL=10, PAUSE=10, fencing off",
+      "rule": "bound = TTL - 2(U - L + sd) = 10 - 2(2 - 2 + 0) = 10; PAUSE = 10 = bound: exactly on the boundary (the tie), which the rule and the tool put on the violating side; it is the smallest violating pause",
+      "expect_timed": "violations above 0 (v9, C=5 R=1: 29160 violating executions, execs=3840 blocked=708136); without keep-going the run stops with exit code 101 and a certified witness timeline",
+      "expect_baseline": "violations above 0, for a reason that has nothing to do with the setting: the baseline has no clock, its wait for the Release can end at any moment, so the write of a superseded holder can always arrive after the next holder's. The count is the same in every setting (C=5, R=1: 943680); in this regime a violation is real, but the baseline number is not the number of real ones (timed: 29160)"
+    },
+    {
+      "id": "E-ctrl",
+      "name": "Fenced, setting E (transit exactly 2 ticks, no storage delay, TTL 10), pause at the bound",
+      "params": "U=2, L=2, sd=0, TTL=10, PAUSE=10, fencing on",
+      "rule": "bound = TTL - 2(U - L + sd) = 10 - 2(2 - 2 + 0) = 10; PAUSE = 10 = bound, the pause at which the unfenced protocol breaks; with fencing on the protocol is safe without any timing assumption, so there is no boundary: control regime for the verdict",
+      "expect_timed": "0 violations (the assertion cannot fail with fencing on); stale above 0: the stale write is reached and rejected by the storage",
+      "expect_baseline": "0 violations (same reason); stale above 0. The two sides agree on the verdict, not on the counts: the baseline explores 5.69 to 15.50 times the executions of the timed side"
+    }
+  ],
+  "glossary": [
+    {
+      "term": "tick",
+      "meaning": "the integer time unit of the timed mode; U, L, sd, TTL, PAUSE and the bound are all in ticks. The ratio flags are multiplied by U and rounded (lease_timed.rs lines 270 to 285)"
+    },
+    {
+      "term": "lease, TTL",
+      "meaning": "the right to write to the storage, granted to one client at a time by the lock service; it lives TTL ticks: if no Release of the holder arrives within TTL after the Grant was sent, the service treats the lease as expired and grants the next client"
+    },
+    {
+      "term": "token",
+      "meaning": "the number issued with each Grant, increasing by one per grant across all rounds; a client attaches its token to its write"
+    },
+    {
+      "term": "fencing (fenced, unfenced)",
+      "meaning": "fenced: the storage compares the token of each write with the last applied one and rejects a smaller one, which makes the protocol safe without any timing assumption. Unfenced: the storage applies every write, and safety depends on PAUSE against TTL"
+    },
+    {
+      "term": "pause, pauser",
+      "meaning": "client 0 stalls for PAUSE ticks (a garbage-collection pause or scheduling stall) after reading its Grant and before it writes; the phenomenon under study and the only sleep in the program"
+    },
+    {
+      "term": "PAUSE bound ('bnd' in the cell names)",
+      "meaning": "TTL - 2(U - L + sd): the unfenced protocol is safe for PAUSE < bound and violating for PAUSE >= bound. 'bnd-1' in a cell name is the largest safe pause, 'bnd' the smallest violating one"
+    },
+    {
+      "term": "setting A to E (the regime letter)",
+      "meaning": "the five network timing settings. A: U=2, L=0, sd=1, TTL=10 (bound 4). B: U=2, L=2, sd=1, TTL=10 (bound 8). C: U=2, L=0, sd=0, TTL=10 (bound 6). D: U=1, L=0, sd=1, TTL=6 (bound 2). E: U=2, L=2, sd=0, TTL=10 (bound 10)"
+    },
+    {
+      "term": "regime suffix in this example",
+      "meaning": "-safe: unfenced, PAUSE = bound - 1. -viol: unfenced, PAUSE = bound. -ctrl: fenced, PAUSE = bound. So the Fencing column is off for -safe and -viol and on for -ctrl"
+    },
+    {
+      "term": "stale write",
+      "meaning": "a write whose token is below the last applied one: its sender was superseded by a newer holder. Applied (a violation) when unfenced, rejected and counted in stale when fenced"
+    },
+    {
+      "term": "violations (counter)",
+      "meaning": "violating executions as counted by the program itself, one per execution in which the storage was about to apply a stale write"
+    },
+    {
+      "term": "stale (counter)",
+      "meaning": "stale writes rejected by the fencing check, counted as events over all explored executions; above 0 means the dangerous interleaving was explored and defused"
+    },
+    {
+      "term": "expired (counter)",
+      "meaning": "waits for a Release that ran out, counted as events over all explored executions; a lost Grant or Release expires a lease too, so this is not a measure of the pause"
+    },
+    {
+      "term": "grants, released, applied (summary line only)",
+      "meaning": "further event counts printed by the example: Grants sent, Releases received in time, writes applied; all summed over complete and blocked executions"
+    },
+    {
+      "term": "blocked execution (this example)",
+      "meaning": "an execution in which some thread waits forever for a message that was dropped or is no longer readable (a client for its RoundStart, Grant or WriteAck, the service for an Acquire, the storage for a write), or, under keep-going, in which the assertion failed. Every send can be dropped, so most explored executions are blocked"
+    },
+    {
+      "term": "headline, clients ladder, rounds ladder, ceiling",
+      "meaning": "roles of the cells: the headline cells are C=5 and C=6 with R=1; the clients ladder raises C with R=1; the rounds ladder raises R at C=2, 3, 4; the ceiling cells are the largest sizes tried (C=7 R=1, C=2 R=6, C=3 R=3, C=4 R=2)"
+    },
+    {
+      "term": "REVIEW cells",
+      "meaning": "repeats of an existing instance with the other exploration option (the C=4 rung on the shared pool, the C=5 headline sequentially), added so that each ladder can be read with one option throughout; their counts equal those of the original cell"
+    }
+  ],
+  "cells": [
+    {
+      "cell": "unfenced A(U2 L0 sd1 TTL10) PAUSE=3 keep-going C=5 R=1",
+      "regime": "A-safe",
+      "label": "Headline: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 5,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 3,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=29160 blocked=1601917 (explored 1631077); expired=6838200 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: 943680 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=29160 blocked=1852696 (explored 1881856); expired=8019120 (v9, 3 runs identical)",
+      "note": "Violating-side partner one tick higher: 'boundary A PAUSE=4=bnd keep-going C=5 R=1'."
+    },
+    {
+      "cell": "unfenced A(U2 L0 sd1 TTL10) PAUSE=3 keep-going C=6 R=1",
+      "regime": "A-safe",
+      "label": "Headline: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 6,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 3,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=524880 blocked=67394585 (explored 67919465); expired=345178800 (v8 rerun on e96fe7a; v9 run not finished at the time of writing)",
+      "expect_baseline": "violations above 0: violations counter 51560640, exit code 0 under keep-going; execs=524880 blocked=84662384 (explored 85187264); expired=438354000 (v8 rerun on e96fe7a; v9 run not finished at the time of writing)",
+      "note": "Violating-side partner one tick higher: 'boundary A PAUSE=4=bnd keep-going C=6 R=1'. Timed side: v9 run not finished at the time of writing; the numbers given are from the v8 rerun on e96fe7a. Baseline side: v9 run not finished at the time of writing; the numbers given are from the v8 rerun on e96fe7a."
+    },
+    {
+      "cell": "fenced A PAUSE=4 C=5 R=1",
+      "regime": "A-ctrl",
+      "label": "Headline: fenced, pause at the bound",
+      "params": {
+        "C": 5,
+        "R": 1,
+        "fencing": "on",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 4,
+        "bound": 4
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=42792 blocked=1877293 (explored 1920085); expired=8026200, stale=289008 (v9, 3 runs identical)",
+      "expect_baseline": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=1247400 blocked=11769496 (explored 13016896); expired=57373920, stale=26282880 (v9, 3 runs identical)",
+      "note": "Fenced: the assertion cannot fail, read the stale counter (stale writes reached and rejected). No --keep-going flag (kind first-violation by the flag rule), but nothing fails, so both sides explore everything. Unfenced twin at the same pause and size: 'boundary A PAUSE=4=bnd keep-going C=5 R=1'."
+    },
+    {
+      "cell": "fenced A PAUSE=4 C=6 R=1",
+      "regime": "A-ctrl",
+      "label": "Headline: fenced, pause at the bound",
+      "params": {
+        "C": 6,
+        "R": 1,
+        "fencing": "on",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 4,
+        "bound": 4
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=787440 blocked=79674065 (explored 80461505); expired=407327400, stale=12542040 (v8 rerun on e96fe7a; v9 run not finished at the time of writing)",
+      "expect_baseline": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=97297200 blocked=1397595344 (explored 1494892544); expired=7997771520, stale=4146785280 (v8 campaign; v9 run not finished at the time of writing)",
+      "note": "Fenced: the assertion cannot fail, read the stale counter (stale writes reached and rejected). No --keep-going flag (kind first-violation by the flag rule), but nothing fails, so both sides explore everything. Unfenced twin at the same pause and size: 'boundary A PAUSE=4=bnd keep-going C=6 R=1'. Timed side: v9 run not finished at the time of writing; the numbers given are from the v8 rerun on e96fe7a. Baseline side: v9 run not finished at the time of writing; the numbers given are from the v8 campaign."
+    },
+    {
+      "cell": "unfenced A PAUSE=3 keep-going C=2 R=1",
+      "regime": "A-safe",
+      "label": "Clients ladder: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 2,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 3,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=18 blocked=103 (explored 121); expired=134 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: 8 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=18 blocked=90 (explored 108); expired=134 (v9, 3 runs identical)",
+      "note": ""
+    },
+    {
+      "cell": "fenced A PAUSE=4 C=2 R=1",
+      "regime": "A-ctrl",
+      "label": "Clients ladder: fenced, pause at the bound",
+      "params": {
+        "C": 2,
+        "R": 1,
+        "fencing": "on",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 4,
+        "bound": 4
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=22 blocked=108 (explored 130); expired=149, stale=9 (v9, 3 runs identical)",
+      "expect_baseline": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=30 blocked=94 (explored 124); expired=162, stale=24 (v9, 3 runs identical)",
+      "note": "Fenced: the assertion cannot fail, read the stale counter (stale writes reached and rejected). No --keep-going flag (kind first-violation by the flag rule), but nothing fails, so both sides explore everything. The unfenced cell of this size runs one tick lower (safe side), so that pair differs in fencing and in PAUSE."
+    },
+    {
+      "cell": "unfenced A PAUSE=3 keep-going C=3 R=1",
+      "regime": "A-safe",
+      "label": "Clients ladder: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 3,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 3,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=162 blocked=1771 (explored 1933); expired=4182 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: 408 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=162 blocked=1686 (explored 1848); expired=4314 (v9, 3 runs identical)",
+      "note": ""
+    },
+    {
+      "cell": "fenced A PAUSE=4 C=3 R=1",
+      "regime": "A-ctrl",
+      "label": "Clients ladder: fenced, pause at the bound",
+      "params": {
+        "C": 3,
+        "R": 1,
+        "fencing": "on",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 4,
+        "bound": 4
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=218 blocked=1967 (explored 2185); expired=4800, stale=252 (v9, 3 runs identical)",
+      "expect_baseline": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=630 blocked=2538 (explored 3168); expired=7776, stale=2160 (v9, 3 runs identical)",
+      "note": "Fenced: the assertion cannot fail, read the stale counter (stale writes reached and rejected). No --keep-going flag (kind first-violation by the flag rule), but nothing fails, so both sides explore everything. The unfenced cell of this size runs one tick lower (safe side), so that pair differs in fencing and in PAUSE."
+    },
+    {
+      "cell": "unfenced A PAUSE=3 keep-going C=4 R=1",
+      "regime": "A-safe",
+      "label": "Clients ladder: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 4,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 3,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=1944 blocked=46313 (explored 48257); expired=156072 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: 19008 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=1944 blocked=48984 (explored 50928); expired=170352 (v9, 3 runs identical)",
+      "note": ""
+    },
+    {
+      "cell": "fenced A PAUSE=4 C=4 R=1",
+      "regime": "A-ctrl",
+      "label": "Clients ladder: fenced, pause at the bound",
+      "params": {
+        "C": 4,
+        "R": 1,
+        "fencing": "on",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 4,
+        "bound": 4
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=2760 blocked=53327 (explored 56087); expired=181704, stale=7830 (v9, 3 runs identical)",
+      "expect_baseline": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=22680 blocked=138840 (explored 161520); expired=559440, stale=212544 (v9, 3 runs identical)",
+      "note": "Fenced: the assertion cannot fail, read the stale counter (stale writes reached and rejected). No --keep-going flag (kind first-violation by the flag rule), but nothing fails, so both sides explore everything. The unfenced cell of this size runs one tick lower (safe side), so that pair differs in fencing and in PAUSE."
+    },
+    {
+      "cell": "REVIEW: unfenced A PAUSE=3 keep-going C=4 R=1 shared-8 (uniform ladder)",
+      "regime": "A-safe",
+      "label": "Clients ladder, shared-pool repeat of the sequential rung: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 4,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 3,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=1944 blocked=46313 (explored 48257); expired=156072 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: 19008 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=1944 blocked=48984 (explored 50928); expired=170352 (v9, 3 runs identical)",
+      "note": "Same instance as 'unfenced A PAUSE=3 keep-going C=4 R=1', which runs sequentially; only the exploration option differs and the counts are identical."
+    },
+    {
+      "cell": "REVIEW: fenced A PAUSE=4 C=4 R=1 shared-8 (uniform ladder)",
+      "regime": "A-ctrl",
+      "label": "Clients ladder, shared-pool repeat of the sequential rung: fenced, pause at the bound",
+      "params": {
+        "C": 4,
+        "R": 1,
+        "fencing": "on",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 4,
+        "bound": 4
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=2760 blocked=53327 (explored 56087); expired=181704, stale=7830 (v9, 3 runs identical)",
+      "expect_baseline": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=22680 blocked=138840 (explored 161520); expired=559440, stale=212544 (v9, 3 runs identical)",
+      "note": "Same instance as 'fenced A PAUSE=4 C=4 R=1', which runs sequentially; only the exploration option differs and the counts are identical. Fenced: the assertion cannot fail, read the stale counter (stale writes reached and rejected). No --keep-going flag (kind first-violation by the flag rule), but nothing fails, so both sides explore everything. The unfenced cell of this size runs one tick lower (safe side), so that pair differs in fencing and in PAUSE."
+    },
+    {
+      "cell": "REVIEW: unfenced A PAUSE=3 keep-going C=5 R=1 sequential single-core reference",
+      "regime": "A-safe",
+      "label": "Sequential repeat of the headline cell: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 5,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 3,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=29160 blocked=1601917 (explored 1631077); expired=6838200 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: 943680 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=29160 blocked=1852696 (explored 1881856); expired=8019120 (v9, 3 runs identical)",
+      "note": "Same instance as 'unfenced A(U2 L0 sd1 TTL10) PAUSE=3 keep-going C=5 R=1', which runs on the shared pool; only the exploration option differs and the counts are identical."
+    },
+    {
+      "cell": "REVIEW: fenced A PAUSE=4 C=5 R=1 sequential single-core reference",
+      "regime": "A-ctrl",
+      "label": "Sequential repeat of the headline cell: fenced, pause at the bound",
+      "params": {
+        "C": 5,
+        "R": 1,
+        "fencing": "on",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 4,
+        "bound": 4
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=42792 blocked=1877293 (explored 1920085); expired=8026200, stale=289008 (v9, 3 runs identical)",
+      "expect_baseline": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=1247400 blocked=11769496 (explored 13016896); expired=57373920, stale=26282880 (v9, 3 runs identical)",
+      "note": "Same instance as 'fenced A PAUSE=4 C=5 R=1', which runs on the shared pool; only the exploration option differs and the counts are identical. Fenced: the assertion cannot fail, read the stale counter (stale writes reached and rejected). No --keep-going flag (kind first-violation by the flag rule), but nothing fails, so both sides explore everything. Unfenced twin at the same pause and size: 'boundary A PAUSE=4=bnd keep-going C=5 R=1'."
+    },
+    {
+      "cell": "unfenced E(U2 L2 sd0 TTL10) PAUSE=9 keep-going C=4 R=1",
+      "regime": "E-safe",
+      "label": "Clients ladder: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 4,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 2,
+        "sd": 0,
+        "TTL": 10,
+        "PAUSE": 9,
+        "bound": 10
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=384 blocked=23856 (explored 24240); expired=80592 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: 19008 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=1944 blocked=48984 (explored 50928); expired=170352 (v9, 3 runs identical)",
+      "note": "Baseline side: the same computation as in setting A at this size and fencing (the baseline ignores every tick value)."
+    },
+    {
+      "cell": "unfenced E PAUSE=9 keep-going C=5 R=1",
+      "regime": "E-safe",
+      "label": "Clients ladder: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 5,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 2,
+        "sd": 0,
+        "TTL": 10,
+        "PAUSE": 9,
+        "bound": 10
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=3840 blocked=702016 (explored 705856); expired=2990976 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: violations counter 943680 in every run; tool line count 943679 to 943680 (shared pool, see notes), exit code 0 under keep-going; execs=29160 blocked=1852696 (explored 1881856); expired=8019120 (v9, 3 runs identical)",
+      "note": "Baseline side: the same computation as in setting A at this size and fencing (the baseline ignores every tick value). Violating-side partner one tick higher: 'boundary E PAUSE=10=bnd keep-going C=5 R=1'. Baseline side: the tool's line count (943679 to 943680 over 3 runs) is below the violations counter (943680, the same in every run); quote the counter."
+    },
+    {
+      "cell": "unfenced E PAUSE=9 keep-going C=6 R=1",
+      "regime": "E-safe",
+      "label": "Clients ladder: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 6,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 2,
+        "sd": 0,
+        "TTL": 10,
+        "PAUSE": 9,
+        "bound": 10
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=46080 blocked=25193984 (explored 25240064); expired=128492160 (v8 rerun on e96fe7a; v9 run not finished at the time of writing)",
+      "expect_baseline": "violations above 0: violations counter 51560640, exit code 0 under keep-going; execs=524880 blocked=84662384 (explored 85187264); expired=438354000 (v8 rerun on e96fe7a; v9 run not finished at the time of writing)",
+      "note": "Baseline side: the same computation as in setting A at this size and fencing (the baseline ignores every tick value). Timed side: v9 run not finished at the time of writing; the numbers given are from the v8 rerun on e96fe7a. Baseline side: v9 run not finished at the time of writing; the numbers given are from the v8 rerun on e96fe7a."
+    },
+    {
+      "cell": "fenced E PAUSE=10 C=4 R=1",
+      "regime": "E-ctrl",
+      "label": "Clients ladder: fenced, pause at the bound",
+      "params": {
+        "C": 4,
+        "R": 1,
+        "fencing": "on",
+        "U": 2,
+        "L": 2,
+        "sd": 0,
+        "TTL": 10,
+        "PAUSE": 10,
+        "bound": 10
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=672 blocked=27708 (explored 28380); expired=94188, stale=5076 (v9, 3 runs identical)",
+      "expect_baseline": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=22680 blocked=138840 (explored 161520); expired=559440, stale=212544 (v9, 3 runs identical)",
+      "note": "Fenced: the assertion cannot fail, read the stale counter (stale writes reached and rejected). No --keep-going flag (kind first-violation by the flag rule), but nothing fails, so both sides explore everything. The unfenced cell of this size runs one tick lower (safe side), so that pair differs in fencing and in PAUSE. Baseline side: the same computation as in setting A at this size and fencing (the baseline ignores every tick value)."
+    },
+    {
+      "cell": "fenced E PAUSE=10 C=5 R=1",
+      "regime": "E-ctrl",
+      "label": "Clients ladder: fenced, pause at the bound",
+      "params": {
+        "C": 5,
+        "R": 1,
+        "fencing": "on",
+        "U": 2,
+        "L": 2,
+        "sd": 0,
+        "TTL": 10,
+        "PAUSE": 10,
+        "bound": 10
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=6912 blocked=833152 (explored 840064); expired=3542400, stale=157248 (v9, 3 runs identical)",
+      "expect_baseline": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=1247400 blocked=11769496 (explored 13016896); expired=57373920, stale=26282880 (v9, 3 runs identical)",
+      "note": "Fenced: the assertion cannot fail, read the stale counter (stale writes reached and rejected). No --keep-going flag (kind first-violation by the flag rule), but nothing fails, so both sides explore everything. Unfenced twin at the same pause and size: 'boundary E PAUSE=10=bnd keep-going C=5 R=1'. Baseline side: the same computation as in setting A at this size and fencing (the baseline ignores every tick value)."
+    },
+    {
+      "cell": "fenced E PAUSE=10 C=6 R=1",
+      "regime": "E-ctrl",
+      "label": "Clients ladder: fenced, pause at the bound",
+      "params": {
+        "C": 6,
+        "R": 1,
+        "fencing": "on",
+        "U": 2,
+        "L": 2,
+        "sd": 0,
+        "TTL": 10,
+        "PAUSE": 10,
+        "bound": 10
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=84480 blocked=30230144 (explored 30314624); expired=153544320, stale=5771520 (v8 rerun on e96fe7a; v9 run not finished at the time of writing)",
+      "expect_baseline": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=97297200 blocked=1397595344 (explored 1494892544); expired=7997771520, stale=4146785280 (v9, 1 run)",
+      "note": "Fenced: the assertion cannot fail, read the stale counter (stale writes reached and rejected). No --keep-going flag (kind first-violation by the flag rule), but nothing fails, so both sides explore everything. The unfenced cell of this size runs one tick lower (safe side), so that pair differs in fencing and in PAUSE. Baseline side: the same computation as in setting A at this size and fencing (the baseline ignores every tick value). Timed side: v9 run not finished at the time of writing; the numbers given are from the v8 rerun on e96fe7a."
+    },
+    {
+      "cell": "boundary A PAUSE=4=bnd keep-going C=5 R=1",
+      "regime": "A-viol",
+      "label": "Boundary pair, violating side: unfenced, pause at the bound",
+      "params": {
+        "C": 5,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 4,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations above 0: 48240 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=29160 blocked=1650157 (explored 1679317); expired=7040424 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: violations counter 943680 in every run; tool line count 943678 to 943680 (shared pool, see notes), exit code 0 under keep-going; execs=29160 blocked=1852696 (explored 1881856); expired=8019120 (v9, 3 runs identical)",
+      "note": "Safe-side partner one tick lower: 'unfenced A(U2 L0 sd1 TTL10) PAUSE=3 keep-going C=5 R=1'. Baseline side: the tool's line count (943678 to 943680 over 3 runs) is below the violations counter (943680, the same in every run); quote the counter."
+    },
+    {
+      "cell": "boundary B(U2 L2 sd1 TTL10) PAUSE=7=bnd-1 keep-going C=5 R=1",
+      "regime": "B-safe",
+      "label": "Boundary pair, safe side: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 5,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 2,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 7,
+        "bound": 8
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=19440 blocked=1356981 (explored 1376421); expired=6000120 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: violations counter 943680 in every run; tool line count 943679 to 943680 (shared pool, see notes), exit code 0 under keep-going; execs=29160 blocked=1852696 (explored 1881856); expired=8019120 (v9, 3 runs identical)",
+      "note": "Baseline side: the same computation as in setting A at this size and fencing (the baseline ignores every tick value). Violating-side partner one tick higher: 'boundary B PAUSE=8=bnd keep-going C=5 R=1'. Baseline side: the tool's line count (943679 to 943680 over 3 runs) is below the violations counter (943680, the same in every run); quote the counter."
+    },
+    {
+      "cell": "boundary B PAUSE=8=bnd keep-going C=5 R=1",
+      "regime": "B-viol",
+      "label": "Boundary pair, violating side: unfenced, pause at the bound",
+      "params": {
+        "C": 5,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 2,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 8,
+        "bound": 8
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations above 0: 41760 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=19440 blocked=1398741 (explored 1418181); expired=6180744 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: violations counter 943680 in every run; tool line count 943678 to 943680 (shared pool, see notes), exit code 0 under keep-going; execs=29160 blocked=1852696 (explored 1881856); expired=8019120 (v9, 3 runs identical)",
+      "note": "Baseline side: the same computation as in setting A at this size and fencing (the baseline ignores every tick value). Safe-side partner one tick lower: 'boundary B(U2 L2 sd1 TTL10) PAUSE=7=bnd-1 keep-going C=5 R=1'. Baseline side: the tool's line count (943678 to 943680 over 3 runs) is below the violations counter (943680, the same in every run); quote the counter."
+    },
+    {
+      "cell": "boundary C(U2 L0 sd0 TTL10) PAUSE=5=bnd-1 keep-going C=5 R=1",
+      "regime": "C-safe",
+      "label": "Boundary pair, safe side: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 5,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 0,
+        "TTL": 10,
+        "PAUSE": 5,
+        "bound": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=5760 blocked=840133 (explored 845893); expired=3412608 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: 943680 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=29160 blocked=1852696 (explored 1881856); expired=8019120 (v9, 3 runs identical)",
+      "note": "Baseline side: the same computation as in setting A at this size and fencing (the baseline ignores every tick value). Violating-side partner one tick higher: 'boundary C PAUSE=6=bnd keep-going C=5 R=1'."
+    },
+    {
+      "cell": "boundary C PAUSE=6=bnd keep-going C=5 R=1",
+      "regime": "C-viol",
+      "label": "Boundary pair, violating side: unfenced, pause at the bound",
+      "params": {
+        "C": 5,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 0,
+        "TTL": 10,
+        "PAUSE": 6,
+        "bound": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations above 0: 34416 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=5760 blocked=874549 (explored 880309); expired=3555000 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: violations counter 943680 in every run; tool line count 943679 to 943680 (shared pool, see notes), exit code 0 under keep-going; execs=29160 blocked=1852696 (explored 1881856); expired=8019120 (v9, 3 runs identical)",
+      "note": "Baseline side: the same computation as in setting A at this size and fencing (the baseline ignores every tick value). Safe-side partner one tick lower: 'boundary C(U2 L0 sd0 TTL10) PAUSE=5=bnd-1 keep-going C=5 R=1'. Baseline side: the tool's line count (943679 to 943680 over 3 runs) is below the violations counter (943680, the same in every run); quote the counter."
+    },
+    {
+      "cell": "boundary D(U1 L0 sd1 TTL6) PAUSE=1=bnd-1 keep-going C=5 R=1",
+      "regime": "D-safe",
+      "label": "Boundary pair, safe side: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 5,
+        "R": 1,
+        "fencing": "off",
+        "U": 1,
+        "L": 0,
+        "sd": 1,
+        "TTL": 6,
+        "PAUSE": 1,
+        "bound": 2
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=29160 blocked=1601917 (explored 1631077); expired=6838200 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: violations counter 943680 in every run; tool line count 943679 to 943680 (shared pool, see notes), exit code 0 under keep-going; execs=29160 blocked=1852696 (explored 1881856); expired=8019120 (v9, 3 runs identical)",
+      "note": "Counts on both sides equal those of setting A at the same distance from the bound. Baseline side: the same computation as in setting A at this size and fencing (the baseline ignores every tick value). Violating-side partner one tick higher: 'boundary D PAUSE=2=bnd keep-going C=5 R=1'. Baseline side: the tool's line count (943679 to 943680 over 3 runs) is below the violations counter (943680, the same in every run); quote the counter."
+    },
+    {
+      "cell": "boundary D PAUSE=2=bnd keep-going C=5 R=1",
+      "regime": "D-viol",
+      "label": "Boundary pair, violating side: unfenced, pause at the bound",
+      "params": {
+        "C": 5,
+        "R": 1,
+        "fencing": "off",
+        "U": 1,
+        "L": 0,
+        "sd": 1,
+        "TTL": 6,
+        "PAUSE": 2,
+        "bound": 2
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations above 0: 48240 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=29160 blocked=1650157 (explored 1679317); expired=7040424 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: violations counter 943680 in every run; tool line count 943679 to 943680 (shared pool, see notes), exit code 0 under keep-going; execs=29160 blocked=1852696 (explored 1881856); expired=8019120 (v9, 3 runs identical)",
+      "note": "Counts on both sides equal those of setting A at the same distance from the bound. Baseline side: the same computation as in setting A at this size and fencing (the baseline ignores every tick value). Safe-side partner one tick lower: 'boundary D(U1 L0 sd1 TTL6) PAUSE=1=bnd-1 keep-going C=5 R=1'. Baseline side: the tool's line count (943679 to 943680 over 3 runs) is below the violations counter (943680, the same in every run); quote the counter."
+    },
+    {
+      "cell": "boundary E PAUSE=10=bnd keep-going C=5 R=1",
+      "regime": "E-viol",
+      "label": "Boundary pair, violating side: unfenced, pause at the bound",
+      "params": {
+        "C": 5,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 2,
+        "sd": 0,
+        "TTL": 10,
+        "PAUSE": 10,
+        "bound": 10
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations above 0: 29160 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=3840 blocked=708136 (explored 711976); expired=3018312 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: 943680 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=29160 blocked=1852696 (explored 1881856); expired=8019120 (v9, 3 runs identical)",
+      "note": "Baseline side: the same computation as in setting A at this size and fencing (the baseline ignores every tick value). Safe-side partner one tick lower: 'unfenced E PAUSE=9 keep-going C=5 R=1'."
+    },
+    {
+      "cell": "boundary A PAUSE=4=bnd first-FIRE (no keep-going) C=6 R=1",
+      "regime": "A-viol",
+      "label": "Boundary, both sides stop at the first violation: unfenced, pause at the bound",
+      "params": {
+        "C": 6,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 4,
+        "bound": 4
+      },
+      "kind": "first-violation",
+      "expect_timed": "violations above 0: the run stops at its first violation, exit code 101, no counts printed (timed: the tool reports a certified counterexample with a witness timeline) (v9, 3 runs)",
+      "expect_baseline": "violations above 0: the run stops at its first violation, exit code 101, no counts printed (v9, 3 runs)",
+      "note": "Both sides exit 101 at their first violation and print no summary line; the parameters are resolved from the flags, which equal those of the keep-going cell 'boundary A PAUSE=4=bnd keep-going C=6 R=1'. Wall time is the time to the first violation, not an exploration time."
+    },
+    {
+      "cell": "boundary A PAUSE=3=bnd-1 no keep-going (hold vs first FIRE) C=4 R=1",
+      "regime": "A-safe",
+      "label": "Boundary without keep-going (timed explores everything, baseline stops at its first violation): unfenced, pause one tick below the bound",
+      "params": {
+        "C": 4,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 3,
+        "bound": 4
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0; no keep-going, nothing failed, so the run is complete); execs=1944 blocked=46313 (explored 48257); expired=156072 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: the run stops at its first violation, exit code 101, no counts printed (v9, 3 runs)",
+      "note": "Timed side: exit 0 with the same counts as the keep-going cell 'unfenced A PAUSE=3 keep-going C=4 R=1'. Baseline side: exit 101 at its first violation, no summary line, wall time is the time to the first violation."
+    },
+    {
+      "cell": "boundary A PAUSE=4=bnd keep-going C=6 R=1",
+      "regime": "A-viol",
+      "label": "Boundary pair, violating side: unfenced, pause at the bound",
+      "params": {
+        "C": 6,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 4,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violations above 0: violations counter 1731960 (the v8 campaign value 2247921 was an over-count, see notes), exit code 0 under keep-going; execs=524880 blocked=69126545 (explored 69651425); expired=353929800 (v8 rerun on e96fe7a; v9 run not finished at the time of writing)",
+      "expect_baseline": "violations above 0: violations counter 51560640, exit code 0 under keep-going; execs=524880 blocked=84662384 (explored 85187264); expired=438354000 (v8 rerun on e96fe7a; v9 run not finished at the time of writing)",
+      "note": "Safe-side partner one tick lower: 'unfenced A(U2 L0 sd1 TTL10) PAUSE=3 keep-going C=6 R=1'. Timed side: v9 run not finished at the time of writing; the numbers given are from the v8 rerun on e96fe7a. Baseline side: v9 run not finished at the time of writing; the numbers given are from the v8 rerun on e96fe7a."
+    },
+    {
+      "cell": "unfenced A PAUSE=3 keep-going CEILING C=7 R=1",
+      "regime": "A-safe",
+      "label": "Clients ceiling: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 7,
+        "R": 1,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 3,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations expected from the rule; not measured yet: the v9 run is still going and the v8 run did not finish (DNF (did not finish; killed after 1 d 15 h 16 min); last progress 96300000 explored (397160 execs, 95902840 blocked))",
+      "expect_baseline": "violations above 0 expected from every smaller baseline cell; not measured yet: the v9 run is still going and the v8 run did not finish (DNF (did not finish; killed after 1 d 9 h 7 min); last progress 636600000 explored (98154 execs, 636501846 blocked))",
+      "note": "Timed side: no result yet (v9 running, v8 did not finish). Baseline side: no result yet (v9 running, v8 did not finish)."
+    },
+    {
+      "cell": "C=2 R=3 unfenced (rounds ladder)",
+      "regime": "A-safe",
+      "label": "Rounds ladder: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 2,
+        "R": 3,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 3,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=5832 blocked=30617 (explored 36449); expired=142656 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: 3428 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=5832 blocked=29160 (explored 34992); expired=138628 (v9, 3 runs identical)",
+      "note": ""
+    },
+    {
+      "cell": "C=2 R=3 fenced (rounds ladder)",
+      "regime": "A-ctrl",
+      "label": "Rounds ladder: fenced, pause at the bound",
+      "params": {
+        "C": 2,
+        "R": 3,
+        "fencing": "on",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 4,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=10648 blocked=46867 (explored 57515); expired=231468, stale=24226 (v9, 3 runs identical)",
+      "expect_baseline": "0 violations (exit code 0); execs=27000 blocked=77904 (explored 104904); expired=455844, stale=102956 (v9, 3 runs identical)",
+      "note": "Fenced: the assertion cannot fail, read the stale counter (stale writes reached and rejected). The unfenced cell of this size runs one tick lower (safe side), so that pair differs in fencing and in PAUSE."
+    },
+    {
+      "cell": "C=2 R=4 unfenced (rounds ladder)",
+      "regime": "A-safe",
+      "label": "Rounds ladder: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 2,
+        "R": 4,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 3,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=104976 blocked=550961 (explored 655937); expired=3442488 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: 61748 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=104976 blocked=524880 (explored 629856); expired=3335212 (v9, 3 runs identical)",
+      "note": ""
+    },
+    {
+      "cell": "C=2 R=4 fenced (rounds ladder)",
+      "regime": "A-ctrl",
+      "label": "Rounds ladder: fenced, pause at the bound",
+      "params": {
+        "C": 2,
+        "R": 4,
+        "fencing": "on",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 4,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=234256 blocked=1030839 (explored 1265095); expired=6817520, stale=762942 (v9, 3 runs identical)",
+      "expect_baseline": "0 violations (exit code 0); execs=810000 blocked=2336904 (explored 3146904); expired=18290844, stale=4347356 (v9, 3 runs identical)",
+      "note": "Fenced: the assertion cannot fail, read the stale counter (stale writes reached and rejected). The unfenced cell of this size runs one tick lower (safe side), so that pair differs in fencing and in PAUSE."
+    },
+    {
+      "cell": "C=2 R=5 unfenced (rounds ladder)",
+      "regime": "A-safe",
+      "label": "Rounds ladder: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 2,
+        "R": 5,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 3,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=1889568 blocked=9917153 (explored 11806721); expired=77707176 (v9, 3 runs identical)",
+      "expect_baseline": "violations above 0: violations counter 1111508 in every run; tool line count 1111506 to 1111507 (shared pool, see notes), exit code 0 under keep-going; execs=1889568 blocked=9447840 (explored 11337408); expired=75150460 (v9, 3 runs identical)",
+      "note": "Baseline side: the tool's line count (1111506 to 1111507 over 3 runs) is below the violations counter (1111508, the same in every run); quote the counter."
+    },
+    {
+      "cell": "C=2 R=5 fenced (rounds ladder)",
+      "regime": "A-ctrl",
+      "label": "Rounds ladder: fenced, pause at the bound",
+      "params": {
+        "C": 2,
+        "R": 5,
+        "fencing": "on",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 4,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=5153632 blocked=22678223 (explored 27831855); expired=187938064, stale=21845014 (v8 rerun on e96fe7a; v9 run not finished at the time of writing)",
+      "expect_baseline": "0 violations (exit code 0); execs=24300000 blocked=70106904 (explored 94406904); expired=687188844, stale=168183356 (v9, 3 runs identical)",
+      "note": "Fenced: the assertion cannot fail, read the stale counter (stale writes reached and rejected). The unfenced cell of this size runs one tick lower (safe side), so that pair differs in fencing and in PAUSE. Timed side: v9 run not finished at the time of writing; the numbers given are from the v8 rerun on e96fe7a."
+    },
+    {
+      "cell": "C=3 R=2 unfenced (rounds ladder)",
+      "regime": "A-safe",
+      "label": "Rounds ladder: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 3,
+        "R": 2,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 3,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=26244 blocked=276635 (explored 302879); expired=1295328 (v9, 4 runs identical)",
+      "expect_baseline": "violations above 0: 71592 violating executions (tool count = violations counter), exit code 0 under keep-going; execs=26244 blocked=277476 (explored 303720); expired=1317564 (v9, 3 runs identical)",
+      "note": ""
+    },
+    {
+      "cell": "C=3 R=2 fenced (rounds ladder)",
+      "regime": "A-ctrl",
+      "label": "Rounds ladder: fenced, pause at the bound",
+      "params": {
+        "C": 3,
+        "R": 2,
+        "fencing": "on",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 4,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=47524 blocked=409971 (explored 457495); expired=1982992, stale=168728 (v9, 3 runs identical)",
+      "expect_baseline": "0 violations (exit code 0); execs=396900 blocked=1566516 (explored 1963416); expired=9471408, stale=3257160 (v9, 3 runs identical)",
+      "note": "Fenced: the assertion cannot fail, read the stale counter (stale writes reached and rejected). The unfenced cell of this size runs one tick lower (safe side), so that pair differs in fencing and in PAUSE."
+    },
+    {
+      "cell": "C=2 R=6 unfenced (rounds ladder)",
+      "regime": "A-safe",
+      "label": "Rounds ladder: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 2,
+        "R": 6,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 3,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=34012224 blocked=178508609 (explored 212520833); expired=1682090376 (v9, 1 run)",
+      "expect_baseline": "violations above 0: violations counter 20007188, exit code 0 under keep-going; execs=34012224 blocked=170061120 (explored 204073344); expired=1624806172 (v8 rerun on e96fe7a; v9 run not finished at the time of writing)",
+      "note": "Baseline side: v9 run not finished at the time of writing; the numbers given are from the v8 rerun on e96fe7a."
+    },
+    {
+      "cell": "C=2 R=6 fenced (rounds ladder)",
+      "regime": "A-ctrl",
+      "label": "Rounds ladder: fenced, pause at the bound",
+      "params": {
+        "C": 2,
+        "R": 6,
+        "fencing": "on",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 4,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=113379904 blocked=498920671 (explored 612300575); expired=4969592832, stale=591917638 (v9, 1 run)",
+      "expect_baseline": "0 violations (exit code 0); execs=729000000 blocked=2103206904 (explored 2832206904); expired=24769568844, stale=6178383356 (v9, 1 run)",
+      "note": "Fenced: the assertion cannot fail, read the stale counter (stale writes reached and rejected). The unfenced cell of this size runs one tick lower (safe side), so that pair differs in fencing and in PAUSE."
+    },
+    {
+      "cell": "C=3 R=3 unfenced (rounds ladder)",
+      "regime": "A-safe",
+      "label": "Rounds ladder: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 3,
+        "R": 3,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 3,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=4251528 blocked=44804603 (explored 49056131); expired and stale of the v8 campaign binaries left out, they were over-counted before commit e96fe7a (v8 campaign; v9 run not finished at the time of writing)",
+      "expect_baseline": "violations above 0: violations counter 11603400 in every run; tool line count 11603387 to 11603392 (shared pool, see notes), exit code 0 under keep-going; execs=4251528 blocked=44955456 (explored 49206984); expired=311870592 (v9, 3 runs identical)",
+      "note": "Timed side: v9 run not finished at the time of writing; the numbers given are from the v8 campaign. Baseline side: the tool's line count (11603387 to 11603392 over 3 runs) is below the violations counter (11603400, the same in every run); quote the counter."
+    },
+    {
+      "cell": "C=3 R=3 fenced (rounds ladder)",
+      "regime": "A-ctrl",
+      "label": "Rounds ladder: fenced, pause at the bound",
+      "params": {
+        "C": 3,
+        "R": 3,
+        "fencing": "on",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 4,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=10360232 blocked=89354843 (explored 99715075); expired=633565248, stale=62393856 (v9, 1 run)",
+      "expect_baseline": "0 violations (exit code 0); execs=250047000 blocked=986872656 (explored 1236919656); expired=8841362640, stale=3253578936 (v9, 1 run)",
+      "note": "Fenced: the assertion cannot fail, read the stale counter (stale writes reached and rejected). The unfenced cell of this size runs one tick lower (safe side), so that pair differs in fencing and in PAUSE."
+    },
+    {
+      "cell": "C=4 R=2 unfenced (rounds ladder)",
+      "regime": "A-safe",
+      "label": "Rounds ladder: unfenced, pause one tick below the bound",
+      "params": {
+        "C": 4,
+        "R": 2,
+        "fencing": "off",
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "TTL": 10,
+        "PAUSE": 3,
+        "bound": 4
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=3779136 blocked=89050961 (explored 92830097); expired=552339552 (v9, 1 run)",
+      "expect_baseline": "violations above 0: violations counter 37607328, exit code 0 under keep-going; execs=3779136 blocked=95850384 (explored 99629520); expired=598049568 (v8 rerun on e96fe7a; v9 run not finished at the time of writing)",
+      "note": "Baseline side: v9 run not finished at the time of writing; the numbers given are from the v8 rerun on e96fe7a."
+    }
+  ],
+  "notes": [
+    "Every tick value was resolved from the flags with the rounding of the source (round(ratio * U), lines 270 to 285) and compared with the parameters printed in the summary line of every finished run of the same cell (v9, else v8): no difference. Two cells have no summary line of their own and were resolved from the flags alone: 'unfenced A PAUSE=3 keep-going CEILING C=7 R=1' (never finished) and 'boundary A PAUSE=4=bnd first-FIRE (no keep-going) C=6 R=1' (both sides stop at the first violation); their flags equal those of cells that do print one.",
+    "Both sides of every cell run the same arguments except --mode, including --keep-going and --parallel. The exploration option (sequential or shared pool, number of cores) is not a parameter column here; it is in the run columns of the workbook. Four REVIEW cells and the cell 'boundary A PAUSE=3=bnd-1 no keep-going (hold vs first FIRE) C=4 R=1' therefore have the same regime and parameters as another cell; their labels and notes name it.",
+    "Fenced and unfenced cells of one setting do not use the same PAUSE: unfenced ladder cells run at bound - 1 (A: 3, E: 9), fenced cells at the bound (A: 4, E: 10). The pairs that differ in fencing only are 'boundary A PAUSE=4=bnd keep-going C=5 R=1' with 'fenced A PAUSE=4 C=5 R=1', 'boundary A PAUSE=4=bnd keep-going C=6 R=1' with 'fenced A PAUSE=4 C=6 R=1', and 'boundary E PAUSE=10=bnd keep-going C=5 R=1' with 'fenced E PAUSE=10 C=5 R=1' (the fenced R=1 cells also lack --keep-going, which changes nothing since nothing fails). In the rounds ladder the unfenced and the fenced cell of one size differ in fencing and in PAUSE.",
+    "Kind: the fenced cells with R=1 and the two 'no keep-going' boundary cells run without --keep-going and are marked first-violation by the flag rule. Only 3 sides actually stop at a violation (both sides of the first-FIRE C=6 cell, the baseline of the 'hold vs first FIRE' C=4 cell); every other such side ends with exit code 0 and full counts. The fenced rounds-ladder cells do carry --keep-going.",
+    "Suffix choice: the cells at PAUSE = bound lie exactly on the boundary. They carry the suffix -viol, not -edge, because the rule is not strict (PAUSE >= bound violates) and the tool reports violations there in every measured cell, so the workbook's verdict check (viol: above 0) covers them; each such regime says in its rule that it is the tie. Fenced cells are the only -ctrl cells, so the regime id alone tells fenced from unfenced, and every regime name starts with the word.",
+    "A side that stops at its first violation has viol_execs = 0 and empty execs and blocked in results_v9.csv (no task line and no summary line are printed); read its status (FIRE, exit code 101), not the 0.",
+    "The baseline is blind to the timing setting. All 11 unfenced baseline sides with C=5, R=1 finished so far (settings A to E, PAUSE 1 to 10) report execs=29160 blocked=1852696 violations=943680; the fenced ones of A and E both report execs=1247400 blocked=11769496 stale=26282880; the same holds for the 2 other groups of cells that share C, R and fencing (C=4 R=1 fencing off, C=4 R=1 fencing on). These are one computation repeated, not independent measurements. Unfenced baseline violations with R=1: 8, 408, 19008, 943680 at C = 2, 3, 4, 5.",
+    "Counter against tool count. In all 75 finished sequential runs the violations counter equals the number of task lines the campaign counted (viol_execs). In 14 of the 128 finished shared-pool runs the line count is lower, by 1 to 13 (about 0.7 per million of the lines of all shared-pool runs), never higher, while the counter is identical in every repetition and equals the sequential reference at C=5 R=1. All affected sides are unfenced baselines: 'C=2 R=5 unfenced (rounds ladder)'; 'C=3 R=3 unfenced (rounds ladder)'; 'boundary A PAUSE=4=bnd keep-going C=5 R=1'; 'boundary B PAUSE=8=bnd keep-going C=5 R=1'; 'boundary B(U2 L2 sd1 TTL10) PAUSE=7=bnd-1 keep-going C=5 R=1'; 'boundary C PAUSE=6=bnd keep-going C=5 R=1'; 'boundary D PAUSE=2=bnd keep-going C=5 R=1'; 'boundary D(U1 L0 sd1 TTL6) PAUSE=1=bnd-1 keep-going C=5 R=1'; 'unfenced E PAUSE=9 keep-going C=5 R=1'. For two of them no repetition reaches the counter: 'C=2 R=5 unfenced (rounds ladder)' (largest line count 1111507, counter 1111508); 'C=3 R=3 unfenced (rounds ladder)' (largest line count 11603392, counter 11603400). The workbook builder attributes this to merged output lines of the worker pool; not investigated here. Quote the counter for these sides.",
+    "timeline_impossible is 0 in every finished v9 run of this example, so no counter includes an ending without a timeline (the hazard of the note counter_based_verdicts_hazard does not apply to these cells).",
+    "The `expect` column of plan_v9.csv carries v8 campaign numbers. For the timed violating cells they are over-counts (63158, 55048, 50058, 63158, 43100 for the boundary cells of A, B, C, D, E at C=5): before commit e96fe7a an abandoned run raised the counter a second time. v9 gives 48240, 41760, 34416, 48240, 29160, the values of the e96fe7a rerun. The timed stale and expired numbers of that column are too high for the same reason; execs and blocked did not change.",
+    "Settings A and D give identical timed counts at the same distance from the bound (bound - 1: execs=29160 blocked=1601917; bound: execs=29160 blocked=1650157, 48240 violations), although U and TTL differ. Recorded as measured, not explained here.",
+    "Cost, from the cells with both sides finished in v9. Explored executions, baseline divided by timed, unfenced: A 0.89 to 1.15, B 1.33 to 1.37, C 2.14 to 2.22, D 1.12 to 1.15, E 2.10 to 2.67; fenced: A 0.95 to 12.40 (smallest at C=2 R=1, largest at C=3 R=3), E 5.69 to 15.50. Wall time, baseline divided by timed (median of the repetitions, cells of at least 1 s): unfenced 0.15 to 0.50, so the timed side is slower in every unfenced cell; fenced 0.38 to 2.01, above 1 only in 'C=3 R=3 fenced (rounds ladder)' (1.63); 'REVIEW: fenced A PAUSE=4 C=5 R=1 sequential single-core reference' (1.52); 'fenced A PAUSE=4 C=5 R=1' (1.54); 'fenced E PAUSE=10 C=4 R=1' (1.10); 'fenced E PAUSE=10 C=5 R=1' (2.01). Headline pair, setting A, C=5: unfenced 1631077 against 1881856 explored, 230 s against 76 s; fenced 1920085 against 13016896 explored, 274 s against 421 s (timed first).",
+    "'C=2 R=6 fenced (rounds ladder)': the timed side did not finish in v8; in v9 it finished (113379904 complete, 498920671 blocked, 0 violations) after 33.2 h, against 18.6 h for the baseline (729000000 complete, 2103206904 blocked): 4.6 times fewer executions explored but a longer run. plan_v9.csv has no expected exit code for the timed side for that reason.",
+    "Sides without a v9 result at the time of writing (results_v9.csv of 2026-10-11 11:09): lease-003 (timed of 'unfenced A(U2 L0 sd1 TTL10) PAUSE=3 keep-going C=6 R=1'); lease-004 (baseline of 'unfenced A(U2 L0 sd1 TTL10) PAUSE=3 keep-going C=6 R=1'); lease-007 (timed of 'fenced A PAUSE=4 C=6 R=1'); lease-008 (baseline of 'fenced A PAUSE=4 C=6 R=1'); lease-033 (timed of 'unfenced E PAUSE=9 keep-going C=6 R=1'); lease-034 (baseline of 'unfenced E PAUSE=9 keep-going C=6 R=1'); lease-039 (timed of 'fenced E PAUSE=10 C=6 R=1'); lease-061 (timed of 'boundary A PAUSE=4=bnd keep-going C=6 R=1'); lease-062 (baseline of 'boundary A PAUSE=4=bnd keep-going C=6 R=1'); lease-063 (timed of 'unfenced A PAUSE=3 keep-going CEILING C=7 R=1'); lease-064 (baseline of 'unfenced A PAUSE=3 keep-going CEILING C=7 R=1'); lease-075 (timed of 'C=2 R=5 fenced (rounds ladder)'); lease-082 (baseline of 'C=2 R=6 unfenced (rounds ladder)'); lease-085 (timed of 'C=3 R=3 unfenced (rounds ladder)'); lease-090 (baseline of 'C=4 R=2 unfenced (rounds ladder)'). Their expect_* texts give v8 numbers (from the e96fe7a rerun on brain05 where it exists, benchmarks/v8/rerun_brain05/results_v8r.csv) and say so; the C=7 ceiling cell has no finished run in any campaign.",
+    "Notes against source. (1) The memory note p1_lease_swim_examples.md calls the example untracked on branch p1-examples and not wired into any sweep: outdated, the file is committed and is the lease family of v8 and v9. (2) The same note and the 2026-09-18 audit call the service's wait for the Release an unvalidated timeout (expired above 0 even at TTL=100 with no pause). Both predate two changes: the tool now judges every timeout against a timeline when the execution is complete (lib.rs lines 1519 to 1531), and every send is lossy in both modes (line 470). An expiry therefore needs no pause at all (a dropped Grant or Release is enough; a local run at TTL=100, PAUSE=0 still prints expired above 0), so expired above 0 remains no evidence that the pause-induced expiry was explored. The header of the source (lines 139 to 144) still uses it as such evidence; that sentence is older than line 470. (3) The header sentences 'the Storage receives exactly C*R writes and always acks' (lines 53, 428) and 'the Grant always arrives eventually' (line 394) are older than the lossy sends too; the comment at lines 374 to 377 gives the current behaviour (a client whose Grant or RoundStart is lost blocks). (4) The v8 campaign note lists the fenced C=2 R=6 cell as lost by the timed side; in v9 it finished (see above). (5) The source header (lines 10, 137) and a comment in build_config (line 473) name the baseline with a word this workbook avoids; the metadata says baseline throughout.",
+    "The source header warns that with R >= 2 and PAUSE far above TTL the pauser can miss the next RoundStart and every execution blocks (lines 92 to 102). No cell of this campaign is in that range (PAUSE is at most the bound, which never exceeds TTL), and every finished v9 run has complete executions.",
+    "The local binary target/release/examples/lease_timed is dated 2026-10-07; it was used only to see the output format (task line, first-violation message) and one qualitative check (expired above 0 at TTL=100, PAUSE=0). No count in this file comes from a local run."
+  ]
+}

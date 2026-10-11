@@ -1,0 +1,1149 @@
+{
+  "family": "brp",
+  "example": "brp_timed",
+  "title": "Bounded retransmission protocol (DKRT, TACAS 1997)",
+  "source": "D'Argenio, Katoen, Ruys, Tretmans, 'The Bounded Retransmission Protocol must be on time!', TACAS 1997 (LNCS 1217; full version CTIT TR 97-03): the timed automata of Sec. 3.2 (Fig. 1 sender, Fig. 2 receiver) in the UPPAAL form of Sec. 4.1 (Fig. 4), the timing properties (2) and (4) of Sec. 4.2 and the timing constraint (5). The exact regions quoted in the timing rule are a reference computation with IMITATOR 3.4.0 on a transliteration of Fig. 4 (header of traceforge/examples/brp_timed.rs, lines 91 to 100; materials in docs/research/ta_problems/need-from-user-papers/brp-b04). Every v9 cell runs --model dkrt (the default).",
+  "property": "One assertion, made by the main thread after it has read the summaries of sender and receiver (judge, line 908), fails when (2) is broken (the receiver takes a frame that is not a first chunk for the first frame of a new file), when (4) is broken (the sender ends its SYNC wait after a failed file while the receiver has not yet given that file up) or, with one file, when the client property is broken (one client ends with OK, the other with NOT OK); --property p2 asserts (2) alone, --property all the three together.",
+  "citable": "with caveats",
+  "citable_note": "Not covered by the 2026-09-18 audit (the port dates from 2026-09-19); checked here against its criteria on the current source: no mode-dependent protocol code, falsifiable properties (the timed side finds real violations one unit across each edge), timeline_impossible = 0 in every v9 run. Caveats: the boundary regions are IMITATOR's computation at n=2, MAX 1..3 and the SYNC condition of (2) is prior work (Hune et al. 2001, André et al. TACAS 2021), so the claim is exact agreement on an executable port plus precision and cost against the baseline; K=2 stands for dense time only empirically; rungs with MAX > 3 or n > 2 are beyond the range of the reference regions; the last recorded cross-validation against IMITATOR (2026-09-22) predates the send semantics of 2026-09-30.",
+  "config_timed": "build_config, lines 959 to 975: Config::builder().with_all_sends_lossy() (960: every send may be dropped, no budget), with_progress_report(usize::MAX) (961), with_cons_type(ConsType::FIFO) (962), with_keep_going_after_error(true) when --keep-going is given (963 to 965; every v9 cell gives it), with_parallel(true).with_parallel_workers(W) when --workers W > 1 (966 to 968: the shared-queue pool; sequential otherwise), then with_timed(0, 0, 0).with_node_sd(main thread, 2^40) (973): global L=U=0 and sd=0 at sender and receiver, the main thread keeps the two summaries until it reads them. Scheduling policy not set (default LTR). Every protocol send carries its own window, in ticks: frames and acks [1, K*TD] (lines 436, 460, 658); the receiver's timer, a self-send, [K*TR-1, K*TR-1] (652); the client's offer of a file, a self-send, [0, 0] for the first file and [0, K*DC] for a later one (421, 422); the probe of (4) [0, 0] (493); Done [K*TD, K*TD] (501); the summaries [0, 0] (502, 737); the two start-up messages of main are plain sends under the global window (933, 934). Waits: the sender waits K*T1-1 ticks for an ack, then sleeps 1 (442 to 455), and sleeps K*SYNC after a failed file (491); the receiver sleeps 1 at its live timer, then reads the probe with a wait of 0 (668 to 674).",
+  "config_baseline": "The same builder without with_timed (line 970): FIFO, every send may be dropped (with_all_sends_lossy, 960), keep-going and the same pool option, default LTR policy, no clock. The program is the same: the windows of its sends, its finite waits and its sleeps carry no timing information in this mode (lib.rs, documentation of with_timed).",
+  "program_differs_between_modes": "no: the mode is read only in build_config (line 969) and in the summary line (line 1003); sender, receiver and judge never see it. (--model spin forces the baseline mode at line 1156, but no v9 cell uses it.)",
+  "failing_tasks": "Only the main thread asserts (judge, line 908, after both threads are joined): one line main-thread-ThreadId(1) per violating execution in a sequential run, main-thread-ThreadId(N) with N naming the pool worker in a --workers run (format checked on a local run). Sender and receiver never assert. Their panic! arms are protocol errors that no v9 run reaches (the tool's count equals judged - execs in every sequential run), and the receiver's assume! (line 736) ends an execution as blocked, not as a violation.",
+  "counters": [
+    {
+      "key": "p2_runs",
+      "counts": "executions",
+      "meaning": "judged executions in which the monitor of (2) fired (a frame with rb1 = 0 taken in new_file). With --property p2 it equals the number of violating executions; with --property all it is one of three overlapping causes"
+    },
+    {
+      "key": "p4_runs",
+      "counts": "executions",
+      "meaning": "judged executions in which the probe of (4) found the receiver still in idle. The probe is sent only with --property p4 or all, so with --property p2 this is 0 because (4) is not looked at, not because it holds"
+    },
+    {
+      "key": "p2_tr_side",
+      "counts": "executions",
+      "meaning": "part of p2_runs: the wrongly accepted frame belongs to the file the receiver had just given up (a premature timeout, TR too small). In the summary line only"
+    },
+    {
+      "key": "p2_sync_side",
+      "counts": "executions",
+      "meaning": "part of p2_runs: the wrongly accepted frame belongs to a later file (the new file started too early, SYNC too small). Can overlap with p2_tr_side in one execution. In the summary line only"
+    },
+    {
+      "key": "client_runs",
+      "counts": "executions",
+      "meaning": "judged executions that end with one client in OK and the other in NOT OK. A violation count only with one file and --property client or all; with F >= 2 the check is not exact, is not asserted, and the number is not zero even in holding cells. In the summary line only"
+    },
+    {
+      "key": "judged",
+      "counts": "executions",
+      "meaning": "executions in which the main thread reached the judgement = complete executions + violating executions (when impossible = 0). judged - execs is the number of violating executions. In the summary line only"
+    },
+    {
+      "key": "restart_after_fail_runs",
+      "counts": "executions",
+      "meaning": "judged executions in which a file was started after a failed one: the situation the SYNC side of (2) is about; always 0 with one file. In the summary line only"
+    },
+    {
+      "key": "first_safe_after_timeout_runs",
+      "counts": "executions",
+      "meaning": "judged executions in which the receiver took a first frame after a timeout: the only place where (2) is tested non-trivially. In the summary line only"
+    },
+    {
+      "key": "probe_nontrivial_runs",
+      "counts": "executions",
+      "meaning": "judged executions in which a probe met a receiver that had seen a frame of the failed file: a hold of (4) is informative only if this is above 0. In the summary line only"
+    },
+    {
+      "key": "failed_file_runs",
+      "counts": "executions",
+      "meaning": "judged executions in which the sender gave at least one file up. In the summary line only"
+    },
+    {
+      "key": "timeout_runs",
+      "counts": "executions",
+      "meaning": "judged executions in which the receiver timed out at least once. In the summary line only"
+    },
+    {
+      "key": "confused_ack_runs",
+      "counts": "executions",
+      "meaning": "judged executions in which the sender accepted an ack that answers another frame (acks carry no bit); 0 on the timed side of every v9 cell, since T1 > 2 TD. In the summary line only"
+    },
+    {
+      "key": "impossible",
+      "counts": "executions",
+      "meaning": "endings that admit no assignment of times (the tool's timeline_impossible); 0 in every v9 run of this example"
+    },
+    {
+      "key": "explored",
+      "counts": "executions",
+      "meaning": "execs + blocked + impossible, as the summary line prints it"
+    }
+  ],
+  "violation_counter": null,
+  "param_columns": [
+    {
+      "key": "n",
+      "header": "Chunks n",
+      "meaning": "chunks per file (--n)",
+      "size": true
+    },
+    {
+      "key": "MAX",
+      "header": "MAX (retransmissions)",
+      "meaning": "how often the sender resends one chunk before it gives the file up (--max)",
+      "size": true
+    },
+    {
+      "key": "F",
+      "header": "Files F",
+      "meaning": "files the sender's client offers (--files); two files are needed to exercise the SYNC side of (2)",
+      "size": true
+    },
+    {
+      "key": "TD",
+      "header": "TD",
+      "meaning": "largest transit time of a frame or an ack, in DKRT time units (--td); the transit (0, TD] is coded as [1, K*TD] ticks",
+      "size": false
+    },
+    {
+      "key": "T1",
+      "header": "T1",
+      "meaning": "sender's ack timeout in DKRT time units (--t1): without an ack it resends, or gives up, at exactly T1",
+      "size": false
+    },
+    {
+      "key": "TR",
+      "header": "TR",
+      "meaning": "receiver's timeout in DKRT time units (--tr): it gives the file up when no new frame came for TR",
+      "size": false
+    },
+    {
+      "key": "SYNC",
+      "header": "SYNC",
+      "meaning": "sender's wait after a failed file, in DKRT time units (--sync), before it may start the next file",
+      "size": false
+    },
+    {
+      "key": "K",
+      "header": "K (ticks per unit)",
+      "meaning": "time scale (--k): every time constant is multiplied by K to get the checker's ticks; K=2 is the half-unit grid",
+      "size": false
+    },
+    {
+      "key": "DC",
+      "header": "DC",
+      "meaning": "longest wait of the sender's client before it offers the next file, in DKRT time units; resolved default TR + TD (line 1149, no --dc given); not used with one file",
+      "size": false
+    },
+    {
+      "key": "TRmin",
+      "header": "TR bound",
+      "meaning": "derived: 2*MAX*T1 + 3*TD, the least TR for which (2) holds",
+      "size": false
+    },
+    {
+      "key": "slack",
+      "header": "SYNC+T1-TR-TD",
+      "meaning": "derived: (2) needs it >= 0, (4) needs it > 0; 0 is the tie",
+      "size": false
+    },
+    {
+      "key": "property",
+      "header": "Property",
+      "meaning": "what the assertion checks (--property): p2 = (2) alone; all = (2), (4) and, with one file, the client property",
+      "size": false
+    },
+    {
+      "key": "workers",
+      "header": "Pool workers",
+      "meaning": "worker threads of the shared-queue pool (--workers W; w1, w6, w12 in the cell names); 1 = sequential run, flag absent",
+      "size": false
+    }
+  ],
+  "boundary_law": "As the source states it (header lines 10 to 13 and 91 to 100). DKRT's constraint (5), as printed, non-strict: (2) and (4) hold if T1 > 2 TD and SYNC >= TR >= 2 MAX T1 + 3 TD. Exact regions of DKRT's model (IMITATOR 3.4.0, dense time, n = 2, MAX in 1..3, T1 > 2 TD assumed, not tested): (2) holds iff TR >= 2 MAX T1 + 3 TD and SYNC + T1 >= TR + TD; (4) holds iff SYNC + T1 > TR + TD. So SYNC >= TR is sufficient, not necessary: with the TR bound, (2) and (4) both hold iff TR - SYNC < T1 - TD. With TD = 1 and T1 = 3 (every v9 cell): TR >= 6 MAX + 3; (2) needs SYNC >= TR - 2; (4) needs SYNC >= TR - 1. The client property fails in the source's tests only at T1 = 2 TD, outside every v9 cell. How well checked: the source reports 200 of 200 cross-validation runs in agreement with the IMITATOR reference of the same time grid (TR edge and (4) with one file at MAX 1..3, SYNC edge with two files at MAX 1; K = 1 and 2); K = 2 matched dense time on every cell tested, which is empirical, not proven. The last recorded run of that cross-validation is of 2026-09-22, before the send semantics of 2026-09-30, so on the campaign commit the evidence is the boundary cells: B3, B4 and C1 in v9 (C2 in v8) sit one unit on either side of each edge and the timed side reports the predicted side each time. MAX = 4 (B4) and n > 2 (D, E) are outside the range of the reference regions.",
+  "regimes": [
+    {
+      "id": "A-safe",
+      "name": "retransmission ladder at DKRT's safe setting, TR at its least value",
+      "params": "n=2, F=1, TD=1, T1=3, TR=SYNC=2*MAX*T1+3*TD=6*MAX+3 (9, 15, 21, 27, 33, 39, 45, 51, 57 for MAX=1..9), K=2 (in ticks: transit [1,2], T1=6, TR=SYNC=12*MAX+6), property all",
+      "rule": "DKRT's constraint (5) holds: T1 = 3 > 2 TD = 2 and SYNC = TR = 2 MAX T1 + 3 TD, the least TR the constraint admits (non-strict, so on the hold side); SYNC + T1 - TR - TD = 2 > 0, so (2) and (4) hold. The rungs with MAX > 3 are outside the range MAX 1..3 of the reference regions: there the expectation rests on (5), which DKRT state for every MAX, and on the measurement",
+      "expect_timed": "0 violations",
+      "expect_baseline": "violations, all spurious: without a clock the receiver's timeout, the sender's waits and the transit bound are unrelated, so a late frame after a premature timeout and a probe that finds the receiver still busy cannot be ruled out"
+    },
+    {
+      "id": "B3-viol",
+      "name": "MAX=3, TR one unit below its bound",
+      "params": "n=2, MAX=3, F=1, TD=1, T1=3, TR=20, SYNC=20, K=2 (TR=SYNC=40 ticks), property all",
+      "rule": "TR = 2 MAX T1 + 3 TD - 1 = 20 < 21: (2) is violated on the TR side (DKRT's Fig. 7: a premature receiver timeout, then a late copy of chunk 2 is taken as the first frame of a new file); SYNC + T1 = 23 > TR + TD = 21, so (4) holds",
+      "expect_timed": "violations of (2), TR side only (measured: 64 executions, p4_runs=0)",
+      "expect_baseline": "violations: the baseline counts do not depend on TD, T1, TR, SYNC or K, so it reports exactly what it reports in the safe cell with the same n, MAX, F and property, and cannot tell this cell from that one"
+    },
+    {
+      "id": "B3-edge",
+      "name": "MAX=3, SYNC exactly at the tie SYNC + T1 = TR + TD",
+      "params": "n=2, MAX=3, F=1, TD=1, T1=3, TR=21, SYNC=19, K=2 (TR=42, SYNC=38 ticks), property all",
+      "rule": "TR at its bound 21; SYNC + T1 = 22 = TR + TD: exactly on the boundary. (4) needs the strict inequality and (2) the non-strict one, so the tool puts the cell on the violating side for (4) and on the hold side for (2) (with one file the SYNC side of (2) is not exercised)",
+      "expect_timed": "violations of (4) only (measured: 16 executions, p2_runs=0)",
+      "expect_baseline": "violations: the baseline counts do not depend on TD, T1, TR, SYNC or K, so it reports exactly what it reports in the safe cell with the same n, MAX, F and property, and cannot tell this cell from that one"
+    },
+    {
+      "id": "B3-safe",
+      "name": "MAX=3, least SYNC above the tie",
+      "params": "n=2, MAX=3, F=1, TD=1, T1=3, TR=21, SYNC=20, K=2 (TR=42, SYNC=40 ticks), property all",
+      "rule": "TR at its bound 21; SYNC + T1 = 23 > TR + TD = 22: the least SYNC for which (4) holds. SYNC = TR - 1 is outside DKRT's constraint (5) (SYNC >= TR) and still safe: SYNC >= TR is sufficient, not necessary",
+      "expect_timed": "0 violations",
+      "expect_baseline": "violations, all spurious: without a clock the receiver's timeout, the sender's waits and the transit bound are unrelated, so a late frame after a premature timeout and a probe that finds the receiver still busy cannot be ruled out"
+    },
+    {
+      "id": "B4-viol",
+      "name": "MAX=4, TR one unit below its bound",
+      "params": "n=2, MAX=4, F=1, TD=1, T1=3, TR=26, SYNC=26, K=2 (TR=SYNC=52 ticks), property all",
+      "rule": "TR = 2 MAX T1 + 3 TD - 1 = 26 < 27: (2) is violated on the TR side; SYNC + T1 = 29 > TR + TD = 27, so (4) holds. MAX=4 is outside the range MAX 1..3 in which the source computed the exact regions: the rule is extrapolated, the measured verdict agrees with it",
+      "expect_timed": "violations of (2), TR side only (measured: 256 executions, p4_runs=0)",
+      "expect_baseline": "violations: the baseline counts do not depend on TD, T1, TR, SYNC or K, so it reports exactly what it reports in the safe cell with the same n, MAX, F and property, and cannot tell this cell from that one"
+    },
+    {
+      "id": "B4-edge",
+      "name": "MAX=4, SYNC exactly at the tie SYNC + T1 = TR + TD",
+      "params": "n=2, MAX=4, F=1, TD=1, T1=3, TR=27, SYNC=25, K=2 (TR=54, SYNC=50 ticks), property all",
+      "rule": "TR at its bound 27; SYNC + T1 = 28 = TR + TD: exactly on the boundary; the tool puts the cell on the violating side for (4) (strict) and on the hold side for (2) (non-strict). Rule extrapolated to MAX=4",
+      "expect_timed": "violations of (4) only (measured: 32 executions, p2_runs=0)",
+      "expect_baseline": "violations: the baseline counts do not depend on TD, T1, TR, SYNC or K, so it reports exactly what it reports in the safe cell with the same n, MAX, F and property, and cannot tell this cell from that one"
+    },
+    {
+      "id": "B4-safe",
+      "name": "MAX=4, least SYNC above the tie",
+      "params": "n=2, MAX=4, F=1, TD=1, T1=3, TR=27, SYNC=26, K=2 (TR=54, SYNC=52 ticks), property all",
+      "rule": "TR at its bound 27; SYNC + T1 = 29 > TR + TD = 28: the least SYNC for which (4) holds; SYNC = TR - 1 is outside DKRT's constraint (5) and still safe. Rule extrapolated to MAX=4",
+      "expect_timed": "0 violations",
+      "expect_baseline": "violations, all spurious: without a clock the receiver's timeout, the sender's waits and the transit bound are unrelated, so a late frame after a premature timeout and a probe that finds the receiver still busy cannot be ruled out"
+    },
+    {
+      "id": "C1-edge",
+      "name": "two files, MAX=1, SYNC exactly on the SYNC edge of (2)",
+      "params": "n=2, MAX=1, F=2, TD=1, T1=3, TR=9, SYNC=7, K=2 (TR=18, SYNC=14 ticks), DC=10, property p2",
+      "rule": "TR at its bound 9; SYNC + T1 = 10 = TR + TD: exactly on the SYNC conjunct of (2), which is non-strict, so the tool puts the cell on the hold side. SYNC = TR - 2 is outside DKRT's constraint (5). By the same region (4) is violated at this tie; the cell checks (2) alone",
+      "expect_timed": "0 violations",
+      "expect_baseline": "violations, all spurious: without a clock a late frame after a premature receiver timeout, and a new file started before the receiver gave the old one up, cannot be ruled out (property (2) alone, on its TR side and on its SYNC side)"
+    },
+    {
+      "id": "C1-viol",
+      "name": "two files, MAX=1, SYNC one unit below the SYNC edge of (2)",
+      "params": "n=2, MAX=1, F=2, TD=1, T1=3, TR=9, SYNC=6, K=2 (TR=18, SYNC=12 ticks), DC=10, property p2",
+      "rule": "SYNC + T1 = 9 < TR + TD = 10: (2) is violated on the SYNC side (a new file starts while the receiver still holds the old one: its first frame is taken as a duplicate, the receiver times out, and chunk 2 is taken as a first frame)",
+      "expect_timed": "violations of (2), SYNC side only (measured: 7 executions)",
+      "expect_baseline": "violations: the baseline counts do not depend on TD, T1, TR, SYNC or K, so it reports exactly what it reports in the safe cell with the same n, MAX, F and property, and cannot tell this cell from that one"
+    },
+    {
+      "id": "C2-edge",
+      "name": "two files, DKRT's own setting (MAX=2, TR=15), SYNC exactly on the SYNC edge of (2)",
+      "params": "n=2, MAX=2, F=2, TD=1, T1=3, TR=15, SYNC=13, K=2 (TR=30, SYNC=26 ticks), DC=16, property p2",
+      "rule": "TR at its bound 15; SYNC + T1 = 16 = TR + TD: exactly on the SYNC conjunct of (2) (non-strict): the tool puts the cell on the hold side. The source header gives SYNC=13 as a violation of (4) at this same tie; the cell checks (2) alone",
+      "expect_timed": "0 violations",
+      "expect_baseline": "violations, all spurious: without a clock a late frame after a premature receiver timeout, and a new file started before the receiver gave the old one up, cannot be ruled out (property (2) alone, on its TR side and on its SYNC side); not measured, the baseline run did not finish in v8"
+    },
+    {
+      "id": "C2-viol",
+      "name": "two files, DKRT's own setting (MAX=2, TR=15), SYNC one unit below the SYNC edge of (2)",
+      "params": "n=2, MAX=2, F=2, TD=1, T1=3, TR=15, SYNC=12, K=2 (TR=30, SYNC=24 ticks), DC=16, property p2",
+      "rule": "SYNC + T1 = 15 < TR + TD = 16: (2) is violated on the SYNC side",
+      "expect_timed": "violations of (2), SYNC side only (v8: 19 executions)",
+      "expect_baseline": "violations (not run: timed only cell; the baseline would report what it reports for C2-edge)"
+    },
+    {
+      "id": "D-safe",
+      "name": "chunk ladder at DKRT's safe setting with one retransmission",
+      "params": "MAX=1, F=1, TD=1, T1=3, TR=SYNC=9, K=2 (TR=SYNC=18 ticks), n=3..7, property all",
+      "rule": "DKRT's constraint (5) holds with TR at its least value 2 MAX T1 + 3 TD = 9 and SYNC = TR; the constraint does not depend on n. The exact regions of the source were computed at n=2 only, so for n > 2 the expectation rests on (5) and on the measurement",
+      "expect_timed": "0 violations",
+      "expect_baseline": "violations, all spurious: without a clock the receiver's timeout, the sender's waits and the transit bound are unrelated, so a late frame after a premature timeout and a probe that finds the receiver still busy cannot be ruled out"
+    },
+    {
+      "id": "E-safe",
+      "name": "chunks and retransmissions grown together, DKRT's safe setting",
+      "params": "n=3, MAX=2, F=1, TD=1, T1=3, TR=SYNC=15, K=2 (TR=SYNC=30 ticks), property all",
+      "rule": "DKRT's constraint (5) holds with TR at its least value 2 MAX T1 + 3 TD = 15 and SYNC = TR (n=3 is outside the n=2 range of the exact regions, as in D)",
+      "expect_timed": "0 violations",
+      "expect_baseline": "violations, all spurious: without a clock the receiver's timeout, the sender's waits and the transit bound are unrelated, so a late frame after a premature timeout and a probe that finds the receiver still busy cannot be ruled out"
+    }
+  ],
+  "glossary": [
+    {
+      "term": "BRP",
+      "meaning": "bounded retransmission protocol: a sender S sends a file as n chunks over a lossy channel, resends a chunk at most MAX times, and both clients are told whether the file got through"
+    },
+    {
+      "term": "DKRT",
+      "meaning": "D'Argenio, Katoen, Ruys, Tretmans: the TACAS 1997 paper this example is ported from; a DKRT time unit is the unit of its constants TD, T1, TR, SYNC"
+    },
+    {
+      "term": "frame, ack, alternating bit",
+      "meaning": "a frame carries one chunk with the flags first, last and an alternating bit; the receiver acks every frame (acks carry no bit) and reports a frame only if its bit is the expected one, otherwise it is a duplicate"
+    },
+    {
+      "term": "tick",
+      "meaning": "the checker's time unit: 1/K of a DKRT time unit; with K=2 a transit of (0, TD] becomes 1 to 2*TD ticks"
+    },
+    {
+      "term": "property (2)",
+      "meaning": "DKRT Sec. 4.2 (2): the receiver never takes a frame that is not a first chunk for the first frame of a new file"
+    },
+    {
+      "term": "property (4)",
+      "meaning": "DKRT Sec. 4.2 (4): when the sender ends its SYNC wait after a failed file, the receiver has already given that file up"
+    },
+    {
+      "term": "client property",
+      "meaning": "DKRT Table 2 (1) and (2) for one file: the run never ends with one client told OK and the other told NOT OK"
+    },
+    {
+      "term": "TR side of (2)",
+      "meaning": "the violation when TR is too small: the receiver times out too early and a late copy of a later chunk of the same file is taken as a first frame (DKRT's Fig. 7)"
+    },
+    {
+      "term": "SYNC side of (2)",
+      "meaning": "the violation when SYNC is too small: the sender starts a new file while the receiver still holds the old one; needs two files"
+    },
+    {
+      "term": "TR bound",
+      "meaning": "2*MAX*T1 + 3*TD: the least receiver timeout for which (2) holds (6*MAX + 3 in every v9 cell)"
+    },
+    {
+      "term": "tie",
+      "meaning": "SYNC + T1 = TR + TD: the boundary shared by the SYNC condition of (2), which still holds there, and (4), which is already violated there"
+    },
+    {
+      "term": "constraint (5)",
+      "meaning": "DKRT's sufficient condition: T1 > 2 TD and SYNC >= TR >= 2 MAX T1 + 3 TD"
+    },
+    {
+      "term": "probe",
+      "meaning": "a ghost message with zero transit that the sender sends when its SYNC wait ends; it reads the receiver's location and is the monitor of (4); it is not part of the protocol"
+    },
+    {
+      "term": "judged",
+      "meaning": "an execution in which the main thread received both summaries and evaluated the assertion"
+    },
+    {
+      "term": "blocked (in this example)",
+      "meaning": "executions that end before the judgement or at a failed assertion: a dropped harness message (start-up message, file offer, timer, probe, Done, summary) leaves a blocking receive unserved, an evicted timer or probe stops the run at the receiver's guard, and under keep-going every violating execution is filed here"
+    },
+    {
+      "term": "spurious violation",
+      "meaning": "a violation the baseline reports in a cell where real time rules it out: the timed side reports 0"
+    },
+    {
+      "term": "w1, w6, w12",
+      "meaning": "pool size in the cell names: sequential run, or --workers 6 / 12 (shared-queue pool)"
+    },
+    {
+      "term": "timed only",
+      "meaning": "a cell whose baseline was not run because it is out of reach or because it would repeat a baseline already measured (the baseline counts do not depend on the time constants)"
+    },
+    {
+      "term": "ceiling",
+      "meaning": "a baseline run that is not expected to finish before the deadline; its elapsed time is a lower bound on the baseline cost"
+    },
+    {
+      "term": "edge rung",
+      "meaning": "one rung above the top of a ladder, added on 2026-10-11"
+    },
+    {
+      "term": "DKRT cell",
+      "meaning": "DKRT's own values MAX 2, TD 1, T1 3, TR 15"
+    },
+    {
+      "term": "verdict= (summary line)",
+      "meaning": "HOLDS or VIOLATED computed from the example's own counters, not from the tool; the workbook uses the tool's count of violating executions instead"
+    }
+  ],
+  "cells": [
+    {
+      "cell": "A MAX=3 n=2 F=1 all w1 (headline, both >=10 s)",
+      "regime": "A-safe",
+      "label": "MAX ladder: 3 retransmissions, sequential",
+      "params": {
+        "n": 2,
+        "MAX": 3,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 21,
+        "SYNC": 21,
+        "K": 2,
+        "DC": 22,
+        "TRmin": 21,
+        "slack": 2,
+        "property": "all",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=1106 blocked=30834 (explored 31940); the (4) check met a receiver that had seen the failed file in 800 executions. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "2811266 violating executions (exit code 0 under keep-going); execs=280035 blocked=29663155 (explored 29943190); p2_runs=2382524 (TR side 2382524, SYNC side 0), p4_runs=2122438, client_runs=1504. v9: 3 finished runs, same counts as v8",
+      "note": ""
+    },
+    {
+      "cell": "A MAX=4 n=2 F=1 all w1 (headline, both >=1 min)",
+      "regime": "A-safe",
+      "label": "MAX ladder: 4 retransmissions, sequential",
+      "params": {
+        "n": 2,
+        "MAX": 4,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 27,
+        "SYNC": 27,
+        "K": 2,
+        "DC": 28,
+        "TRmin": 27,
+        "slack": 2,
+        "property": "all",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=5154 blocked=144610 (explored 149764); the (4) check met a receiver that had seen the failed file in 3808 executions. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "90033769 violating executions (exit code 0 under keep-going); execs=5774505 blocked=910913225 (explored 916687730); p2_runs=80801406 (TR side 80801406, SYNC side 0), p4_runs=68391993, client_runs=12240. v9: 1 finished run, same counts as v8",
+      "note": ""
+    },
+    {
+      "cell": "C1 F=2 MAX=1 TR=9 SYNC=7 p2 w1 (exact SYNC edge, hold; both >=1 min)",
+      "regime": "C1-edge",
+      "label": "two files, 1 retransmission: SYNC exactly on the edge of (2), sequential",
+      "params": {
+        "n": 2,
+        "MAX": 1,
+        "F": 2,
+        "TD": 1,
+        "T1": 3,
+        "TR": 9,
+        "SYNC": 7,
+        "K": 2,
+        "DC": 10,
+        "TRmin": 9,
+        "slack": 0,
+        "property": "p2",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=3855 blocked=199735 (explored 203590); 1260 executions start a file after a failed one, 1719 take a first frame after a receiver timeout. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "1878828 violating executions (judged - execs; exit code 0 under keep-going); execs=1115751 blocked=41928428 (explored 43044179); p2_runs=1878828 (TR side 1860128, SYNC side 43510), p4_runs=0. From v8 (brp-006); no v9 result at 2026-10-11 11:09:56",
+      "note": "client_runs is not zero in this cell and is not a violation count: the client check is exact for one file only and is not asserted with --property p2. The same baseline on 6 workers (the w6 cell) is already measured in v9 with the same complete and blocked counts."
+    },
+    {
+      "cell": "A MAX=8 n=2 F=1 all w6 (biggest comfortable timed)",
+      "regime": "A-safe",
+      "label": "MAX ladder: 8 retransmissions, 6 pool workers",
+      "params": {
+        "n": 2,
+        "MAX": 8,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 51,
+        "SYNC": 51,
+        "K": 2,
+        "DC": 52,
+        "TRmin": 51,
+        "slack": 2,
+        "property": "all",
+        "workers": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=1997314 blocked=56437794 (explored 58435108); the (4) check met a receiver that had seen the failed file in 1572352 executions. v9: 1 finished run, same counts as v8",
+      "expect_baseline": "not run: timed only cell (the baseline at MAX=5 already did not finish in v8)",
+      "note": "Runs --workers 6 on 5 pinned cores (the plan gives this job one core less than workers)."
+    },
+    {
+      "cell": "C1 F=2 MAX=1 TR=9 SYNC=7 p2 w6 (parallel pair, both >=10 s)",
+      "regime": "C1-edge",
+      "label": "two files, 1 retransmission: SYNC exactly on the edge of (2), 6 pool workers",
+      "params": {
+        "n": 2,
+        "MAX": 1,
+        "F": 2,
+        "TD": 1,
+        "T1": 3,
+        "TR": 9,
+        "SYNC": 7,
+        "K": 2,
+        "DC": 10,
+        "TRmin": 9,
+        "slack": 0,
+        "property": "p2",
+        "workers": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=3855 blocked=199735 (explored 203590); 1260 executions start a file after a failed one, 1719 take a first frame after a receiver timeout. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "1878826 to 1878827 violating executions counted from the tool's lines over the 3 runs (exit code 0 under keep-going); judged - execs = 1878828 in every run; execs=1115751 blocked=41928428 (explored 43044179); p2_runs=1878828 (TR side 1860128, SYNC side 43510), p4_runs=0. v9: 3 finished runs, same counts as v8",
+      "note": "client_runs is not zero in this cell and is not a violation count: the client check is exact for one file only and is not asserted with --property p2."
+    },
+    {
+      "cell": "A MAX=1 n=2 F=1 all w1",
+      "regime": "A-safe",
+      "label": "MAX ladder: 1 retransmission, sequential",
+      "params": {
+        "n": 2,
+        "MAX": 1,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 9,
+        "SYNC": 9,
+        "K": 2,
+        "DC": 10,
+        "TRmin": 9,
+        "slack": 2,
+        "property": "all",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=42 blocked=1138 (explored 1180); the (4) check met a receiver that had seen the failed file in 29 executions. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "1927 violating executions (exit code 0 under keep-going); execs=374 blocked=22628 (explored 23002); p2_runs=1240 (TR side 1240, SYNC side 0), p4_runs=1535, client_runs=8. v9: 3 finished runs, same counts as v8",
+      "note": ""
+    },
+    {
+      "cell": "A MAX=2 n=2 F=1 all w1",
+      "regime": "A-safe",
+      "label": "MAX ladder: 2 retransmissions, sequential",
+      "params": {
+        "n": 2,
+        "MAX": 2,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 15,
+        "SYNC": 15,
+        "K": 2,
+        "DC": 16,
+        "TRmin": 15,
+        "slack": 2,
+        "property": "all",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=226 blocked=6234 (explored 6460); the (4) check met a receiver that had seen the failed file in 160 executions. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "79792 violating executions (exit code 0 under keep-going); execs=11699 blocked=887619 (explored 899318); p2_runs=61472 (TR side 61472, SYNC side 0), p4_runs=60884, client_runs=144. v9: 3 finished runs, same counts as v8",
+      "note": ""
+    },
+    {
+      "cell": "A MAX=5 n=2 F=1 all w1",
+      "regime": "A-safe",
+      "label": "MAX ladder: 5 retransmissions, sequential",
+      "params": {
+        "n": 2,
+        "MAX": 5,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 33,
+        "SYNC": 33,
+        "K": 2,
+        "DC": 34,
+        "TRmin": 33,
+        "slack": 2,
+        "property": "all",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=23362 blocked=657890 (explored 681252); the (4) check met a receiver that had seen the failed file in 17600 executions. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "not run under this cell name: the baseline of the same arguments is the cell 'A MAX=5 n=2 F=1 all w1 (ceiling)'",
+      "note": ""
+    },
+    {
+      "cell": "A MAX=6 n=2 F=1 all w1 (timed only)",
+      "regime": "A-safe",
+      "label": "MAX ladder: 6 retransmissions, sequential",
+      "params": {
+        "n": 2,
+        "MAX": 6,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 39,
+        "SYNC": 39,
+        "K": 2,
+        "DC": 40,
+        "TRmin": 39,
+        "slack": 2,
+        "property": "all",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=104066 blocked=2936354 (explored 3040420). From v8 (brp-015-A, the rerun under rule A); no v9 result at 2026-10-11 11:09:56",
+      "expect_baseline": "not run: timed only cell (the baseline at MAX=5 already did not finish in v8)",
+      "note": ""
+    },
+    {
+      "cell": "A MAX=3 n=2 F=1 all w6",
+      "regime": "A-safe",
+      "label": "MAX ladder: 3 retransmissions, 6 pool workers",
+      "params": {
+        "n": 2,
+        "MAX": 3,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 21,
+        "SYNC": 21,
+        "K": 2,
+        "DC": 22,
+        "TRmin": 21,
+        "slack": 2,
+        "property": "all",
+        "workers": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=1106 blocked=30834 (explored 31940); the (4) check met a receiver that had seen the failed file in 800 executions. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "2811263 to 2811264 violating executions counted from the tool's lines over the 3 runs (exit code 0 under keep-going); judged - execs = 2811266 in every run; execs=280035 blocked=29663155 (explored 29943190); p2_runs=2382524 (TR side 2382524, SYNC side 0), p4_runs=2122438, client_runs=1504. v9: 3 finished runs, same counts as v8",
+      "note": ""
+    },
+    {
+      "cell": "A MAX=4 n=2 F=1 all w6 (timed only)",
+      "regime": "A-safe",
+      "label": "MAX ladder: 4 retransmissions, 6 pool workers",
+      "params": {
+        "n": 2,
+        "MAX": 4,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 27,
+        "SYNC": 27,
+        "K": 2,
+        "DC": 28,
+        "TRmin": 27,
+        "slack": 2,
+        "property": "all",
+        "workers": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=5154 blocked=144610 (explored 149764); the (4) check met a receiver that had seen the failed file in 3808 executions. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "not run with 6 workers: the baseline of the same instance on 1 worker is the cell 'A MAX=4 n=2 F=1 all w1 (headline, both >=1 min)'",
+      "note": ""
+    },
+    {
+      "cell": "A MAX=5 n=2 F=1 all w6 (timed only)",
+      "regime": "A-safe",
+      "label": "MAX ladder: 5 retransmissions, 6 pool workers",
+      "params": {
+        "n": 2,
+        "MAX": 5,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 33,
+        "SYNC": 33,
+        "K": 2,
+        "DC": 34,
+        "TRmin": 33,
+        "slack": 2,
+        "property": "all",
+        "workers": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=23362 blocked=657890 (explored 681252); the (4) check met a receiver that had seen the failed file in 17600 executions. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "not run with 6 workers: the baseline of the same instance on 1 worker is the cell 'A MAX=5 n=2 F=1 all w1 (ceiling)' (did not finish in v8)",
+      "note": ""
+    },
+    {
+      "cell": "A MAX=6 n=2 F=1 all w6 (timed only)",
+      "regime": "A-safe",
+      "label": "MAX ladder: 6 retransmissions, 6 pool workers",
+      "params": {
+        "n": 2,
+        "MAX": 6,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 39,
+        "SYNC": 39,
+        "K": 2,
+        "DC": 40,
+        "TRmin": 39,
+        "slack": 2,
+        "property": "all",
+        "workers": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=104066 blocked=2936354 (explored 3040420); the (4) check met a receiver that had seen the failed file in 79744 executions. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "not run: timed only cell (the baseline at MAX=5 already did not finish in v8)",
+      "note": ""
+    },
+    {
+      "cell": "A MAX=7 n=2 F=1 all w6 (timed only)",
+      "regime": "A-safe",
+      "label": "MAX ladder: 7 retransmissions, 6 pool workers",
+      "params": {
+        "n": 2,
+        "MAX": 7,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 45,
+        "SYNC": 45,
+        "K": 2,
+        "DC": 46,
+        "TRmin": 45,
+        "slack": 2,
+        "property": "all",
+        "workers": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=457986 blocked=12935458 (explored 13393444); the (4) check met a receiver that had seen the failed file in 356096 executions. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "not run: timed only cell (the baseline at MAX=5 already did not finish in v8)",
+      "note": ""
+    },
+    {
+      "cell": "A MAX=9 n=2 F=1 all w6 (top of the timed ladder)",
+      "regime": "A-safe",
+      "label": "MAX ladder: 9 retransmissions, 6 pool workers",
+      "params": {
+        "n": 2,
+        "MAX": 9,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 57,
+        "SYNC": 57,
+        "K": 2,
+        "DC": 58,
+        "TRmin": 57,
+        "slack": 2,
+        "property": "all",
+        "workers": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=8647682 blocked=244395042 (explored 253042724); the (4) check met a receiver that had seen the failed file in 6880256 executions. v9: 1 finished run, same counts as v8",
+      "expect_baseline": "not run: timed only cell (the baseline at MAX=5 already did not finish in v8)",
+      "note": "Runs --workers 6 on 5 pinned cores (the plan gives this job one core less than workers)."
+    },
+    {
+      "cell": "B3 boundary MAX=3 TR=20 SYNC=20 F=1 all w1",
+      "regime": "B3-viol",
+      "label": "boundary at 3 retransmissions: TR one unit below its bound",
+      "params": {
+        "n": 2,
+        "MAX": 3,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 20,
+        "SYNC": 20,
+        "K": 2,
+        "DC": 21,
+        "TRmin": 21,
+        "slack": 2,
+        "property": "all",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "64 violating executions (exit code 0 under keep-going); execs=1122 blocked=32514 (explored 33636); p2_runs=64 (TR side 64, SYNC side 0), p4_runs=0, client_runs=0. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "2811266 violating executions (exit code 0 under keep-going); execs=280035 blocked=29663155 (explored 29943190); p2_runs=2382524 (TR side 2382524, SYNC side 0), p4_runs=2122438, client_runs=1504. v9: 3 finished runs, same counts as v8",
+      "note": "The baseline has the same counts, in every counter, as the cell 'A MAX=3 n=2 F=1 all w1 (headline, both >=10 s)': it does not depend on TR and SYNC."
+    },
+    {
+      "cell": "B3 boundary MAX=3 TR=21 SYNC=19 F=1 all w1",
+      "regime": "B3-edge",
+      "label": "boundary at 3 retransmissions: SYNC exactly at the tie of (4)",
+      "params": {
+        "n": 2,
+        "MAX": 3,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 21,
+        "SYNC": 19,
+        "K": 2,
+        "DC": 22,
+        "TRmin": 21,
+        "slack": 0,
+        "property": "all",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "16 violating executions (exit code 0 under keep-going); execs=1106 blocked=30990 (explored 32096); p2_runs=0 (TR side 0, SYNC side 0), p4_runs=16, client_runs=0. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "2811266 violating executions (exit code 0 under keep-going); execs=280035 blocked=29663155 (explored 29943190); p2_runs=2382524 (TR side 2382524, SYNC side 0), p4_runs=2122438, client_runs=1504. v9: 3 finished runs, same counts as v8",
+      "note": "The baseline has the same counts, in every counter, as the cell 'A MAX=3 n=2 F=1 all w1 (headline, both >=10 s)': it does not depend on TR and SYNC. The violation is the tie SYNC + T1 = TR + TD, seen by the probe of (4), which the receiver reads with a wait of 0 at its timeout instant."
+    },
+    {
+      "cell": "B3 boundary MAX=3 TR=21 SYNC=20 F=1 all w1",
+      "regime": "B3-safe",
+      "label": "boundary at 3 retransmissions: least SYNC above the tie of (4)",
+      "params": {
+        "n": 2,
+        "MAX": 3,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 21,
+        "SYNC": 20,
+        "K": 2,
+        "DC": 22,
+        "TRmin": 21,
+        "slack": 1,
+        "property": "all",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=1106 blocked=30834 (explored 31940); the (4) check met a receiver that had seen the failed file in 800 executions. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "2811266 violating executions (exit code 0 under keep-going); execs=280035 blocked=29663155 (explored 29943190); p2_runs=2382524 (TR side 2382524, SYNC side 0), p4_runs=2122438, client_runs=1504. v9: 3 finished runs, same counts as v8",
+      "note": "The baseline has the same counts, in every counter, as the cell 'A MAX=3 n=2 F=1 all w1 (headline, both >=10 s)': it does not depend on TR and SYNC. The timed counts equal those of the A cell with the same MAX: one unit less SYNC changes nothing while (4) still holds."
+    },
+    {
+      "cell": "B4 boundary MAX=4 TR=26 SYNC=26 F=1 all w1 (timed only)",
+      "regime": "B4-viol",
+      "label": "boundary at 4 retransmissions: TR one unit below its bound",
+      "params": {
+        "n": 2,
+        "MAX": 4,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 26,
+        "SYNC": 26,
+        "K": 2,
+        "DC": 27,
+        "TRmin": 27,
+        "slack": 2,
+        "property": "all",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "256 violating executions (exit code 0 under keep-going); execs=5218 blocked=151330 (explored 156548); p2_runs=256 (TR side 256, SYNC side 0), p4_runs=0, client_runs=0. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "not run: timed only cell. The baseline counts do not depend on TR and SYNC, so its baseline is the one of the cell 'A MAX=4 n=2 F=1 all w1 (headline, both >=1 min)'",
+      "note": ""
+    },
+    {
+      "cell": "B4 boundary MAX=4 TR=27 SYNC=25 F=1 all w1 (timed only)",
+      "regime": "B4-edge",
+      "label": "boundary at 4 retransmissions: SYNC exactly at the tie of (4)",
+      "params": {
+        "n": 2,
+        "MAX": 4,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 27,
+        "SYNC": 25,
+        "K": 2,
+        "DC": 28,
+        "TRmin": 27,
+        "slack": 0,
+        "property": "all",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "32 violating executions (exit code 0 under keep-going); execs=5154 blocked=144926 (explored 150080); p2_runs=0 (TR side 0, SYNC side 0), p4_runs=32, client_runs=0. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "not run: timed only cell. The baseline counts do not depend on TR and SYNC, so its baseline is the one of the cell 'A MAX=4 n=2 F=1 all w1 (headline, both >=1 min)'",
+      "note": "The violation is the tie SYNC + T1 = TR + TD, seen by the probe of (4), which the receiver reads with a wait of 0 at its timeout instant."
+    },
+    {
+      "cell": "B4 boundary MAX=4 TR=27 SYNC=26 F=1 all w1 (timed only)",
+      "regime": "B4-safe",
+      "label": "boundary at 4 retransmissions: least SYNC above the tie of (4)",
+      "params": {
+        "n": 2,
+        "MAX": 4,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 27,
+        "SYNC": 26,
+        "K": 2,
+        "DC": 28,
+        "TRmin": 27,
+        "slack": 1,
+        "property": "all",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=5154 blocked=144610 (explored 149764); the (4) check met a receiver that had seen the failed file in 3808 executions. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "not run: timed only cell. The baseline counts do not depend on TR and SYNC, so its baseline is the one of the cell 'A MAX=4 n=2 F=1 all w1 (headline, both >=1 min)'",
+      "note": "The timed counts equal those of the A cell with the same MAX: one unit less SYNC changes nothing while (4) still holds."
+    },
+    {
+      "cell": "C1 F=2 MAX=1 TR=9 SYNC=6 p2 w1 (SYNC edge, fire)",
+      "regime": "C1-viol",
+      "label": "two files, 1 retransmission: SYNC one unit below the edge of (2), sequential",
+      "params": {
+        "n": 2,
+        "MAX": 1,
+        "F": 2,
+        "TD": 1,
+        "T1": 3,
+        "TR": 9,
+        "SYNC": 6,
+        "K": 2,
+        "DC": 10,
+        "TRmin": 9,
+        "slack": -1,
+        "property": "p2",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "7 violating executions (exit code 0 under keep-going); execs=4008 blocked=205110 (explored 209118); p2_runs=7 (TR side 0, SYNC side 7), p4_runs=0. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "1878828 violating executions (judged - execs; exit code 0 under keep-going); execs=1115751 blocked=41928428 (explored 43044179); p2_runs=1878828 (TR side 1860128, SYNC side 43510), p4_runs=0. From v8 (brp-033); no v9 result at 2026-10-11 11:09:56",
+      "note": "client_runs is not zero in this cell and is not a violation count: the client check is exact for one file only and is not asserted with --property p2. The baseline (v8) has the same counts as the baseline of the SYNC=7 cell: it cannot tell the two cells apart."
+    },
+    {
+      "cell": "C2 DKRT cell F=2 MAX=2 TR=15 SYNC=13 p2 w1 (exact SYNC edge, hold)",
+      "regime": "C2-edge",
+      "label": "two files, 2 retransmissions (DKRT values): SYNC exactly on the edge of (2), sequential",
+      "params": {
+        "n": 2,
+        "MAX": 2,
+        "F": 2,
+        "TD": 1,
+        "T1": 3,
+        "TR": 15,
+        "SYNC": 13,
+        "K": 2,
+        "DC": 16,
+        "TRmin": 15,
+        "slack": 0,
+        "property": "p2",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=152475 blocked=7589451 (explored 7741926); 36386 executions start a file after a failed one, 56862 take a first frame after a receiver timeout. From v8 (brp-034); no v9 result at 2026-10-11 11:09:56",
+      "expect_baseline": "not run under this cell name: the baseline of the same arguments is the cell 'C2 DKRT cell F=2 MAX=2 TR=15 SYNC=13 p2 w1 (ceiling)'",
+      "note": "client_runs is not zero in this cell and is not a violation count: the client check is exact for one file only and is not asserted with --property p2."
+    },
+    {
+      "cell": "C2 DKRT cell F=2 MAX=2 TR=15 SYNC=12 p2 w1 (SYNC edge, fire; timed only)",
+      "regime": "C2-viol",
+      "label": "two files, 2 retransmissions (DKRT values): SYNC one unit below the edge of (2), sequential",
+      "params": {
+        "n": 2,
+        "MAX": 2,
+        "F": 2,
+        "TD": 1,
+        "T1": 3,
+        "TR": 15,
+        "SYNC": 12,
+        "K": 2,
+        "DC": 16,
+        "TRmin": 15,
+        "slack": -1,
+        "property": "p2",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "19 violating executions (judged - execs; exit code 0 under keep-going); execs=154230 blocked=7654320 (explored 7808550); p2_runs=19 (TR side 0, SYNC side 19), p4_runs=0. From v8 (brp-035); no v9 result at 2026-10-11 11:09:56",
+      "expect_baseline": "not run: timed only cell (the baseline of C2 with SYNC=13, cell 'C2 DKRT cell F=2 MAX=2 TR=15 SYNC=13 p2 w1 (ceiling)', did not finish in v8)",
+      "note": "client_runs is not zero in this cell and is not a violation count: the client check is exact for one file only and is not asserted with --property p2."
+    },
+    {
+      "cell": "D n=3 MAX=1 TR=9 F=1 all w1",
+      "regime": "D-safe",
+      "label": "chunk ladder: 3 chunks, sequential",
+      "params": {
+        "n": 3,
+        "MAX": 1,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 9,
+        "SYNC": 9,
+        "K": 2,
+        "DC": 10,
+        "TRmin": 9,
+        "slack": 2,
+        "property": "all",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=219 blocked=11529 (explored 11748); the (4) check met a receiver that had seen the failed file in 137 executions. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "62968 violating executions (exit code 0 under keep-going); execs=7838 blocked=903972 (explored 911810); p2_runs=48904 (TR side 48904, SYNC side 0), p4_runs=47226, client_runs=346. v9: 3 finished runs, same counts as v8",
+      "note": ""
+    },
+    {
+      "cell": "D n=4 MAX=1 TR=9 F=1 all w1",
+      "regime": "D-safe",
+      "label": "chunk ladder: 4 chunks, sequential",
+      "params": {
+        "n": 4,
+        "MAX": 1,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 9,
+        "SYNC": 9,
+        "K": 2,
+        "DC": 10,
+        "TRmin": 9,
+        "slack": 2,
+        "property": "all",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=1364 blocked=140546 (explored 141910); the (4) check met a receiver that had seen the failed file in 822 executions. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "2228873 violating executions (judged - execs; exit code 0 under keep-going); execs=208696 blocked=40967930 (explored 41176626); p2_runs=1841463 (TR side 1841463, SYNC side 0), p4_runs=1626070, client_runs=13760. From v8 (brp-039); no v9 result at 2026-10-11 11:09:56",
+      "note": ""
+    },
+    {
+      "cell": "D n=5 MAX=1 TR=9 F=1 all w6 (timed only)",
+      "regime": "D-safe",
+      "label": "chunk ladder: 5 chunks, 6 pool workers",
+      "params": {
+        "n": 5,
+        "MAX": 1,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 9,
+        "SYNC": 9,
+        "K": 2,
+        "DC": 10,
+        "TRmin": 9,
+        "slack": 2,
+        "property": "all",
+        "workers": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=9134 blocked=1798616 (explored 1807750); the (4) check met a receiver that had seen the failed file in 5434 executions. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "not run: timed only cell (the largest baseline of this ladder is n=4)",
+      "note": ""
+    },
+    {
+      "cell": "E n=3 MAX=2 TR=15 F=1 all w1 (n x MAX compound, both >=1 min)",
+      "regime": "E-safe",
+      "label": "chunks and retransmissions together: 3 chunks, 2 retransmissions, sequential",
+      "params": {
+        "n": 3,
+        "MAX": 2,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 15,
+        "SYNC": 15,
+        "K": 2,
+        "DC": 16,
+        "TRmin": 15,
+        "slack": 2,
+        "property": "all",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violations (exit code 0); execs=2876 blocked=155656 (explored 158532); the (4) check met a receiver that had seen the failed file in 1800 executions. v9: 3 finished runs, same counts as v8",
+      "expect_baseline": "17437756 violating executions (exit code 0 under keep-going); execs=1352505 blocked=234649605 (explored 236002110); p2_runs=15582088 (TR side 15582088, SYNC side 0), p4_runs=12550260, client_runs=38364. v9: 1 finished run, same counts as v8",
+      "note": ""
+    },
+    {
+      "cell": "C2 DKRT cell F=2 MAX=2 TR=15 SYNC=13 p2 w1 (ceiling)",
+      "regime": "C2-edge",
+      "label": "two files, 2 retransmissions (DKRT values): SYNC exactly on the edge of (2), sequential, baseline only (ceiling)",
+      "params": {
+        "n": 2,
+        "MAX": 2,
+        "F": 2,
+        "TD": 1,
+        "T1": 3,
+        "TR": 15,
+        "SYNC": 13,
+        "K": 2,
+        "DC": 16,
+        "TRmin": 15,
+        "slack": 0,
+        "property": "p2",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "not run under this cell name: the timed run of the same arguments is the cell 'C2 DKRT cell F=2 MAX=2 TR=15 SYNC=13 p2 w1 (exact SYNC edge, hold)'",
+      "expect_baseline": "not measured yet: v8 did not finish (brp-043: killed after 41.0 h at 1885100000 explored (22973507 execs, 1862126493 blocked)), so no violation count exists; the v9 run brp-043-r1 was still running at 2026-10-11 11:09:56 after 43.9 h. If it finishes: violations (spurious)",
+      "note": "Baseline only: the elapsed time of a run that does not finish is a lower bound on the baseline cost of the timed twin."
+    },
+    {
+      "cell": "A MAX=5 n=2 F=1 all w1 (ceiling)",
+      "regime": "A-safe",
+      "label": "MAX ladder: 5 retransmissions, sequential, baseline only (ceiling)",
+      "params": {
+        "n": 2,
+        "MAX": 5,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 33,
+        "SYNC": 33,
+        "K": 2,
+        "DC": 34,
+        "TRmin": 33,
+        "slack": 2,
+        "property": "all",
+        "workers": 1
+      },
+      "kind": "exhaustive",
+      "expect_timed": "not run under this cell name: the timed run of the same arguments is the cell 'A MAX=5 n=2 F=1 all w1'",
+      "expect_baseline": "not measured yet: v8 did not finish (brp-044: killed after 41.0 h at 1725800000 explored (3751296 execs, 1722048704 blocked)), so no violation count exists; the v9 run brp-044-r1 was still running at 2026-10-11 11:09:56 after 43.9 h. If it finishes: violations (spurious)",
+      "note": "Baseline only: the elapsed time of a run that does not finish is a lower bound on the baseline cost of the timed twin."
+    },
+    {
+      "cell": "D n=6 MAX=1 TR=9 F=1 all w6 (edge rung, timed only)",
+      "regime": "D-safe",
+      "label": "chunk ladder: 6 chunks, 6 pool workers, edge rung",
+      "params": {
+        "n": 6,
+        "MAX": 1,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 9,
+        "SYNC": 9,
+        "K": 2,
+        "DC": 10,
+        "TRmin": 9,
+        "slack": 2,
+        "property": "all",
+        "workers": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "not measured yet (regime D-safe: 0 violations expected)",
+      "expect_baseline": "not run: timed only cell (the largest baseline of this ladder is n=4)",
+      "note": "Added on 2026-10-11, one rung above the top of the chunk ladder; no result yet. Regime of the rung below."
+    },
+    {
+      "cell": "D n=7 MAX=1 TR=9 F=1 all w12 (edge rung, timed only)",
+      "regime": "D-safe",
+      "label": "chunk ladder: 7 chunks, 12 pool workers, edge rung",
+      "params": {
+        "n": 7,
+        "MAX": 1,
+        "F": 1,
+        "TD": 1,
+        "T1": 3,
+        "TR": 9,
+        "SYNC": 9,
+        "K": 2,
+        "DC": 10,
+        "TRmin": 9,
+        "slack": 2,
+        "property": "all",
+        "workers": 12
+      },
+      "kind": "exhaustive",
+      "expect_timed": "not measured yet (regime D-safe: 0 violations expected)",
+      "expect_baseline": "not run: timed only cell (the largest baseline of this ladder is n=4)",
+      "note": "Added on 2026-10-11, one rung above the top of the chunk ladder; no result yet. Regime of the rung below."
+    }
+  ],
+  "notes": [
+    "Measured numbers are those of results_v9.csv as of 2026-10-11 11:09:56. All 100 finished v9 runs of this example: exit code 0, timeline_impossible = 0, timing audit clean, complete and blocked counts identical to v8 on every side that finished in v8.",
+    "No single summary counter equals the number of violating executions, hence violation_counter is null. With --property p2 it is p2_runs. With --property all the assertion fails on (2) or (4) or the client property, the three counters overlap, and the counter of failing judged runs (ASSERT_FAIL_RUNS, line 373) is not printed. The exact relation is violating executions = judged - execs (impossible = 0): it holds in every sequential v9 run.",
+    "Counter against tool count: in the two baseline cells run with --workers 6 (A MAX=3 w6, runs brp-017; C1 w6, runs brp-009) the tool's line count is 1 to 3 below judged - execs and differs between repetitions (2811263 or 2811264 against 2811266; 1878826 or 1878827 against 1878828). Complete and blocked counts are identical. Cause not determined here (a few of the millions of lines are not counted in a parallel run); use judged - execs for these two rows.",
+    "The summary line's verdict= is counter-based. With --property all it adds p2_runs + p4_runs + client_runs (line 996), while the assertion ignores the client check when F > 1 (line 905): --files 2 or more with --property all would print VIOLATED on a holding cell. No v9 cell combines them (the two-file cells use --property p2), but client_runs is not zero in the C cells and must not be read as a violation.",
+    "The baseline counts do not depend on TD, T1, TR, SYNC or K: the four baselines at n=2, MAX=3, F=1 (A MAX=3 and the three B3 cells) agree in every counter, and in v8 the baselines of C1 at SYNC=7 and SYNC=6 agree. So the B4 cells (timed only) have the baseline of 'A MAX=4 ... w1 (headline, both >=1 min)'.",
+    "Two instances have their two sides under different cell names: the timed run of 'A MAX=5 n=2 F=1 all w1' pairs with the baseline cell 'A MAX=5 n=2 F=1 all w1 (ceiling)', and the timed run of 'C2 DKRT cell ... SYNC=13 p2 w1 (exact SYNC edge, hold)' pairs with the baseline cell 'C2 DKRT cell ... SYNC=13 p2 w1 (ceiling)'. Both ceilings did not finish in v8 and were still running in v9 at the time above.",
+    "A MAX=8 and A MAX=9 run --workers 6 on 5 pinned cores (plan column cores = 5); every other w6 cell has 6 cores and the w12 cell 12.",
+    "The time columns TD, T1, TR, SYNC, DC are in DKRT time units, as the flags and the summary line give them; the checker works in ticks = K times the value (K=2 everywhere).",
+    "The (4) verdict at the tie depends on how a wait of 0 treats a message that arrives exactly at its deadline (the probe is read with a wait of 0 at the receiver's timeout instant). The memory note project_v8_campaign records the decision of 2026-09-30 (rule A): such a message may be read or missed, for every wait including 0; one stored since before the deadline must be read. The tie cells then report (4) violated, as the strict inequality of the region says. On every cell of this example that finished under the withdrawn rule B, the rule B run, its rule A rerun and the v9 runs have identical counts.",
+    "Source against notes: the memory note brp_b04 (2026-09-19) speaks of a loss budget of at least 2 MAX; the current source has no budget, every send may be dropped in both modes (line 960). The numbers in the header comment of the source (RESULTS, items 1 and 5: for instance 102 violating runs and 11.9 M executions at the DKRT cell with SYNC=12, or 41,515 against 2,200) predate the send semantics of 2026-09-30 and partly use K=1 and judged runs as the unit; the verdicts agree with v8 and v9, the counts do not (v8: 19 violating executions, 7,808,550 explored at that cell). Take counts from the result files only.",
+    "Vacuity: in the holding cells with one file (A, D, E, B3-safe, B4-safe) no frame reaches the receiver after a timeout (first_safe_after_timeout_runs = 0) and the binary prints a NOTE saying so. With one file that is how (2) holds; the evidence that the check can fail is the adjacent B3-viol and B4-viol cells. The (4) holds are informative (probe_nontrivial_runs above 0 in every holding cell with --property all), and the two-file holds of (2) are too (restart_after_fail_runs and first_safe_after_timeout_runs above 0).",
+    "The counter-based hazard of the memory note counter_based_verdicts_hazard (counters also count endings without a timeline) does not bite here: impossible = 0 in every run, and the workbook's violating executions come from the tool's own lines.",
+    "Regime letters are the v8 prefixes of the cell names (A, B3, B4, C1, C2, D, E). A, D and E sit with TR exactly at its least value, which the non-strict TR condition puts on the hold side; they are labelled safe, and the cells one unit below (B3-viol, B4-viol) show the other side.",
+    "No v9 result yet at the time above for: the baselines of C1 w1 at SYNC=7 and SYNC=6, the timed run of A MAX=6 w1, both C2 timed cells, the baseline of D n=4, the two ceilings and the two edge rungs D n=6 and D n=7. Their expectations are the v8 results where v8 finished, else 'not measured yet'."
+  ]
+}

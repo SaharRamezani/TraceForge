@@ -1,0 +1,1042 @@
+{
+  "family": "swim",
+  "example": "swim_timed",
+  "title": "SWIM failure detector: suspicion subprotocol (false-positive death)",
+  "source": "Own model of the suspicion subprotocol of SWIM (Das et al. 2002, Section 4.2). The defect it targets, a healthy member declared dead because its refutation is processed after the suspicion timeout, is the starting point of Lifeguard (Dadgar et al. 2017). No table or listing of either paper is reproduced, and the timing rule is not taken from a paper: it was measured with the tool on this model. Deliberate deviations (swim_timed.rs lines 49 to 56): no indirect ping-req probing, no piggybacked dissemination (Suspects are sent directly), fixed prober and target roles, no Confirm dissemination, and the target never crashes.",
+  "property": "No member declares the target dead unless the target crashed. The target never crashes in this model (TARGET_CRASHED stays false, line 168), so every dead declaration, made by the prober or by a bystander after its suspicion wait Ws ran out without a refutation, is a false positive and fails traceforge::assert(TARGET_CRASHED) (lines 385 and 486). Only a death whose refutation is delivered, but after the wait, reaches the assertion: when the awaited message was lost the validation read never completes and the execution ends blocked.",
+  "citable": "with caveats",
+  "citable_note": "Audit of 2026-09-18: citable for precision only (the timed side reports 0 violations where the baseline reports false deaths), and it still holds on the current source: one program for both modes, no sleep. No efficiency claim: in v9 so far the timed side is slower in 29 of the 29 pairs with a measurable wall time (3.6 to 8.8 times) and explores more executions in 11 of 31 pairs. Quote the tool's violating executions, never the dead / violations counter (dead-declaration events). The boundary law is the tool's own measurement on this model, needs the qualifier N >= 3, and the header comment of the source still prints an older form (2sd). Every send is lossy, and a timeout caused by a lost message is discarded by the validation reads (blocked execution), so the claim is: no false death from a late refutation; say so when quoting the 0.",
+  "config_timed": "build_config, swim_timed.rs lines 520 to 539: Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX) (line 521); with_keep_going_after_error(true) when --keep-going is given (lines 522 to 528); then with_timed(L, U, sd).build() (line 537), which is with_timed(0, 2, 1) in setting L0 and with_timed(1, 2, 1) in setting L1. Consistency model FIFO and scheduling policy LTR, both the library defaults (with_cons_type and with_policy are not called; lib.rs lines 355 and 356). Every send is lossy with no budget: asked for at line 521 and forced by any timed configuration (lib.rs line 400). Sends use the global transit window [L, U] (plain send_msg / send_tagged_msg, no per-send bounds); every receive is a timed variant: blocking (recv_tagged_msg_block_timed, recv_msg_block_timed) or with a finite wait, WaitTime::Finite(Wp) at line 327 and WaitTime::Finite(Ws) at lines 362 and 471. Parallel option (lines 511 to 518): --parallel none (default, sequential) or --parallel shared = with_parallel(true); the pool size is MUST_PARALLEL_WORKERS if set, else num_cpus::get() (exec_pool.rs lines 379 to 385); the v9 scheduler does not set the variable and pins the job with taskset, so the pool has as many workers as the job has cores. An assertion failure is judged when the execution is complete and reported only if the whole graph has a consistent timeline (must.rs lines 1738 to 1778).",
+  "config_baseline": "The same builder without with_timed (line 536): Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX), plus with_keep_going_after_error(true) under --keep-going, then build(). FIFO, LTR, every send lossy with no budget (line 521 gives the baseline the same lossy network as the timed side), same parallel option. No clock: L, U and sd are not passed, and the wait lengths Wp and Ws of the timed receives are ignored, so a finite-wait receive may either read a matching message or time out. Measured consequence: for equal N and R the baseline counts are identical in all four regimes.",
+  "program_differs_between_modes": "no: the mode reaches only build_config (lines 535 to 538) and the dispatch in main (lines 768 to 793); prober, target and bystander take no mode argument and the file contains no sleep",
+  "failing_tasks": "task-2 (the prober, member 0; assertion at line 385) and task-3 to task-N (the N - 2 bystanders; assertion at line 486). task-1 (the target) asserts at line 426 that its incarnation strictly increases, which cannot fail (new_inc = inc + 1 with inc >= incarnation). The main thread asserts nothing. Under keep-going a violating execution prints one line task-N, the name of the first member whose assertion failed in it; the other members keep running after that failure, so several members can declare the target dead in one execution, still one line (lib.rs lines 2379 to 2400, runtime/failure.rs lines 31 to 53). In setting L1 at Ws = 5 only task-2 can fail. Without keep-going the first violation prints the execution graph (timed: with a witness timeline) and the process exits with code 101, with no task line and no summary line.",
+  "counters": [
+    {
+      "key": "dead",
+      "counts": "events",
+      "meaning": "DEAD_DECLARED (line 163): dead declarations summed over all explored executions; raised just before the failing assertion (lines 381 and 484). An execution in which the prober and one or more bystanders each declare the target dead counts once per declaring member, so dead >= violating executions. Equal when only one member can fire: v9 timed 'L1 N=3 R=6 Ws=5', 31248 = 31248. Larger wherever two or more members can fire: every baseline keep-going side and the timed L0-viol sides (v9 'L0 N=3 R=6 Ws=5' timed: dead 183479, violating executions 171950). 0 on every timed safe side. Recorded in the counters column of results_v9.csv."
+    },
+    {
+      "key": "violations",
+      "counts": "events",
+      "meaning": "The summary line prints the same DEAD_DECLARED value a second time under the name violations (print_one, lines 625 to 634). It is a number of dead-declaration events, not the number of violating executions. Recorded in the counters column of results_v9.csv."
+    },
+    {
+      "key": "acks",
+      "counts": "events",
+      "meaning": "ACKS_IN_TIME: probe periods in which the prober read the Ack inside its probe wait, summed over all explored executions. Printed in the summary line only (not in the counters column)."
+    },
+    {
+      "key": "suspects",
+      "counts": "events",
+      "meaning": "SUSPECTS_RAISED: probe periods in which the prober timed out and its validation read of the late Ack succeeded, summed over all explored executions. Printed in the summary line only."
+    },
+    {
+      "key": "refuted",
+      "counts": "events",
+      "meaning": "REFUTED_IN_TIME: suspicion waits (of the prober or of a bystander) that ended with the refuting Alive, summed over all explored executions. Printed in the summary line only. The binary warns when suspects > 0 and refuted = 0 (a hold that resolved no suspicion); no v9 row has that warning."
+    }
+  ],
+  "violation_counter": null,
+  "param_columns": [
+    {
+      "key": "N",
+      "header": "Members N",
+      "size": true,
+      "meaning": "members of the group (--nodes): 1 prober, 1 target and N - 2 bystanders"
+    },
+    {
+      "key": "R",
+      "header": "Rounds R",
+      "size": true,
+      "meaning": "probe periods the prober drives one after the other (--rounds)"
+    },
+    {
+      "key": "U",
+      "header": "U (ticks)",
+      "size": false,
+      "meaning": "transit upper bound of every message (--u); used by the timed side only"
+    },
+    {
+      "key": "L",
+      "header": "L (ticks)",
+      "size": false,
+      "meaning": "transit lower bound, round(--l-ratio x U): 0 in setting L0, 1 in setting L1; timed side only"
+    },
+    {
+      "key": "sd",
+      "header": "sd (ticks)",
+      "size": false,
+      "meaning": "storage lifetime, round(--sd-ratio x U): how long an arrived message may wait at its receiver before it is read; timed side only"
+    },
+    {
+      "key": "Wp",
+      "header": "Probe wait Wp (ticks)",
+      "size": false,
+      "meaning": "how long the prober waits for the Ack of its Ping, round(--w-probe-ratio x U)"
+    },
+    {
+      "key": "Ws",
+      "header": "Suspicion wait Ws (ticks)",
+      "size": false,
+      "meaning": "how long a suspecting member (prober or bystander) waits for the refuting Alive before it declares the target dead, round(--w-suspect-ratio x U)"
+    }
+  ],
+  "boundary_law": "Timed side: a false death is reachable iff Ws <= 2U + sd - min(L, max(0, 2L - Wp)), for N >= 3 and every R; safe from one tick above. Baseline: false deaths at any parameters. Reading: the Suspect leaves the prober at the probe deadline, needs up to U to reach the target, may wait up to sd there before it is read, and the Alive needs up to U back, so the latest refutation arrives 2U + sd after the probe deadline; a suspicion wait fails when the refutation can arrive at or after its end (a tie counts as a miss). The prober starts its wait at the validation read of the late Ack, at least max(0, 2L - Wp) after the deadline; a bystander starts at its read of the Suspect, at least L after the deadline; the more exposed member decides, hence the min. With N = 2 there is no bystander and the term is max(0, 2L - Wp) alone. In both campaign settings the term is 0 (L0: L = 0; L1: 2L = Wp), so the bound is 2U + sd = 5: Ws = 5 violates, Ws = 6 is safe. Origin: measured with the tool on this model, not from a paper; this form (sd once) was found by the v8 calibration of 2026-09-30, the header comment of swim_timed.rs (lines 118 to 133) still prints the older form with 2sd, which would put Ws = 6 on the violating side and is contradicted by every timed Ws = 6 result. How well checked: v9 measures only the pair Ws = 5 / Ws = 6 at U = 2, sd = 1, Wp = 2, L in {0, 1}, with N in {3, 5} on the violating side and N = 3 to 8, R = 1 to 10 on the safe side; these cells do not exercise the term min(L, max(0, 2L - Wp)). A local check on 2026-10-11 with the binary of 30 September (N = 3, R = 1, no keep-going, Ws swept across the bound) found the verdict flipping exactly at the law for (U, L, sd, Wp) = (2,0,1,2), (2,1,1,2), (2,0,0,2), (2,0,2,2), (2,2,1,2), (2,2,1,1), (4,4,0,1), (4,3,0,4), (3,2,0,3), (4,2,4,2), (1,0,0,1), (1,0,1,1): 7 of them have sd >= 1 and separate sd from 2sd, 6 have a non-zero term, 2 need the cap at L.",
+  "regimes": [
+    {
+      "id": "L0-safe",
+      "name": "zero minimum transit, suspicion wait one tick above the bound",
+      "params": "U=2, L=0, sd=1, Wp=2, Ws=6",
+      "rule": "bound = 2U + sd - min(L, max(0, 2L - Wp)) = 4 + 1 - 0 = 5; Ws = 6 = bound + 1, the smallest safe suspicion wait: the latest refutation arrives 5 ticks after the probe deadline, before any member's wait can end",
+      "expect_timed": "0 violations",
+      "expect_baseline": "spurious violations: without a clock a refutation can always come after the wait, so the baseline reports false deaths at any parameters"
+    },
+    {
+      "id": "L0-viol",
+      "name": "zero minimum transit, suspicion wait exactly at the bound",
+      "params": "U=2, L=0, sd=1, Wp=2, Ws=5",
+      "rule": "Ws = 5 = bound, the largest violating suspicion wait: a refutation that arrives exactly when the wait ends may be missed (tie), so a healthy target is declared dead. The tool puts the tie on the violating side. The prober and every bystander can fire",
+      "expect_timed": "violations, each certified by a consistent timeline",
+      "expect_baseline": "violations (a real one exists here); same counts as in L0-safe because the baseline does not read Ws"
+    },
+    {
+      "id": "L1-safe",
+      "name": "one-tick minimum transit, suspicion wait one tick above the bound",
+      "params": "U=2, L=1, sd=1, Wp=2, Ws=6",
+      "rule": "bound = 4 + 1 - min(1, max(0, 2 - 2)) = 5 (the term is 0 because Wp = 2L); Ws = 6 = bound + 1, the smallest safe suspicion wait",
+      "expect_timed": "0 violations",
+      "expect_baseline": "spurious violations; same counts as in L0-safe because the baseline does not read L"
+    },
+    {
+      "id": "L1-viol",
+      "name": "one-tick minimum transit, suspicion wait exactly at the bound",
+      "params": "U=2, L=1, sd=1, Wp=2, Ws=5",
+      "rule": "Ws = 5 = bound, the largest violating suspicion wait (tie, on the violating side). Only the prober can fire: a bystander starts its wait at least L = 1 tick after the probe deadline, so its own bound is 2U + sd - L = 4",
+      "expect_timed": "violations, each certified by a consistent timeline",
+      "expect_baseline": "violations (a real one exists here); same counts as in the other three regimes"
+    }
+  ],
+  "glossary": [
+    {
+      "term": "Prober (member 0)",
+      "meaning": "drives the R probe periods: sends Ping to the target and waits Wp for the Ack; on a timeout it sends Suspect to the target and to every bystander, then waits Ws for the refuting Alive. Thread task-2."
+    },
+    {
+      "term": "Target (member 1)",
+      "meaning": "purely reactive and never crashes: acks every Ping and answers every admissible Suspect with an Alive of incarnation + 1, sent to the prober and to all bystanders. Blocking receives only, no timer. Thread task-1."
+    },
+    {
+      "term": "Bystander (members 2 to N-1)",
+      "meaning": "idles until a Suspect arrives, then runs its own suspicion wait Ws for the Alive of that period, with no coordination with the prober or the other bystanders. Threads task-3 to task-N."
+    },
+    {
+      "term": "Probe period (round)",
+      "meaning": "one Ping of the prober with everything that follows from it; a run has R of them in sequence"
+    },
+    {
+      "term": "Suspect / Alive / incarnation",
+      "meaning": "Suspect carries the incarnation number the prober believes the target has; the target refutes it with Alive carrying that number + 1. A refutation ends a suspicion wait only if its incarnation is above the suspected one."
+    },
+    {
+      "term": "False death (false positive)",
+      "meaning": "a member's suspicion wait ran out without a refutation, so it declares the healthy target dead; this fails the assertion and makes the execution a violating one"
+    },
+    {
+      "term": "Setting L0 / L1",
+      "meaning": "the network timing setting, named after the transit lower bound: L0 = (U=2, L=0, sd=1, Wp=2), L1 = (U=2, L=1, sd=1, Wp=2). The regime id adds the side: -safe for Ws = 6, -viol for Ws = 5."
+    },
+    {
+      "term": "Ratio flags",
+      "meaning": "--l-ratio, --sd-ratio, --w-probe-ratio and --w-suspect-ratio are multiples of U; ticks = round(ratio x U) (line 247). With U = 2: 0 gives 0, 0.5 gives 1, 1 gives 2, 2.5 gives 5, 3.0 gives 6."
+    },
+    {
+      "term": "Bound",
+      "meaning": "2U + sd - min(L, max(0, 2L - Wp)): the largest suspicion wait that still allows a false death (N >= 3). It is 5 ticks in both settings."
+    },
+    {
+      "term": "Validation read",
+      "meaning": "checker scaffolding, not SWIM: after a probe timeout or a suspicion timeout the member does a blocking read of the very message it waited for (assume_ack_was_late, assume_refutation_was_late; lines 278 to 306), which keeps only executions where that message really was late. It is part of the measured model: the prober's suspicion wait starts at this read, which is where the term max(0, 2L - Wp) of the bound comes from."
+    },
+    {
+      "term": "Tie",
+      "meaning": "a message that arrives exactly when a wait ends may be read or missed; this is why Ws equal to the bound is on the violating side"
+    },
+    {
+      "term": "Done",
+      "meaning": "harness message, not SWIM: the prober sends it to the target and the bystanders once all R periods are resolved, so that the reactive threads end"
+    },
+    {
+      "term": "no-kg",
+      "meaning": "the cell is run without --keep-going: the run stops at the first violation with exit code 101 (row kind first-violation); a side without any violation explores everything and exits 0"
+    },
+    {
+      "term": "rep2",
+      "meaning": "a second v8 cell with the same command line as the headline cell, kept for timing replication"
+    }
+  ],
+  "cells": [
+    {
+      "cell": "L0 N=3 R=6 Ws=6",
+      "regime": "L0-safe",
+      "label": "3 members, 6 rounds, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 3,
+        "R": 6,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=4096 blocked=445797 (explored 449893), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 161784 violating executions, execs=27154 blocked=462762 (explored 489916), dead=173313 events, exit code 0 (3 runs)",
+      "note": ""
+    },
+    {
+      "cell": "L0 N=4 R=3 Ws=6",
+      "regime": "L0-safe",
+      "label": "4 members, 3 rounds, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 4,
+        "R": 3,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=1000 blocked=452141 (explored 453141), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 199586 violating executions, execs=11864 blocked=457986 (explored 469850), dead=233859 events, exit code 0 (3 runs)",
+      "note": ""
+    },
+    {
+      "cell": "L0 N=5 R=2 Ws=6",
+      "regime": "L0-safe",
+      "label": "5 members, 2 rounds, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 5,
+        "R": 2,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=784 blocked=1413343 (explored 1414127), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 632670 violating executions, execs=12418 blocked=1342956 (explored 1355374), dead=780003 events, exit code 0 (3 runs)",
+      "note": ""
+    },
+    {
+      "cell": "L0 N=6 R=1 Ws=6",
+      "regime": "L0-safe",
+      "label": "6 members, 1 round, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 6,
+        "R": 1,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=82 blocked=309817 (explored 309899), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 97766 violating executions, execs=626 blocked=251028 (explored 251654), dead=117369 events, exit code 0 (3 runs)",
+      "note": ""
+    },
+    {
+      "cell": "L0 N=3 R=9 Ws=6",
+      "regime": "L0-safe",
+      "label": "3 members, 9 rounds, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 3,
+        "R": 9,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); no v9 result yet; v8 (swim-009): execs=262144 blocked=58552503 (explored 58814647), dead=0 events (v8 recorded the counter, not the number of violating executions)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 23221431 to 23221435 (differs between the 3 runs, see notes) violating executions, execs=3644106 blocked=60592984 (explored 64237090), dead=24912439 events, exit code 0 (3 runs)",
+      "note": "--parallel shared on both sides, pool of 8 workers; baseline: the number of failing-task lines differs between repetitions under the pool (execs, blocked and dead are identical), see notes"
+    },
+    {
+      "cell": "L0 N=7 R=1 Ws=6",
+      "regime": "L0-safe",
+      "label": "7 members, 1 round, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 7,
+        "R": 1,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=244 blocked=5379803 (explored 5380047), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 1872438 violating executions, execs=3126 blocked=4139584 (explored 4142710), dead=2355399 events, exit code 0 (3 runs)",
+      "note": ""
+    },
+    {
+      "cell": "L0 N=4 R=4 Ws=6",
+      "regime": "L0-safe",
+      "label": "4 members, 4 rounds, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 4,
+        "R": 4,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); no v9 result yet; v8 (swim-013): execs=10000 blocked=8274217 (explored 8284217), dead=0 events (v8 recorded the counter, not the number of violating executions)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 4076598 violating executions, execs=229840 blocked=8440462 (explored 8670302), dead=4861275 events, exit code 0 (3 runs)",
+      "note": ""
+    },
+    {
+      "cell": "L0 N=3 R=6 Ws=5",
+      "regime": "L0-viol",
+      "label": "3 members, 6 rounds, zero minimum transit, violating suspicion wait",
+      "params": {
+        "N": 3,
+        "R": 6,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 5
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violating executions above 0, each certified by a consistent timeline (exit code 0 under keep-going); v9: 171950 violating executions, execs=27154 blocked=594689 (explored 621843), dead=183479 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0 (exit code 0 under keep-going); v9: 161784 violating executions, execs=27154 blocked=462762 (explored 489916), dead=173313 events, exit code 0 (3 runs)",
+      "note": "the baseline counts equal those of the Ws = 6 cell of the same N and R: the baseline does not read Ws"
+    },
+    {
+      "cell": "L0 N=3 R=6 Ws=5 no-kg",
+      "regime": "L0-viol",
+      "label": "3 members, 6 rounds, zero minimum transit, violating suspicion wait (no keep-going)",
+      "params": {
+        "N": 3,
+        "R": 6,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 5
+      },
+      "kind": "first-violation",
+      "expect_timed": "stops at the first certified violation (exit code 101; graph and witness timeline printed); v9: exit code 101 in 3 of 3 runs (no counts: the run stops at the first violation)",
+      "expect_baseline": "stops at the first violation (exit code 101); v9: exit code 101 in 3 of 3 runs (no counts: the run stops at the first violation)",
+      "note": "both sides stop at their first violation; rows of such runs have no counts and viol_execs = 0 by construction, the verdict is the exit code 101"
+    },
+    {
+      "cell": "L0 N=3 R=6 Ws=6 no-kg",
+      "regime": "L0-safe",
+      "label": "3 members, 6 rounds, zero minimum transit, safe suspicion wait (no keep-going)",
+      "params": {
+        "N": 3,
+        "R": 6,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations: no violation exists, so the run explores everything and exits with code 0; v9: 0 violating executions, execs=4096 blocked=445797 (explored 449893), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "stops at the first violation (exit code 101); v9: exit code 101 in 3 of 3 runs (no counts: the run stops at the first violation)",
+      "note": "timed side: nothing to stop at, so it is a full exploration with the same counts as the keep-going cell; baseline side: stops at its first violation"
+    },
+    {
+      "cell": "L1 N=3 R=6 Ws=5",
+      "regime": "L1-viol",
+      "label": "3 members, 6 rounds, one-tick minimum transit, violating suspicion wait",
+      "params": {
+        "N": 3,
+        "R": 6,
+        "U": 2,
+        "L": 1,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 5
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violating executions above 0, each certified by a consistent timeline (exit code 0 under keep-going); v9: 31248 violating executions, execs=4096 blocked=355284 (explored 359380), dead=31248 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0 (exit code 0 under keep-going); v9: 161784 violating executions, execs=27154 blocked=462762 (explored 489916), dead=173313 events, exit code 0 (3 runs)",
+      "note": "baseline counts equal those of the L0 cell of the same N and R: the baseline does not read L"
+    },
+    {
+      "cell": "L1 N=3 R=6 Ws=5 no-kg",
+      "regime": "L1-viol",
+      "label": "3 members, 6 rounds, one-tick minimum transit, violating suspicion wait (no keep-going)",
+      "params": {
+        "N": 3,
+        "R": 6,
+        "U": 2,
+        "L": 1,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 5
+      },
+      "kind": "first-violation",
+      "expect_timed": "stops at the first certified violation (exit code 101; graph and witness timeline printed); v9: exit code 101 in 3 of 3 runs (no counts: the run stops at the first violation)",
+      "expect_baseline": "stops at the first violation (exit code 101); v9: exit code 101 in 3 of 3 runs (no counts: the run stops at the first violation)",
+      "note": "both sides stop at their first violation; rows of such runs have no counts and viol_execs = 0 by construction, the verdict is the exit code 101"
+    },
+    {
+      "cell": "L0 N=8 R=1 Ws=6",
+      "regime": "L0-safe",
+      "label": "8 members, 1 round, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 8,
+        "R": 1,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=730 blocked=97875265 (explored 97875995), dead=0 events, exit code 0 (1 run)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); no v9 result yet; v8 (swim-038): execs=15626 blocked=71234460 (explored 71250086), dead=48006837 events (v8 recorded the counter, not the number of violating executions)",
+      "note": ""
+    },
+    {
+      "cell": "L0 N=3 R=10 Ws=6",
+      "regime": "L0-safe",
+      "label": "3 members, 10 rounds, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 3,
+        "R": 10,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=1048576 blocked=295733357 (explored 296781933), dead=0 events, exit code 0 (1 run)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); no v9 result yet; v8 (swim-036): execs=18482674 blocked=305848482 (explored 324331156), dead=127970073 events (v8 recorded the counter, not the number of violating executions)",
+      "note": "--parallel shared on both sides, pool of 8 workers"
+    },
+    {
+      "cell": "L0 N=4 R=5 Ws=6",
+      "regime": "L0-safe",
+      "label": "4 members, 5 rounds, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 4,
+        "R": 5,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=100000 blocked=148578165 (explored 148678165), dead=0 events, exit code 0 (1 run)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 78510825 violating executions, execs=4294256 blocked=152308770 (explored 156603026), dead=94819803 events, exit code 0 (1 run)",
+      "note": "--parallel shared on both sides, pool of 3 workers"
+    },
+    {
+      "cell": "L1 N=4 R=5 Ws=6",
+      "regime": "L1-safe",
+      "label": "4 members, 5 rounds, one-tick minimum transit, safe suspicion wait",
+      "params": {
+        "N": 4,
+        "R": 5,
+        "U": 2,
+        "L": 1,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=100000 blocked=77992184 (explored 78092184), dead=0 events, exit code 0 (1 run)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); no v9 result yet; v8 (swim-071): execs=4294256 blocked=152308770 (explored 156603026), dead=94819803 events (v8 recorded the counter, not the number of violating executions)",
+      "note": "--parallel shared on both sides, pool of 3 workers; baseline counts equal those of the L0 cell of the same N and R: the baseline does not read L"
+    },
+    {
+      "cell": "L0 N=5 R=3 Ws=6",
+      "regime": "L0-safe",
+      "label": "5 members, 3 rounds, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 5,
+        "R": 3,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=21952 blocked=105964395 (explored 105986347), dead=0 events, exit code 0 (1 run)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 57305934 violating executions, execs=1067178 blocked=103199860 (explored 104267038), dead=74063943 events, exit code 0 (1 run)",
+      "note": "--parallel shared on both sides, pool of 2 workers"
+    },
+    {
+      "cell": "L0 N=6 R=2 Ws=6",
+      "regime": "L0-safe",
+      "label": "6 members, 2 rounds, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 6,
+        "R": 2,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=6724 blocked=98572965 (explored 98579689), dead=0 events, exit code 0 (1 run)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); no v9 result yet; v8 (swim-039): execs=281092 blocked=88446334 (explored 88727426), dead=65803563 events (v8 recorded the counter, not the number of violating executions)",
+      "note": "--parallel shared on both sides, pool of 2 workers"
+    },
+    {
+      "cell": "L1 N=3 R=10 Ws=6",
+      "regime": "L1-safe",
+      "label": "3 members, 10 rounds, one-tick minimum transit, safe suspicion wait",
+      "params": {
+        "N": 3,
+        "R": 10,
+        "U": 2,
+        "L": 1,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=1048576 blocked=204029556 (explored 205078132), dead=0 events, exit code 0 (1 run)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); no v9 result yet; v8 (swim-082): execs=18482674 blocked=305848482 (explored 324331156), dead=127970073 events (v8 recorded the counter, not the number of violating executions)",
+      "note": "--parallel shared on both sides, pool of 8 workers; baseline counts equal those of the L0 cell of the same N and R: the baseline does not read L"
+    },
+    {
+      "cell": "L1 N=8 R=1 Ws=6",
+      "regime": "L1-safe",
+      "label": "8 members, 1 round, one-tick minimum transit, safe suspicion wait",
+      "params": {
+        "N": 8,
+        "R": 1,
+        "U": 2,
+        "L": 1,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=730 blocked=34901414 (explored 34902144), dead=0 events, exit code 0 (1 run)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); no v9 result yet; v8 (swim-072): execs=15626 blocked=71234460 (explored 71250086), dead=48006837 events (v8 recorded the counter, not the number of violating executions)",
+      "note": "baseline counts equal those of the L0 cell of the same N and R: the baseline does not read L"
+    },
+    {
+      "cell": "L1 N=5 R=3 Ws=6",
+      "regime": "L1-safe",
+      "label": "5 members, 3 rounds, one-tick minimum transit, safe suspicion wait",
+      "params": {
+        "N": 5,
+        "R": 3,
+        "U": 2,
+        "L": 1,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=21952 blocked=46939152 (explored 46961104), dead=0 events, exit code 0 (1 run)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 57305934 violating executions, execs=1067178 blocked=103199860 (explored 104267038), dead=74063943 events, exit code 0 (1 run)",
+      "note": "baseline counts equal those of the L0 cell of the same N and R: the baseline does not read L"
+    },
+    {
+      "cell": "L1 N=6 R=2 Ws=6",
+      "regime": "L1-safe",
+      "label": "6 members, 2 rounds, one-tick minimum transit, safe suspicion wait",
+      "params": {
+        "N": 6,
+        "R": 2,
+        "U": 2,
+        "L": 1,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=6724 blocked=39293404 (explored 39300128), dead=0 events, exit code 0 (1 run)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 49427298 violating executions, execs=281092 blocked=88446334 (explored 88727426), dead=65803563 events, exit code 0 (1 run)",
+      "note": "baseline counts equal those of the L0 cell of the same N and R: the baseline does not read L"
+    },
+    {
+      "cell": "L1 N=3 R=9 Ws=6",
+      "regime": "L1-safe",
+      "label": "3 members, 9 rounds, one-tick minimum transit, safe suspicion wait",
+      "params": {
+        "N": 3,
+        "R": 9,
+        "U": 2,
+        "L": 1,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); no v9 result yet; v8 (swim-040): execs=262144 blocked=40753488 (explored 41015632), dead=0 events (v8 recorded the counter, not the number of violating executions)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 23221421 to 23221431 (differs between the 3 runs, see notes) violating executions, execs=3644106 blocked=60592984 (explored 64237090), dead=24912439 events, exit code 0 (3 runs)",
+      "note": "--parallel shared on both sides, pool of 8 workers; baseline: the number of failing-task lines differs between repetitions under the pool (execs, blocked and dead are identical), see notes; baseline counts equal those of the L0 cell of the same N and R: the baseline does not read L"
+    },
+    {
+      "cell": "L1 N=4 R=4 Ws=6",
+      "regime": "L1-safe",
+      "label": "4 members, 4 rounds, one-tick minimum transit, safe suspicion wait",
+      "params": {
+        "N": 4,
+        "R": 4,
+        "U": 2,
+        "L": 1,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); no v9 result yet; v8 (swim-041): execs=10000 blocked=4583704 (explored 4593704), dead=0 events (v8 recorded the counter, not the number of violating executions)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 4076598 violating executions, execs=229840 blocked=8440462 (explored 8670302), dead=4861275 events, exit code 0 (3 runs)",
+      "note": "baseline counts equal those of the L0 cell of the same N and R: the baseline does not read L"
+    },
+    {
+      "cell": "L0 N=3 R=7 Ws=6",
+      "regime": "L0-safe",
+      "label": "3 members, 7 rounds, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 3,
+        "R": 7,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=16384 blocked=2275283 (explored 2291667), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 858076 to 858078 (differs between the 3 runs, see notes) violating executions, execs=139866 blocked=2358844 (explored 2498710), dead=919819 events, exit code 0 (3 runs)",
+      "note": "--parallel shared on both sides, pool of 7 workers; baseline: the number of failing-task lines differs between repetitions under the pool (execs, blocked and dead are identical), see notes"
+    },
+    {
+      "cell": "L0 N=3 R=8 Ws=6",
+      "regime": "L0-safe",
+      "label": "3 members, 8 rounds, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 3,
+        "R": 8,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=65536 blocked=11561977 (explored 11627513), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 4486999 to 4487000 (differs between the 3 runs, see notes) violating executions, execs=715714 blocked=11974422 (explored 12690136), dead=4812093 events, exit code 0 (3 runs)",
+      "note": "--parallel shared on both sides, pool of 7 workers; baseline: the number of failing-task lines differs between repetitions under the pool (execs, blocked and dead are identical), see notes"
+    },
+    {
+      "cell": "L0 N=3 R=8 Ws=5",
+      "regime": "L0-viol",
+      "label": "3 members, 8 rounds, zero minimum transit, violating suspicion wait",
+      "params": {
+        "N": 3,
+        "R": 8,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 5
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violating executions above 0, each certified by a consistent timeline (exit code 0 under keep-going); no v9 result yet; v8 (swim-046): execs=715714 blocked=15702049 (explored 16417763), dead=5115339 events (v8 recorded the counter, not the number of violating executions)",
+      "expect_baseline": "violating executions above 0 (exit code 0 under keep-going); v9: 4486997 to 4487000 (differs between the 3 runs, see notes) violating executions, execs=715714 blocked=11974422 (explored 12690136), dead=4812093 events, exit code 0 (3 runs)",
+      "note": "--parallel shared on both sides, pool of 7 workers; baseline: the number of failing-task lines differs between repetitions under the pool (execs, blocked and dead are identical), see notes; the baseline counts equal those of the Ws = 6 cell of the same N and R: the baseline does not read Ws"
+    },
+    {
+      "cell": "L0 N=5 R=2 Ws=5",
+      "regime": "L0-viol",
+      "label": "5 members, 2 rounds, zero minimum transit, violating suspicion wait",
+      "params": {
+        "N": 5,
+        "R": 2,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 5
+      },
+      "kind": "exhaustive",
+      "expect_timed": "violating executions above 0, each certified by a consistent timeline (exit code 0 under keep-going); v9: 797736 violating executions, execs=12418 blocked=2199445 (explored 2211863), dead=956653 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0 (exit code 0 under keep-going); v9: 632670 violating executions, execs=12418 blocked=1342956 (explored 1355374), dead=780003 events, exit code 0 (3 runs)",
+      "note": "the baseline counts equal those of the Ws = 6 cell of the same N and R: the baseline does not read Ws"
+    },
+    {
+      "cell": "L1 N=3 R=6 Ws=6",
+      "regime": "L1-safe",
+      "label": "3 members, 6 rounds, one-tick minimum transit, safe suspicion wait",
+      "params": {
+        "N": 3,
+        "R": 6,
+        "U": 2,
+        "L": 1,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=4096 blocked=324036 (explored 328132), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 161784 violating executions, execs=27154 blocked=462762 (explored 489916), dead=173313 events, exit code 0 (3 runs)",
+      "note": "baseline counts equal those of the L0 cell of the same N and R: the baseline does not read L"
+    },
+    {
+      "cell": "L1 N=4 R=3 Ws=6",
+      "regime": "L1-safe",
+      "label": "4 members, 3 rounds, one-tick minimum transit, safe suspicion wait",
+      "params": {
+        "N": 4,
+        "R": 3,
+        "U": 2,
+        "L": 1,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=1000 blocked=269264 (explored 270264), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 199586 violating executions, execs=11864 blocked=457986 (explored 469850), dead=233859 events, exit code 0 (3 runs)",
+      "note": "baseline counts equal those of the L0 cell of the same N and R: the baseline does not read L"
+    },
+    {
+      "cell": "L1 N=5 R=2 Ws=6",
+      "regime": "L1-safe",
+      "label": "5 members, 2 rounds, one-tick minimum transit, safe suspicion wait",
+      "params": {
+        "N": 5,
+        "R": 2,
+        "U": 2,
+        "L": 1,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=784 blocked=721920 (explored 722704), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 632670 violating executions, execs=12418 blocked=1342956 (explored 1355374), dead=780003 events, exit code 0 (3 runs)",
+      "note": "baseline counts equal those of the L0 cell of the same N and R: the baseline does not read L"
+    },
+    {
+      "cell": "L1 N=6 R=1 Ws=6",
+      "regime": "L1-safe",
+      "label": "6 members, 1 round, one-tick minimum transit, safe suspicion wait",
+      "params": {
+        "N": 6,
+        "R": 1,
+        "U": 2,
+        "L": 1,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=82 blocked=153806 (explored 153888), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 97766 violating executions, execs=626 blocked=251028 (explored 251654), dead=117369 events, exit code 0 (3 runs)",
+      "note": "baseline counts equal those of the L0 cell of the same N and R: the baseline does not read L"
+    },
+    {
+      "cell": "L1 N=7 R=1 Ws=6",
+      "regime": "L1-safe",
+      "label": "7 members, 1 round, one-tick minimum transit, safe suspicion wait",
+      "params": {
+        "N": 7,
+        "R": 1,
+        "U": 2,
+        "L": 1,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=244 blocked=2270028 (explored 2270272), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 1872438 violating executions, execs=3126 blocked=4139584 (explored 4142710), dead=2355399 events, exit code 0 (3 runs)",
+      "note": "baseline counts equal those of the L0 cell of the same N and R: the baseline does not read L"
+    },
+    {
+      "cell": "L0 N=3 R=1 Ws=6",
+      "regime": "L0-safe",
+      "label": "3 members, 1 round, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 3,
+        "R": 1,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=4 blocked=143 (explored 147), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 18 violating executions, execs=6 blocked=124 (explored 130), dead=19 events, exit code 0 (3 runs)",
+      "note": ""
+    },
+    {
+      "cell": "L0 N=3 R=2 Ws=6",
+      "regime": "L0-safe",
+      "label": "3 members, 2 rounds, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 3,
+        "R": 2,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=16 blocked=637 (explored 653), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 144 violating executions, execs=34 blocked=642 (explored 676), dead=153 events, exit code 0 (3 runs)",
+      "note": ""
+    },
+    {
+      "cell": "L0 N=3 R=3 Ws=6",
+      "regime": "L0-safe",
+      "label": "3 members, 3 rounds, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 3,
+        "R": 3,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=64 blocked=3243 (explored 3307), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 918 violating executions, execs=186 blocked=3364 (explored 3550), dead=979 events, exit code 0 (3 runs)",
+      "note": ""
+    },
+    {
+      "cell": "L0 N=3 R=4 Ws=6",
+      "regime": "L0-safe",
+      "label": "3 members, 4 rounds, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 3,
+        "R": 4,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=256 blocked=16817 (explored 17073), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 5364 violating executions, execs=994 blocked=17502 (explored 18496), dead=5733 events, exit code 0 (3 runs)",
+      "note": ""
+    },
+    {
+      "cell": "L0 N=3 R=5 Ws=6",
+      "regime": "L0-safe",
+      "label": "3 members, 5 rounds, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 3,
+        "R": 5,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=1024 blocked=86863 (explored 87887), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 29898 violating executions, execs=5226 blocked=90304 (explored 95530), dead=31999 events, exit code 0 (3 runs)",
+      "note": ""
+    },
+    {
+      "cell": "L0 N=4 R=1 Ws=6",
+      "regime": "L0-safe",
+      "label": "4 members, 1 round, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 4,
+        "R": 1,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=10 blocked=1465 (explored 1475), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 302 violating executions, execs=26 blocked=1260 (explored 1286), dead=333 events, exit code 0 (3 runs)",
+      "note": ""
+    },
+    {
+      "cell": "L0 N=4 R=2 Ws=6",
+      "regime": "L0-safe",
+      "label": "4 members, 2 rounds, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 4,
+        "R": 2,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=100 blocked=24249 (explored 24349), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 8790 violating executions, execs=580 blocked=24154 (explored 24734), dead=10047 events, exit code 0 (3 runs)",
+      "note": ""
+    },
+    {
+      "cell": "L0 N=5 R=1 Ws=6",
+      "regime": "L0-safe",
+      "label": "5 members, 1 round, zero minimum transit, safe suspicion wait",
+      "params": {
+        "N": 5,
+        "R": 1,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=28 blocked=19571 (explored 19599), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 5286 violating executions, execs=126 blocked=16504 (explored 16630), dead=6075 events, exit code 0 (3 runs)",
+      "note": ""
+    },
+    {
+      "cell": "L0 N=3 R=6 Ws=6 rep2",
+      "regime": "L0-safe",
+      "label": "3 members, 6 rounds, zero minimum transit, safe suspicion wait (timing replicate)",
+      "params": {
+        "N": 3,
+        "R": 6,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=4096 blocked=445797 (explored 449893), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 161784 violating executions, execs=27154 blocked=462762 (explored 489916), dead=173313 events, exit code 0 (3 runs)",
+      "note": "same command line as cell 'L0 N=3 R=6 Ws=6'; kept as its own cell since v8 as a second set of timing runs"
+    },
+    {
+      "cell": "L0 N=4 R=3 Ws=6 rep2",
+      "regime": "L0-safe",
+      "label": "4 members, 3 rounds, zero minimum transit, safe suspicion wait (timing replicate)",
+      "params": {
+        "N": 4,
+        "R": 3,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=1000 blocked=452141 (explored 453141), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 199586 violating executions, execs=11864 blocked=457986 (explored 469850), dead=233859 events, exit code 0 (3 runs)",
+      "note": "same command line as cell 'L0 N=4 R=3 Ws=6'; kept as its own cell since v8 as a second set of timing runs"
+    },
+    {
+      "cell": "L0 N=5 R=2 Ws=6 rep2",
+      "regime": "L0-safe",
+      "label": "5 members, 2 rounds, zero minimum transit, safe suspicion wait (timing replicate)",
+      "params": {
+        "N": 5,
+        "R": 2,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=784 blocked=1413343 (explored 1414127), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 632670 violating executions, execs=12418 blocked=1342956 (explored 1355374), dead=780003 events, exit code 0 (3 runs)",
+      "note": "same command line as cell 'L0 N=5 R=2 Ws=6'; kept as its own cell since v8 as a second set of timing runs"
+    },
+    {
+      "cell": "L0 N=6 R=1 Ws=6 rep2",
+      "regime": "L0-safe",
+      "label": "6 members, 1 round, zero minimum transit, safe suspicion wait (timing replicate)",
+      "params": {
+        "N": 6,
+        "R": 1,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); v9: 0 violating executions, execs=82 blocked=309817 (explored 309899), dead=0 events, exit code 0 (3 runs)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 97766 violating executions, execs=626 blocked=251028 (explored 251654), dead=117369 events, exit code 0 (3 runs)",
+      "note": "same command line as cell 'L0 N=6 R=1 Ws=6'; kept as its own cell since v8 as a second set of timing runs"
+    },
+    {
+      "cell": "L0 N=7 R=1 Ws=6 rep2",
+      "regime": "L0-safe",
+      "label": "7 members, 1 round, zero minimum transit, safe suspicion wait (timing replicate)",
+      "params": {
+        "N": 7,
+        "R": 1,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions (exit code 0); no v9 result yet; v8 (swim-091): execs=244 blocked=5379803 (explored 5380047), dead=0 events (v8 recorded the counter, not the number of violating executions)",
+      "expect_baseline": "violating executions above 0, all spurious (exit code 0 under keep-going); v9: 1872438 violating executions, execs=3126 blocked=4139584 (explored 4142710), dead=2355399 events, exit code 0 (3 runs)",
+      "note": "same command line as cell 'L0 N=7 R=1 Ws=6'; kept as its own cell since v8 as a second set of timing runs"
+    },
+    {
+      "cell": "L0 N=9 R=1 Ws=6",
+      "regime": "L0-safe",
+      "label": "9 members, 1 round, zero minimum transit, safe suspicion wait (ceiling)",
+      "params": {
+        "N": 9,
+        "R": 1,
+        "U": 2,
+        "L": 0,
+        "sd": 1,
+        "Wp": 2,
+        "Ws": 6
+      },
+      "kind": "exhaustive",
+      "expect_timed": "0 violating executions if it finishes (planned as a ceiling: expected to hit the deadline); not measured yet (the v9 job runs since the launch); v8 (swim-093): did not finish, stopped after 1 d 18 h 9 min at 113900000 explored (2188 execs, 113897812 blocked)",
+      "expect_baseline": "violating executions above 0 if it finishes (planned as a ceiling: expected to hit the deadline); not measured yet (the v9 job runs since the launch); v8 (swim-094): did not finish, stopped after 1 d 18 h 9 min at 860600000 explored (78126 execs, 860521874 blocked)",
+      "note": ""
+    }
+  ],
+  "notes": [
+    "LAW, three sources disagree in wording: the header comment of swim_timed.rs (lines 118 to 133) and the memory note p1_lease_swim_examples.md give FIRE iff Ws <= 2U + 2sd - min(L, max(0, 2L - Wp)); the newer note project_v8_campaign.md gives 2U + sd (sd once). The measurements decide for sd once: at U=2, sd=1 the 2sd form predicts violations at Ws = 6, and all v9 timed Ws = 6 sides report 0 violating executions, while Ws = 5 violates. The header comment was not updated when the behaviour changed: commit 60f262f (2026-09-30, always-lossy sends) changed only line 521 of the file. The v8 calibration note of the same day is the first record of the sd-once form; which change caused it was not determined here. The index line of MEMORY.md for these examples still carries 2sd as well. The same header says that hold cells at L = 0 report blocked = 0, which is also out of date (v9 'L0 N=3 R=1 Ws=6' timed: blocked=143). Ws = 5 is exactly the bound; it is filed as -viol rather than -edge because a certified violation exists there, so the workbook check of the timed verdict covers it.",
+    "COUNTER, not an execution count: dead and violations both print DEAD_DECLARED, one event per member that declares the target dead. violation_counter is null for that reason. In v9 the counter is larger than the tool's violating executions on 39 measured sides (all baseline keep-going sides and the timed L0-viol sides) and equal and non-zero on 1 side (L1 N=3 R=6 Ws=5 timed: 31248), where only the prober can fire. The source comment at lines 524 to 527 calls dead the number of false positives: read it as dead declarations. The v8 column violations held this counter, so v8 violation numbers of this example are event counts.",
+    "VIOLATING EXECUTIONS under --parallel shared are not reproducible to the unit: on baseline sides run with the pool the number of failing-task lines differs between repetitions while execs, blocked and dead are identical: L0 N=3 R=7 Ws=6 baseline: 858076, 858077, 858078; L0 N=3 R=8 Ws=5 baseline: 4486997, 4487000, 4487000; L0 N=3 R=8 Ws=6 baseline: 4486999, 4487000, 4487000; L0 N=3 R=9 Ws=6 baseline: 23221431, 23221433, 23221435; L1 N=3 R=9 Ws=6 baseline: 23221421, 23221430, 23221431. The sequential baseline cells N=3, R=1 to 6 (18, 144, 918, 5364, 29898, 161784) follow v(R) = 5 v(R-1) + d(R) with d(R) = 4 d(R-1) - 18 exactly, and the dead counter follows the same pattern through R = 9; extrapolated (an inference, not a measurement) this gives 858078, 4487004 and 23221458 for R = 7, 8, 9, so the pool runs appear to lose between 0 and 37 lines. The verdict is unaffected. The workbook's check of violating executions over the repetitions reports these sides. 'L0 N=5 R=3 Ws=6' baseline (pool of 2) and 'L1 N=5 R=3 Ws=6' baseline (sequential) agree exactly at 57305934. The timed sides run with the pool so far all have 0 violating executions, so they show no such effect; 'L0 N=3 R=8 Ws=5' timed (pool, violating) has no v9 row yet.",
+    "FIRST-VIOLATION rows: the 5 sides that stop at a violation ('L0 N=3 R=6 Ws=5 no-kg' both sides, 'L1 N=3 R=6 Ws=5 no-kg' both sides, 'L0 N=3 R=6 Ws=6 no-kg' baseline) have exit code 101, empty counts, viol_execs = 0 and a summary column that holds graph lines instead of the summary line; their verdict is the exit code. 'L0 N=3 R=6 Ws=6 no-kg' timed has no violation to stop at: exit 0 and the same counts as the keep-going cell.",
+    "PARAMETERS: every cell resolves to U=2, sd=1, Wp=2, with L in {0, 1} and Ws in {5, 6}. The resolved values were cross-checked against the summary line of every v9 and v8 row that has one (197 v9 rows) and against the cell names: no disagreement. Both sides of every cell run the same arguments except the mode word. Rows that stopped at a violation print no summary line; a local run of the 30 September binary with the same ratio flags (N=3, R=1, with --keep-going) printed L, U, Wp, Ws and sd as resolved here.",
+    "BASELINE is blind to the timing parameters: for equal N and R its execs, blocked, dead and violating executions are identical across L0 / L1 and Ws = 5 / Ws = 6 (N=3 R=6: 27154, 462762, 173313, 161784 in all four regimes), so the L1 baseline rows repeat the L0 baseline rows.",
+    "TIMED versus baseline in the violating L0 regime: the timed side explores more executions and reports more violating executions than the baseline with the same number of complete executions ('L0 N=3 R=6 Ws=5': explored 621843 against 489916, violating 171950 against 161784, complete 27154 on both; 'L0 N=5 R=2 Ws=5': explored 2211863 against 1355374, violating 797736 against 632670). Violation counts of the two modes are therefore not comparable as a subset relation; the cause was not determined here.",
+    "NO EFFICIENCY CLAIM (as in the 2026-09-18 audit): over the 31 v9 pairs with counts on both sides so far the explored ratio baseline / timed ranges from 0.61 to 2.26 (below 1 in 11 pairs, all in setting L0) and the wall ratio from 0.11 to 0.28 (the timed side is slower in 29 of the 29 pairs where both sides take 0.05 s or more).",
+    "REPLICATES: the five rep2 cells have the same command line as their headline cells, so v9 holds up to six runs of those command lines; all counts measured so far agree.",
+    "V9 against v8: execs, blocked and the dead counter are identical on every side both campaigns finished; timeline_impossible = 0, exit codes as expected and timing audit clean in all 212 v9 swim rows (results_v9.csv as fetched, last swim row finished 2026-10-11 10:58:28).",
+    "NOT IN V9 YET at that time (14 sides without any v9 row): L0 N=3 R=10 Ws=6 | baseline; L0 N=3 R=8 Ws=5 | timed; L0 N=3 R=9 Ws=6 | timed; L0 N=4 R=4 Ws=6 | timed; L0 N=6 R=2 Ws=6 | baseline; L0 N=7 R=1 Ws=6 rep2 | timed; L0 N=8 R=1 Ws=6 | baseline; L0 N=9 R=1 Ws=6 | baseline; L0 N=9 R=1 Ws=6 | timed; L1 N=3 R=10 Ws=6 | baseline; L1 N=3 R=9 Ws=6 | timed; L1 N=4 R=4 Ws=6 | timed; L1 N=4 R=5 Ws=6 | baseline; L1 N=8 R=1 Ws=6 | baseline. For these sides the cell entries quote v8. 'L0 N=9 R=1 Ws=6' is a ceiling that did not finish in v8 on either side; its v9 jobs run since the launch. The plan row whose cell starts with 'keeper:' is not a result and is left out. plan_v9.csv was extended while this file was written (2026-10-11 11:16: repetitions 4 to 7 for the cells run with the pool); the set of cells did not change and there is no row of purpose edge for this example.",
+    "MEMORY NOTES older than the code: p1_lease_swim_examples.md quotes the 2sd law; it and benchmark_citability_audit_2026_09_18.md quote counts of mid September builds (execs=170, blocked=169, dead=853; 339 against 737 explored) that do not apply to the campaign code. Their statements that the program is the same in both modes, that the law needs N >= 3, that dead is an event counter and that no efficiency claim can be made still hold on the current source and the v9 data. Every send is lossy in both modes (line 521), as decided on 2026-09-29 (paper_lossiness_decision_2026_09_25.md).",
+    "LOSS and the validation reads: with every send lossy, a lost Ping, Ack, Suspect or Alive also makes a wait time out. The validation read that follows the timeout (lines 351, 380, 483) then waits for a message that never becomes readable, so the execution ends blocked: neither complete nor violating. This is why most explored executions are blocked (v9 'L0 N=3 R=6 Ws=6' timed: 445797 of 449893) and why 0 violations on the timed side means no false death from a refutation that is delivered late; a death caused by a lost message is outside the assertion. The header comment (lines 71 to 86) calls the validation reads no longer required since the tool checks timeouts itself; that sentence predates always-lossy sends, under which the reads are what keeps loss out of the property.",
+    "COUNTERS and impossible timelines (counter_based_verdicts_hazard.md): dead is raised before the tool judges the finished execution, so it could also count executions discarded for having no timeline; with timeline_impossible = 0 in every v9 swim row this did not happen, and no verdict here rests on the counter."
+  ]
+}

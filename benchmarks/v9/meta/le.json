@@ -1,0 +1,218 @@
+{
+  "family": "legacy",
+  "example": "comm_closed_leader_election",
+  "title": "Ballot leader election (communication-closed protocol, CAV 2019)",
+  "source": "Damian, Dr\u0103goi, Militaru, Widder, \"Communication-closed asynchronous protocols\" (CAV 2019), the asynchronous ballot leader election of Figure 3 of the proceedings (the file names the paper at lines 3-4 and the figure at line 142). The protocol of the paper is asynchronous and states no time bounds: L, U, sd and W are our own network settings (the v8 regime letters), not a rule taken from a paper.",
+  "property": "At most one leader per ballot: the main thread joins every node, collects their logs and asserts that all log entries naming the same ballot name the same leader (assert_log_consistency, lines 202-213, called at line 284).",
+  "citable": "with caveats",
+  "citable_note": "Usable as an efficiency result: both modes run the same program on an external protocol (plain tagged receives, not the inbox primitive), but there is no timing boundary (0 violations on both sides), the timing values are ours and nothing shows the assertion failing. The 2026-09-18 audit gives no verdict for this example; in regime A the timed side explores 2.6 times fewer executions yet is slower in wall time than the baseline.",
+  "config_timed": "build_config, lines 234-243: Config::builder().with_all_sends_lossy().with_progress_report(0).with_verbose(0), then with_parallel(true) for --parallel shared (apply_parallel, lines 227-232), then with_timed(L, U, sd) at line 241 with L = --l, U = --u, sd = --sd (0 when the flag is absent, lines 32-34). Tool defaults for the rest (lib.rs, ConfigBuilder::new, lines 347-383): consistency model FIFO (one FIFO channel per ordered pair of threads), scheduling policy LTR, keep-going off. Every send may be dropped, without a budget. Shared pool size: neither with_parallel_workers nor MUST_PARALLEL_WORKERS is set in the campaign, so the pool has num_cpus::get() workers (exec_pool.rs, lines 379-385), which on Linux is the number of cores the job is pinned to with taskset: 4, 1 or 8. Protocol messages use the global (L, U); the Init handoff from the main thread is send_msg_timed(.., 0, 0) (lines 270-277, zero transit). Every protocol receive is recv_tagged_msg_timed with wait W = --w (line 122); the Init receive is blocking (line 184).",
+  "config_baseline": "The same builder without with_timed (line 240): with_all_sends_lossy (every send may be dropped, without a budget), FIFO, LTR, keep-going off, the same shared pool. The program is unchanged: the timed API runs as it is and its timing information is ignored (lib.rs, lines 547-551), so L, U and sd have no effect and a receive with a finite wait can always time out, whatever W is.",
+  "program_differs_between_modes": "no: the mode is used only in build_config (lines 239-242) and to label the output; node, step, run_leader_round, run_follower_round and collect_phase (lines 114-198) do not take it, and the file contains no sleep.",
+  "failing_tasks": "The main thread only: traceforge::assert at line 207 (assert_log_consistency, after all nodes are joined). Under keep-going the line would read main-thread-ThreadId(N); this binary has no keep-going option, so a violation would stop the run at the first certified violation with exit code 101 and print the execution graph (in timed mode with a witness timeline). Node threads assert nothing. No violation occurred in any run.",
+  "counters": [
+    {
+      "key": "elected",
+      "counts": "executions",
+      "meaning": "EXECS_WITH_ELECTION (lines 19 and 216-218): complete executions in which at least one node logged a leader, incremented by the main thread after it joined every node. It is not a violation count; it shows that the property is not checked on empty logs only (timed regime D: 176880 of 2767665 complete executions)."
+    }
+  ],
+  "violation_counter": null,
+  "param_columns": [
+    {
+      "key": "N",
+      "header": "Nodes N",
+      "meaning": "number of nodes (--nodes); a majority is N/2 + 1 (integer division)",
+      "size": true
+    },
+    {
+      "key": "B",
+      "header": "Ballots B",
+      "meaning": "ballots every node runs (--ballots)",
+      "size": true
+    },
+    {
+      "key": "L",
+      "header": "L (ticks)",
+      "meaning": "transit lower bound of every protocol message (--l); timed side only, ignored by the baseline",
+      "size": false
+    },
+    {
+      "key": "U",
+      "header": "U (ticks)",
+      "meaning": "transit upper bound of every protocol message (--u); timed side only, ignored by the baseline",
+      "size": false
+    },
+    {
+      "key": "sd",
+      "header": "sd (ticks)",
+      "meaning": "storage delay: how long a message stays readable at its destination after it arrived (--sd); timed side only",
+      "size": false
+    },
+    {
+      "key": "W",
+      "header": "W (ticks)",
+      "meaning": "wait of every protocol receive (--w): the receive returns a message or times out after W; without the clock the value has no effect",
+      "size": false
+    },
+    {
+      "key": "workers",
+      "header": "Pool workers",
+      "meaning": "worker threads of the shared exploration pool = physical cores the job is pinned to; 1 means sequential in effect",
+      "size": false
+    }
+  ],
+  "boundary_law": null,
+  "regimes": [
+    {
+      "id": "D-ctrl",
+      "name": "exact transit, no storage (v8 regime D)",
+      "params": "L=20, U=20, sd=0, W=200 (W = 10 U)",
+      "rule": "No timing boundary: at most one leader per ballot follows from majority quorums and holds with and without the clock. The letter only names the network setting (every message takes exactly 20 ticks and is not stored). Control for the verdict: the two sides must agree on 0 violations; what is compared is the number of explored executions and the wall time.",
+      "expect_timed": "0 violations (exit code 0); at N=3, B=1: 2789656 explored, 8.4 times fewer than the baseline",
+      "expect_baseline": "0 violations (exit code 0); at N=3, B=1: 23439240 explored"
+    },
+    {
+      "id": "A-ctrl",
+      "name": "tight intra-datacentre: 2 ticks of jitter, 2 ticks of storage (v8 regime A)",
+      "params": "L=18, U=20, sd=2, W=200 (W = 10 U)",
+      "rule": "No timing boundary, as in regime D. The transit window is [18, 20] and a message stays readable for 2 ticks; the clock removes less than in regime D (measured at N=3: 9084856 explored against 2789656). Control for the verdict: the two sides must agree on 0 violations.",
+      "expect_timed": "0 violations (exit code 0); at N=3, B=1: 9084856 explored, 2.6 times fewer than the baseline",
+      "expect_baseline": "0 violations (exit code 0); at N=3, B=1: 23439240 explored (the same computation as in regime D)"
+    }
+  ],
+  "glossary": [
+    {
+      "term": "Ballot",
+      "meaning": "one attempt to elect a leader; every node runs B ballots and, per ballot, takes the leader branch or the follower branch"
+    },
+    {
+      "term": "Leader branch / follower branch",
+      "meaning": "the choice is nondeterministic per node and per ballot (traceforge::nondet(), line 168), so any subset of the nodes may propose itself in the same ballot. Leader: sets leader = itself and broadcasts NewBallot. Follower: waits up to W for one NewBallot and adopts its sender; if none comes it skips the acknowledgement phase."
+    },
+    {
+      "term": "NewBallot / AckBallot",
+      "meaning": "the two phases of a ballot, carried in the message tag together with the ballot number. In AckBallot every node broadcasts the leader it follows and collects acknowledgements until it has a majority or a receive times out."
+    },
+    {
+      "term": "Log entry",
+      "meaning": "a node logs (ballot, leader) when it collected a majority of acknowledgements that all name its leader; the property compares these entries across nodes"
+    },
+    {
+      "term": "elected",
+      "meaning": "complete executions in which at least one node logged a leader"
+    },
+    {
+      "term": "Regime D",
+      "meaning": "L = U = 20, sd = 0, W = 200: exact transit time, no storage"
+    },
+    {
+      "term": "Regime A",
+      "meaning": "L = 18, U = 20, sd = 2, W = 200: small jitter and short storage"
+    },
+    {
+      "term": "W",
+      "meaning": "wait of a protocol receive in ticks: the receive returns a matching message or gives up after W; 200 = 10 U in every cell"
+    },
+    {
+      "term": "Init handoff",
+      "meaning": "the main thread sends every node its peer list with zero transit time before the protocol starts; the nodes read it with a blocking receive"
+    },
+    {
+      "term": "Pool workers / shared x4 / 1 core",
+      "meaning": "the binary always explores with the shared work-queue pool (--parallel shared; it has no sequential option). The pool has as many workers as the job has cores: x4 = 4 workers, 1 core = 1 worker (sequential in effect), x8 = 8 workers. The counts do not depend on the number of workers."
+    },
+    {
+      "term": "Edge rung",
+      "meaning": "one size step above the largest cell of v8 (N=4), added on 2026-10-11, one run per side"
+    }
+  ],
+  "cells": [
+    {
+      "cell": "N=3 B=1 regime D (l=u=20 sd=0 w=200) shared x4",
+      "regime": "D-ctrl",
+      "label": "3 nodes, 1 ballot, exact transit, 4 pool workers",
+      "params": {
+        "N": 3,
+        "B": 1,
+        "L": 20,
+        "U": 20,
+        "sd": 0,
+        "W": 200,
+        "workers": 4
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=2767665 blocked=21991 (explored 2789656), elected=176880 (v9, three repetitions identical; same counts as v8)",
+      "expect_baseline": "0 violations (exit code 0); execs=23351969 blocked=87271 (explored 23439240), elected=1626624 (v9, three repetitions identical; same counts as v8). The baseline ignores L, U and sd, so the three N=3 baseline cells are the same computation.",
+      "note": "No violation exists, so both sides explored their whole space. plan_v9.csv also lists repetitions r4 to r7 of this cell (no result on 2026-10-11)."
+    },
+    {
+      "cell": "N=3 B=1 regime D (l=u=20 sd=0 w=200) 1 core",
+      "regime": "D-ctrl",
+      "label": "3 nodes, 1 ballot, exact transit, 1 pool worker (sequential)",
+      "params": {
+        "N": 3,
+        "B": 1,
+        "L": 20,
+        "U": 20,
+        "sd": 0,
+        "W": 200,
+        "workers": 1
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=2767665 blocked=21991 (explored 2789656), elected=176880 (v9, three repetitions identical; same counts as the 4-worker cell and as v8)",
+      "expect_baseline": "0 violations (exit code 0); execs=23351969 blocked=87271 (explored 23439240), elected=1626624 (v9, three repetitions identical; same counts as v8). The baseline ignores L, U and sd, so the three N=3 baseline cells are the same computation.",
+      "note": "Same arguments as the 4-worker cell, pinned to one core: the shared pool has one worker. No violation exists, so both sides explored their whole space."
+    },
+    {
+      "cell": "N=3 B=1 regime A (l=18 u=20 sd=2 w=200) shared x4",
+      "regime": "A-ctrl",
+      "label": "3 nodes, 1 ballot, tight intra-datacentre, 4 pool workers",
+      "params": {
+        "N": 3,
+        "B": 1,
+        "L": 18,
+        "U": 20,
+        "sd": 2,
+        "W": 200,
+        "workers": 4
+      },
+      "kind": "first-violation",
+      "expect_timed": "0 violations (exit code 0); execs=9044433 blocked=40423 (explored 9084856), elected=244848 (v9, three repetitions identical; same counts as v8)",
+      "expect_baseline": "0 violations (exit code 0); execs=23351969 blocked=87271 (explored 23439240), elected=1626624 (v9, three repetitions identical; same counts as v8). The baseline ignores L, U and sd, so the three N=3 baseline cells are the same computation.",
+      "note": "The timed side explores 2.6 times fewer executions but is slower in wall time: 458 to 563 s against 284 to 355 s for the baseline (repetitions r1 to r3). plan_v9.csv also lists repetitions r4 to r7 of this cell (no result on 2026-10-11)."
+    },
+    {
+      "cell": "N=4 B=1 regime D (l=u=20 sd=0 w=200) shared x8 (edge rung)",
+      "regime": "D-ctrl",
+      "label": "4 nodes, 1 ballot, exact transit, 8 pool workers (edge rung)",
+      "params": {
+        "N": 4,
+        "B": 1,
+        "L": 20,
+        "U": 20,
+        "sd": 0,
+        "W": 200,
+        "workers": 8
+      },
+      "kind": "first-violation",
+      "expect_timed": "not measured yet",
+      "expect_baseline": "not measured yet",
+      "note": "Edge rung added on 2026-10-11 (jobs legacy-e01 and legacy-e02), one run per side, no result on 2026-10-11; size unknown. A majority is 3 of 4. The plan expects it to hold if it finishes."
+    }
+  ],
+  "notes": [
+    "Regime suffix: the first draft used D-safe and A-safe. Changed to D-ctrl and A-ctrl, because no cell of this example lies on a timing boundary: the property holds without the clock and the baseline reports 0 violations too, so the definition of -safe (real time rules a violation out, the baseline may report spurious ones) does not apply. The letters D and A are taken from the v8 cell names; only these two are in plan_v9.csv.",
+    "Meaning of the letters: the only definition of the v8 regime D is the cell name itself (l=u=20 sd=0 w=200); the name \"exact transit, no storage\" describes those values. Regime A (l=18 u=20 sd=2 w=200) is the \"tight intra-datacentre link\" of benchmarks/build_v5_xlsx.py. Older files use the letters differently: benchmarks/make_tables.py defines A and D by L/U = 0, sd/U = 0, W/U = 10. Do not carry descriptions over from those files.",
+    "Field family: the first draft had \"le\"; set to \"legacy\", the family id of plan_v9.csv (update of 2026-10-11 in FORMAT.md). The file name le.json is kept as asked; the workbook builder finds the file by its example field.",
+    "Inbox: the memory note inbox_paper_status_wael_2026_09_13 says leader election uses the inbox primitive, which is outside the scope of the paper's theorems. That is not true of this binary: comm_closed_leader_election.rs contains no inbox call (0 matches); it collects a phase with a loop of recv_tagged_msg_timed (collect_phase, lines 114-128). The inbox version is a separate file, comm_closed_leader_election_inbox.rs, and has no row in plan_v9.csv. This binary is the plain-receive twin the note asks to lead with.",
+    "Fidelity (memory note leader_election_figure_fidelity, checked against the current source): the leader branch (lines 143-149: ballot + 1, leader = me, broadcast NewBallot, straight to the acknowledgement phase) is as the note describes; collect_phase stops at a majority (line 118), so its max = N never binds; the follower matches the exact (ballot, phase) tag (line 121) and cannot jump to a higher ballot, which does not matter at B = 1. The note says the file header cites Figure 3, page 3: the current header (lines 1-4) only names the paper, the figure is named at line 142.",
+    "kind: the binary has no keep-going option (ConfigBuilder default, lib.rs line 353), so every cell is first-violation by the rule of FORMAT.md. All finished runs exit with code 0, which means that no violation exists and the whole space was explored; the violating-execution count 0 comes from the exit code, not from counted task lines.",
+    "violation_counter is null: the only summary counter, elected, counts executions with an election, not violations.",
+    "Summary lines checked against results_v9.csv: timed prints w=200 l=20 u=20 sd=0 (regime D) and w=200 l=18 u=20 sd=2 (regime A), matching the cell names; the flags are plain integers (no ratio flags). The baseline summary prints only w, because l, u and sd are not used there; in their place it prints a parenthesised mode label (source line 303) that the vocabulary rule of FORMAT.md bans, so do not copy the raw baseline summary text of this example into the workbook.",
+    "Wall time, regime A: on 4 workers the timed side is slower than the baseline in every repetition so far although it explores 2.6 times fewer executions (timed 563, 458, 464 s; baseline 284, 286, 355 s). In regime D the timed side is faster on 4 workers (146 to 148 s against 306 to 388 s) and on 1 worker (540 to 547 s against 783 to 791 s). The baseline wall time on 4 workers varies by about 25 % between repetitions.",
+    "Counts are identical for 1 and 4 workers and across all repetitions (execs, blocked, elected, pruned); timeline_impossible = 0 in every finished run.",
+    "The baseline ignores --l, --u and --sd: legacy-002, legacy-004 and legacy-006 report the same counts, they differ only in the number of workers.",
+    "Paper scope: the timing values (U = 20, W = 200, the regime letters) are ours; the CAV 2019 protocol has no time bounds, so there is no published timing rule to reproduce and boundary_law is null."
+  ]
+}
