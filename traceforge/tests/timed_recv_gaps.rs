@@ -66,11 +66,15 @@ fn untimed_block_on_a_graph_without_timeline_terminates() {
 /// untimed receive was the one woken for ever.
 ///
 /// Every send lossy: again only worlds delivering both m1 and m2 lack a
-/// timeline (pruned). Go delivered: 7 executions with m1 delivered and
-/// m2 lost (read m1 x4 fates of s1's two sends, read s1's first x2, read
-/// s1's second x1), 10 with m1 lost; plus 1 blocked where all four data
-/// sends are lost. Go lost (relay blocked): the collector reads m1, reads
-/// m2 or blocks, 3 blocked. Total 17 executions, 4 blocked.
+/// timeline (pruned). Since the first-arrival rule (2026-10-13) the
+/// collector, waiting from 0, reads the message that arrives first: m2
+/// (arrival 0) if delivered, else m1 (arrival 1 to 3), else s1's first
+/// send (7 or later), else its second; it used to read a later one
+/// while an earlier one expired unread (17 executions). Go delivered:
+/// m1 only x 4 fates of s1's two sends = 4, m2 only x 4 = 4, neither
+/// with s1's pair (delivered both, only the first, only the second) =
+/// 3, all lost 1 blocked. Go lost (relay blocked): the collector reads
+/// m1, reads m2 or blocks, 3 blocked. Total 11 executions, 4 blocked.
 #[test]
 fn relayed_untimed_block_on_a_graph_without_timeline_terminates() {
     for policy in [SchedulePolicy::LTR, SchedulePolicy::Arbitrary] {
@@ -101,7 +105,7 @@ fn relayed_untimed_block_on_a_graph_without_timeline_terminates() {
                 });
             },
         );
-        assert_eq!((s.execs, s.block), (17, 4), "policy {policy:?}");
+        assert_eq!((s.execs, s.block), (11, 4), "policy {policy:?}");
         assert_eq!(s.timeline_impossible, 0, "policy {policy:?}");
         assert!(s.pruned >= 1, "policy {policy:?}: the no-timeline worlds must be pruned");
     }

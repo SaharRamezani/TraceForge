@@ -1,0 +1,213 @@
+{
+ "time": "2026-10-13 07:59:48",
+ "deadline": "2026-10-13 08:00",
+ "free_cores": 0,
+ "ballast": 0,
+ "queued": 45,
+ "queued_timing": 0,
+ "running": [
+  {
+   "id": "swim-093-r1",
+   "cores": 1,
+   "elapsed_s": 319535,
+   "pred_s": 4521854,
+   "tier": "reach"
+  },
+  {
+   "id": "brp-043-r1",
+   "cores": 1,
+   "elapsed_s": 319535,
+   "pred_s": 3000000,
+   "tier": "reach"
+  },
+  {
+   "id": "opt-036-r1",
+   "cores": 1,
+   "elapsed_s": 319535,
+   "pred_s": 2800000,
+   "tier": "reach"
+  },
+  {
+   "id": "abp-037-r1",
+   "cores": 1,
+   "elapsed_s": 319535,
+   "pred_s": 1700000,
+   "tier": "reach"
+  },
+  {
+   "id": "abp-036-r1",
+   "cores": 1,
+   "elapsed_s": 319535,
+   "pred_s": 1250000,
+   "tier": "reach"
+  },
+  {
+   "id": "brp-044-r1",
+   "cores": 1,
+   "elapsed_s": 319535,
+   "pred_s": 1250000,
+   "tier": "reach"
+  },
+  {
+   "id": "legacy-014-r1",
+   "cores": 1,
+   "elapsed_s": 319535,
+   "pred_s": 1100000,
+   "tier": "reach"
+  },
+  {
+   "id": "sensor-064-r1",
+   "cores": 8,
+   "elapsed_s": 319535,
+   "pred_s": 1000000,
+   "tier": "reach"
+  },
+  {
+   "id": "lease-063-r1",
+   "cores": 8,
+   "elapsed_s": 319535,
+   "pred_s": 880000,
+   "tier": "reach"
+  },
+  {
+   "id": "opt-035-r1",
+   "cores": 1,
+   "elapsed_s": 319535,
+   "pred_s": 436000,
+   "tier": "reach"
+  },
+  {
+   "id": "sensor-063-r1",
+   "cores": 8,
+   "elapsed_s": 319535,
+   "pred_s": 400000,
+   "tier": "reach"
+  },
+  {
+   "id": "zz-keeper-r1",
+   "cores": 1,
+   "elapsed_s": 161603,
+   "pred_s": 4521854,
+   "tier": "timing"
+  },
+  {
+   "id": "stp-e03-r1",
+   "cores": 8,
+   "elapsed_s": 146511,
+   "pred_s": 60000,
+   "tier": "reach"
+  },
+  {
+   "id": "sensor-e01-r1",
+   "cores": 16,
+   "elapsed_s": 146042,
+   "pred_s": 50000,
+   "tier": "reach"
+  },
+  {
+   "id": "stp-e01-r1",
+   "cores": 8,
+   "elapsed_s": 121250,
+   "pred_s": 40000,
+   "tier": "reach"
+  },
+  {
+   "id": "legacy-e01-r1",
+   "cores": 8,
+   "elapsed_s": 97813,
+   "pred_s": 130000,
+   "tier": "reach"
+  },
+  {
+   "id": "legacy-e02-r1",
+   "cores": 8,
+   "elapsed_s": 96345,
+   "pred_s": 130000,
+   "tier": "reach"
+  },
+  {
+   "id": "swim-040-r2",
+   "cores": 8,
+   "elapsed_s": 6438,
+   "pred_s": 11588,
+   "tier": "reach"
+  },
+  {
+   "id": "lease-089-r2",
+   "cores": 8,
+   "elapsed_s": 5440,
+   "pred_s": 11268,
+   "tier": "reach"
+  },
+  {
+   "id": "nisshi-020-r2",
+   "cores": 4,
+   "elapsed_s": 5440,
+   "pred_s": 11128,
+   "tier": "reach"
+  },
+  {
+   "id": "stp-017-r2",
+   "cores": 1,
+   "elapsed_s": 5440,
+   "pred_s": 11119,
+   "tier": "reach"
+  },
+  {
+   "id": "swim-035-r2",
+   "cores": 3,
+   "elapsed_s": 3435,
+   "pred_s": 11022,
+   "tier": "reach"
+  },
+  {
+   "id": "lease-003-r2",
+   "cores": 7,
+   "elapsed_s": 1275,
+   "pred_s": 10385,
+   "tier": "reach"
+  },
+  {
+   "id": "swim-073-r2",
+   "cores": 1,
+   "elapsed_s": 1275,
+   "pred_s": 10303,
+   "tier": "reach"
+  },
+  {
+   "id": "stp-014-r2",
+   "cores": 1,
+   "elapsed_s": 1275,
+   "pred_s": 10274,
+   "tier": "reach"
+  },
+  {
+   "id": "legacy-018-r2",
+   "cores": 1,
+   "elapsed_s": 1275,
+   "pred_s": 10008,
+   "tier": "reach"
+  },
+  {
+   "id": "sensor-062-r2",
+   "cores": 7,
+   "elapsed_s": 1273,
+   "pred_s": 9860,
+   "tier": "reach"
+  },
+  {
+   "id": "abp-020-r2",
+   "cores": 1,
+   "elapsed_s": 1273,
+   "pred_s": 9816,
+   "tier": "reach"
+  },
+  {
+   "id": "swim-074-r2",
+   "cores": 1,
+   "elapsed_s": 1273,
+   "pred_s": 9112,
+   "tier": "reach"
+  }
+ ]
+}

@@ -26,26 +26,42 @@
 //!   * Time scale k: every DKRT constant is multiplied by k and the transit
 //!     (0, TD] becomes [1, k*TD], i.e. resolution 1/k. At k = 1 this is DKRT's
 //!     automaton in integer time; at k = 2 (minimal transit 1/2 standing in
-//!     for u > 0) it gave DKRT's dense verdict on every cell tested. Both are
-//!     checked against IMITATOR (see DEVIATIONS and RESULTS).
+//!     for u > 0) it gave DKRT's dense verdict on every (2) cell tested. Both
+//!     are checked against IMITATOR (see DEVIATIONS and RESULTS).
 //!   * Strict guards. x < T1: S waits Finite(k*T1 - 1) for an ack, then
-//!     sleep(1) is the x = T1 transition (a timeout taken while an ack is
-//!     readable is that ack lost on L, which DKRT allow). z < TR: R arms its
-//!     timer at k*TR - 1 and, on the live one, sleep(1) is the z = TR
-//!     transition; a frame arriving at z = TR is read after it, in new_file.
+//!     sleep(1) is the x = T1 transition (a timeout taken when the ack arrives
+//!     exactly at the deadline is that ack lost on L, which DKRT allow).
+//!     z < TR: R arms its timer at k*TR - 1 and, on the live one, sleep(1) is
+//!     the z = TR transition; a frame arriving at z = TR is read after it, in
+//!     new_file.
 //!   * Loss: every send may be dropped, with no budget, in both modes, since
-//!     DKRT's lines lose without bound; at sd = 0 an evicted frame or ack is
-//!     another loss, also DKRT-legal.
+//!     DKRT's lines lose without bound; at sd = 0 a frame or ack that expires
+//!     unread (it arrived while its receiver was busy) is another loss, also
+//!     DKRT-legal.
+//!   * Receive discipline (timed mode, ruling of 2026-10-13): a receive that
+//!     reads message s reads the one that ARRIVED FIRST among the matching
+//!     messages pending at it; every other pending matching message arrives
+//!     no earlier than s (a tie leaves both orders explored) or had expired
+//!     when the wait began (arrival + sd before the instant the wait began). A
+//!     waiting S or R never passes over an earlier arrival, whoever sent it; a
+//!     message expires unread only while its receiver is busy (sleeping, or
+//!     handling an earlier message); a timeout is possible only when nothing
+//!     readable arrived in the wait (an arrival exactly at the deadline may
+//!     lose the race: both worlds exist). The baseline mode has no clock and
+//!     is not affected.
 //!   * The sender client offers the next file after any wait in [0, DC],
 //!     DC >= TR (DKRT's client has no deadline; an eager client with a
 //!     bounded number of files would report false holds of (2)).
-//!   * Properties are ghost observations, judged once in main after both
-//!     threads' guards: (2) a frame with rb1 = 0 taken in new_file; (4) a
+//!   * Properties are ghost observations asserted where they fail: (2) a
+//!     frame with rb1 = 0 taken in new_file (asserted at that frame); (4) a
 //!     zero-transit Probe from S at x = SYNC that finds R in idle, including
 //!     the tie with R's own z = TR instant (a Finite(0) probe read after the
-//!     sleep); client: the one-file analogue of DKRT Table 2 (1) and (2) on
-//!     their Sec. 3.2 channels, the run ends with one client in ok and the
-//!     other in nok (see client_violation; refused for more than one file).
+//!     sleep; asserted at the probe); client: the one-file analogue of DKRT
+//!     Table 2 (1) and (2) on their Sec. 3.2 channels, the run ends with one
+//!     client in ok and the other in nok (see client_violation; refused for
+//!     more than one file). The client property relates both processes, so
+//!     S and R publish their observations and a monitor's on_stop judges it
+//!     once main has joined both; it waits for no message.
 //!
 //! DEVIATIONS FROM FIG. 4 (each harmless when T1 > 2 TD, DKRT's premise):
 //!   * Channels are TraceForge's unbounded lossy FIFO queues (DKRT Sec. 3.2),
@@ -63,17 +79,25 @@
 //!   * The integer grid of step 1/k: k = 1 is DKRT's automaton in integer
 //!     time, which misses the dense violations on the line SYNC = TR + TD -
 //!     T1 - 1 (IMITATOR's integer model predicts exactly this); k = 2 gave the
-//!     dense verdict on every cell tested, and IMITATOR's half-grid and dense
-//!     regions coincide at every integer point checked (n = 2, MAX <= 3), but
-//!     that is established empirically, not proven.
+//!     dense verdict on every (2) cell tested, and IMITATOR's half-grid and
+//!     dense regions coincide at every integer point checked (n = 2, MAX <= 3),
+//!     but that is established empirically, not proven.
 //!
-//! HARNESS (sd = 0 eviction, as in chandra_toueg_timed). A receive may skip a
-//! message from another channel; for frames and acks that is a loss (legal),
-//! for R's timer it is a timeout never taken (illegal). Every armed timer is
-//! read before R reports (count drain), every Probe must be read (count
-//! assume), R keeps running after Done until its pending timeout (its I_NOK is
-//! a client indication), Done travels on the frame channel with transit k*TD,
-//! and the only assert is in main after both summaries.
+//! NO HARNESS FILTER (since 2026-10-12). Every send may be lost, and a message
+//! that reaches a busy receiver expires unread at sd = 0: for frames and acks
+//! that is DKRT's lossy line, but loss holds for R's self-sent timer and for
+//! S's Probe as well (the Probe can also expire while R sleeps). Until
+//! 2026-10-12 R drained every armed timer and `assume!`d every Probe read
+//! before the judgement, so an execution with a lost or expired timer or Probe
+//! was discarded. Under the model's semantics those are executions like any
+//! other (a lost timer is a receiver without a clock, and (4) then fails at
+//! S's next probe); they are now explored and judged. Under the receive
+//! discipline above R's wait cannot pass over its Timer for a later message
+//! (a frame, the Probe, Done), and R is never busy when its Timer arrives (it
+//! sleeps only right after reading the live one), so R's clock fails only when
+//! the Timer send itself is lost. R keeps running after Done until its pending
+//! timeout (its I_NOK is a client indication); Done travels on the frame
+//! channel with transit k*TD.
 //!
 //! MODELS. `--model dkrt` is the above. `--model spin` is DKRT's App. C
 //! untimed Promela model: lines Line_K / Line_L deliver or tell S of a loss
@@ -84,9 +108,75 @@
 //! optimized equivalent (their C.7) exhaustively. Here n is fixed per run,
 //! while their environment draws n per file.
 //!
-//! RESULTS. Data, oracle, drivers and a README are in
-//! docs/research/ta_problems/need-from-user-papers/brp-b04 (final build:
-//! files *_v2*, final_chain.meta has the source md5).
+//! RESULTS. Re-measured 2026-10-13, after the first-arrival ruling (see
+//! "Receive discipline" under ENCODING), on this file as it stands: one
+//! worker, counts with --keep-going, a certified witness from the same cell
+//! run without it (exit 101; the search is deterministic, the same witness on
+//! 30 repeats at TR 8, SYNC 8 to 11 and the T1 = 2 TD cell). The IMITATOR
+//! oracle (oracle/*.res), the drivers (brp_xval.py; BRP_BIN selects the
+//! binary) and a README are in
+//! docs/research/ta_problems/need-from-user-papers/brp-b04; the *_v2* logs and
+//! final_chain.meta there are the 2026-09-19 build, not the numbers below.
+//!
+//! The 11 cells of the 2026-10-12 harness removal (MAX 1, TD 1, T1 3, k 1, one
+//! file), verdict and violating runs. old = HEAD 0cbe2c7 (timer drain, Probe
+//! `assume!`, earlier receive rule); 10-12 = this file with the earlier
+//! receive rule; now = this file:
+//!                                     old            10-12          now
+//!   (2) TR 8,  SYNC 13                VIOLATED 12    VIOLATED 8     VIOLATED 4
+//!   (2) TR 9,  SYNC 14                HOLDS          HOLDS          HOLDS
+//!   (2) TR 10, SYNC 15                HOLDS          HOLDS          HOLDS
+//!   (4) TR 11, SYNC 8                 VIOLATED 10    VIOLATED 464   VIOLATED 188
+//!   (4) TR 11, SYNC 9                 VIOLATED 10    VIOLATED 500   VIOLATED 188
+//!   (4) TR 11, SYNC 10                HOLDS          VIOLATED 464   VIOLATED 152
+//!   (4) TR 11, SYNC 11                HOLDS          VIOLATED 464   VIOLATED 152
+//!   client, T1 3, TR = SYNC = 11      HOLDS          HOLDS          HOLDS
+//!   client, T1 2, TR = SYNC = 7       VIOLATED 1     VIOLATED 1     VIOLATED 1
+//!   baseline, TR 9, SYNC 14, p2       VIOLATED 528   VIOLATED 186   VIOLATED 186
+//!   --model spin, 50 executions       HOLDS          HOLDS          HOLDS
+//! Counts, old to now: the executions explored (completed + blocked) fall 2.8x
+//! to 3.2x in the timed cells (blocked 3.3x to 3.8x: no drains, no summaries,
+//! no passed-over arrivals), completed ones rise 1.2x to 2.4x, user CPU falls
+//! 1.7x to 2.2x (baseline 2.6x, spin 1.2x). The ruling alone (10-12 to now)
+//! cuts the explored executions 1.5x to 1.7x and the violating runs 2.0x (TR 8)
+//! and 2.5x to 3.1x ((4)); the baseline mode and the spin model are not
+//! affected.
+//!
+//! Witnesses (scaled time, k = 1):
+//!   (2) TR 8 (2 MAX T1 + 3 TD = 9): R reads frame 1 at 1, acks, and arms its
+//!       Timer (due 8). R's first ack arrives at S's deadline 2 and loses the
+//!       race (an ack lost on L); S resends at 3 and reads R's second ack at
+//!       its deadline 5; its first copy of chunk 2 (sent at 5) is [dropped],
+//!       its second (sent at 8) arrives at 9, the instant R, which read the
+//!       Timer at 8, reaches z = TR: R has given up (I_NOK) and takes the
+//!       frame in new_file with b1 = 0. That is DKRT's Fig. 7. Before the
+//!       ruling the first copy needed no loss: it arrived at 6 and R's wait
+//!       passed over it for the later Timer (8). Loss does not move (2): it
+//!       needs R to give up and then take a late frame, and a lost timer
+//!       removes the giving up.
+//!   (4) at SYNC 10, 11: 152 violating runs, the same at SYNC 12, 15 and 20.
+//!       There SYNC + T1 > TR + TD (the oracle's hold side, see Oracle below):
+//!       a live Timer fires before the Probe (z = TR comes strictly before it,
+//!       and R's wait must read the Timer first), so every violating run has
+//!       R's Timer lost. Witness at SYNC 11: R reads frame 1 at 1, acks, and
+//!       arms its Timer (due 11), whose send is [dropped]; R's acks, sent at
+//!       1 and 4, arrive at S's deadlines 2 and 5 and lose the race; S gives
+//!       up at 6 and probes at 17; R, with no clock, reads the duplicate at 4
+//!       and the Probe at 17, still idle. The same witness at SYNC 8, 9, 10
+//!       with the probe at 14, 15, 16. Before the ruling R's clock could also
+//!       fail without a loss: the Timer arrived at 11 and expired unread while
+//!       R's wait took the later Probe (464 runs then). SYNC 8 and 9 have 36
+//!       runs more: they include DKRT's own violation (R's Timer live, the
+//!       Probe not later than R's z = TR). A receiver whose clock can fail
+//!       satisfies (4) at no SYNC; IMITATOR's region assumes a clock that
+//!       cannot, so this port claims no region for (4).
+//!   client, T1 = 2 TD (TR = SYNC = 7): R reads frame 1 at 1 and acks; S
+//!       times out at 1, resends at 2 and reads the first ack, which arrived
+//!       at 2 = x = T1, as the ack of the copy it just sent; it goes on to
+//!       chunk 2 (both copies [dropped]) and reads R's second ack (arrives 4)
+//!       as the ack of chunk 2: SC ends I_OK at 4. R never gets chunk 2, its
+//!       Timer (due 7) fires and RC ends I_NOK. The same witness before the
+//!       ruling.
 //!
 //! Oracle: IMITATOR 3.4.0 on a transliteration of Fig. 4 (it reproduces the
 //! IMITATOR library's published BRPAAPP21 region when its channel is relaxed
@@ -120,65 +210,95 @@
 //!
 //! 1. Cross-validation, both sides of every edge (TR edge and (4) with one
 //!    file at MAX 1..3, SYNC edge with two files at MAX 1; TD 1..2, two T1
-//!    each, k = 1 and 2): 200 runs, 200/200 agree with the IMITATOR oracle of
-//!    the same time semantics (k = 1 integer, k = 2 half grid). Against the
-//!    dense model the only disagreements are the 4 predicted k = 1 cells at
-//!    SYNC = TR + TD - T1 - 1 (integer time holds; dense time violates, the
-//!    new file's first frame needing a transit below one time unit).
-//!    DKRT's own cell MAX 2, TD 1, T1 3, TR 15 at k = 2: (4) VIOLATED at
-//!    SYNC = 13 (28 runs, the tie) and HOLDS at SYNC = 14 < TR (756 runs with
-//!    a non-trivial probe), refuting TACAS'97's claim that (A2) holds only
-//!    if SYNC >= TR, on the executable port. (2) at the same cell with two files,
-//!    k = 2: SYNC = 12 VIOLATED (102 runs, all SYNC side), 13 HOLDS (the exact
-//!    edge), 14 HOLDS, 11.9M executions each (787K restarts after a failure,
-//!    1.1M first frames after a receiver timeout; ~44 min on 12 workers).
-//! 2. The two mechanisms (classified witnesses): TR side = DKRT's Fig. 7 (a
-//!    premature receiver timeout, then a late copy of chunk 2 taken as a first
-//!    frame); SYNC side = a new file started while R still holds the old one:
-//!    its first frame is taken as a duplicate, R times out, chunk 2 enters
-//!    first_safe_frame and RC ends with I_OK for a file whose first chunk it
-//!    never got.
+//!    each, k = 1 and 2): 200 runs against the IMITATOR oracle of the same
+//!    time semantics (k = 1 integer, k = 2 half grid). (2), the 72 TR-edge and
+//!    32 SYNC-edge runs: 104/104 agree. Against the dense model the only
+//!    disagreements are the 4 predicted k = 1 cells at SYNC = TR + TD - T1 - 1
+//!    (integer time holds; dense time violates, the new file's first frame
+//!    needing a transit below one time unit). (4), 96 runs: VIOLATED in all;
+//!    the 48 on the oracle's violation side (SYNC + T1 <= TR + TD) agree, the
+//!    48 on its hold side do not, because R's Timer can be lost (NO HARNESS
+//!    FILTER). DKRT's own cell MAX 2, TD 1, T1 3, TR 15 at k = 2: (4)
+//!    VIOLATED at SYNC = 13, 14 and 15 (266, 236 and 236 runs), so the port
+//!    no longer reproduces by execution the refutation of TACAS'97's claim
+//!    that (A2) holds only if SYNC >= TR; that refutation rests on IMITATOR's
+//!    region. (2) at the same cell with two files and k = 2 (SYNC = 12, 13,
+//!    14) was not re-run: about 12M executions each in the 2026-09-19 build.
+//! 2. The two mechanisms (classified witnesses; the counters p2_tr_side and
+//!    p2_sync_side split every violation, TR-edge cells show only the first,
+//!    SYNC-edge cells only the second): TR side = DKRT's Fig. 7 (a premature
+//!    receiver timeout, then a late copy of chunk 2 taken as a first frame:
+//!    the TR 8 witness above); SYNC side = a new file started while R still
+//!    holds the old one: its first frame is taken as a duplicate, R times out,
+//!    chunk 2 enters first_safe_frame and RC ends with I_OK for a file whose
+//!    first chunk it never got. Witness (MAX 1, TD 1, T1 3, TR 11, SYNC 7,
+//!    k 1, two files): file 0's first frame is [dropped], its copy (sent at 3)
+//!    arrives at 4 and R arms its Timer (due 14); R's ack, arriving at S's
+//!    deadline 5, loses the race, S gives up at 6 and offers file 1 at
+//!    6 + SYNC = 13; its first frame arrives at 14, the instant of R's Timer,
+//!    and R reads it first: still idle and the bit is not the expected one, so
+//!    a duplicate (acked only); then the Timer, R gives up at 15 and takes
+//!    chunk 2 of file 1 (arrives 16) in new_file with b1 = 0.
 //! 3. Outside (5), at T1 = 2 TD, TR = 2 MAX T1 + 3 TD, SYNC = TR, with the
 //!    unbounded lossy channels of DKRT Sec. 3.2: SC ends with I_OK and RC with
-//!    I_NOK in all 8 cells tested (MAX 1..2, TD 1..2, k 1..2), and every cell
-//!    at T1 = 2 TD + 1 holds. An ack arriving exactly at x = T1 is consumed
-//!    after the retransmission and taken for the next chunk (acks carry no
-//!    bit). DKRT's one-place Fig. 4 is not deadlock-free there (IMITATOR).
-//! 4. Precision: this program run untimed reports violations of (2), (4) and
-//!    the client property for every parameter value (its counts do not depend
-//!    on the time constants). DKRT's App. C model (--model spin) has no time
-//!    parameters and satisfies (2) and the client property for every (n, MAX,
-//!    F) run, in 25 / 113 / 625 / 12,769 executions for (2,1,1) / (2,2,1) /
-//!    (2,1,2) / (2,2,2), which equal the hand count of App. C's choice tree:
-//!    its tricks build in the assumptions whose region the timed model computes.
+//!    I_NOK in the certified witness of all 8 cells tested (MAX 1..2, TD 1..2,
+//!    k 1..2), and every cell at T1 = 2 TD + 1 holds. An ack arriving exactly
+//!    at x = T1 is consumed after the retransmission and taken for the next
+//!    chunk (acks carry no bit). DKRT's one-place Fig. 4 is not deadlock-free
+//!    there (IMITATOR).
+//! 4. Precision: this program run untimed (--mode baseline) reports
+//!    violations of (2), (4) and the client property at MAX 1 (5 settings of
+//!    the time constants) and of (2) and the client property at MAX 2 (3
+//!    settings); the counts are identical across the settings, they do not
+//!    depend on the time constants. DKRT's App. C model (--model spin) has no
+//!    time parameters and satisfies (2) in every (n, MAX, F) run and the
+//!    client property in the F = 1 runs, in 50 / 226 / 1,250 / 25,538
+//!    executions for (2,1,1) / (2,2,1) / (2,1,2) / (2,2,2) (158 / 12,482 /
+//!    31,250 for (3,1,1) / (3,1,2) / (2,1,3)): twice the hand count of App.
+//!    C's choice tree (25 / 113 / 625 / 12,769), the factor 2 being the last
+//!    Stop, which Line_L forwards to a sender that has ended (a lossy send
+//!    that no one reads: delivered or lost). Its tricks build in the
+//!    assumptions whose region the timed model computes.
 //! 5. Efficiency, same program, single worker, median of 3 (the counts are
-//!    identical across repeats; untimed "counterexamples" are its spurious
-//!    violations, filed as blocked; timed blocked runs are sd = 0 guards):
+//!    identical across repeats; times are user CPU seconds on a shared
+//!    machine; cex = violating runs, counted where they fail; blocked runs are
+//!    executions in which a thread waits for ever for a lost message: an Init,
+//!    Done, R's Timer, the monitor's Terminate). Explored = completed + blocked:
 //!      cell (DKRT's safe settings)            untimed                     timed
-//!      (2)  MAX 2 TD 1 T1 3 TR=SYNC=15 F=1 k=1  41,515 (24,912 cex) 3.2 s   2,200 proof 1.8 s
-//!      (4)  same                                91,491 (60,884 cex) 7.6 s   2,200 proof 2.3 s
-//!      (2)  MAX 1 TD 1 T1 3 TR 9 SYNC 7 F=2 k=1  2,994,579 (1,878,828) 286 s  66,397 proof 88 s
-//!    19x to 45x fewer executions and 1.8x to 3.3x faster, with a proof where
-//!    untimed reports false alarms. IMITATOR synthesizes each whole parametric
-//!    region in 0.3 to 9 s: no speed claim against timed-automata tools.
+//!      (2)  MAX 2 TD 1 T1 3 TR=SYNC=15 F=1 k=1  86,489 (7,416 cex) 9.6 s    6,026 proof 7.6 s
+//!      (4)  same                                325,522 (91,060 cex) 38.7 s 10,118 VIOLATED 15.3 s
+//!      client, same                             195,455 (144 cex) 23.4 s     6,026 proof 7.6 s
+//!    14x to 32x fewer executions and 1.3x to 3.1x faster, with a proof where
+//!    untimed reports false alarms ((2) and the client property; (4) is
+//!    VIOLATED in both modes, in the timed one by a lost Timer: 1,622 runs).
+//!    The two-file cell of the 2026-09-19 table (MAX 1, TD 1, T1 3, TR 9,
+//!    SYNC 7, F = 2) was not re-measured. IMITATOR synthesizes each whole
+//!    parametric region in 0.3 to 9 s: no speed claim against timed-automata
+//!    tools.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
+use traceforge::monitor_types::*;
 use traceforge::thread::{self, ThreadId};
 use traceforge::{Config, ConsType, Stats, WaitTime};
+use traceforge_macros::monitor;
 
 // =====================================================================
 // Messages
 // =====================================================================
 
+/// `pub` because the client monitor's generated message enum wraps it.
 #[derive(Clone, Debug, PartialEq)]
-enum Msg {
-    /// Bootstrap from main (untimed, transparent for timing).
+pub enum Msg {
+    /// Bootstrap from main, SPIN MODEL ONLY (untimed, transparent for
+    /// timing). The DKRT model has none: R is spawned first and S last, so S
+    /// captures R's id, and R learns S's from the `from` of the frames.
     Init { peer: ThreadId },
     /// Channel K, S -> R: F!(b1, bN, ab). `file` and `chunk` are ghost data
-    /// for the observations; no protocol decision reads them.
-    Frame { b1: bool, bn: bool, ab: bool, file: u32, chunk: u32 },
+    /// for the observations; no protocol decision reads them. `from` is S's
+    /// own address, the reply address of the ack (as in 3PC's Prepare).
+    Frame { b1: bool, bn: bool, ab: bool, file: u32, chunk: u32, from: ThreadId },
     /// Channel L, R -> S. DKRT's ack carries no bit; `file` and `chunk` are
     /// ghost data (which frame R answered), read only by the observations.
     Ack { file: u32, chunk: u32 },
@@ -190,11 +310,8 @@ enum Msg {
     /// Property (4) monitor: S at x = SYNC in state error, zero transit.
     /// `file` (ghost) is the file S just gave up.
     Probe { file: u32 },
-    /// S -> R after the last file: stop, and how many Probes were sent.
-    Done { probes: u32 },
-    /// To main: what each process observed (ghost data).
-    SenderSummary { s: SenderObs },
-    ReceiverSummary { r: ReceiverObs },
+    /// S -> R after the last file: stop.
+    Done,
     /// DKRT App. C (Promela) model only: loss notification from a line to S,
     /// the SyncWait double handshake, and the end of the run.
     ChunkTimeout,
@@ -203,8 +320,6 @@ enum Msg {
 }
 
 const PROBE_TAG: u32 = 1;
-/// Storage lifetime at main (summaries only): longer than any run.
-const MAIN_SD: u64 = 1 << 40;
 
 /// The sender client's indication (Sout) and the receiver client's (Rout).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -290,8 +405,15 @@ enum Property {
 }
 
 impl Property {
+    fn checks_p2(self) -> bool {
+        matches!(self, Property::P2 | Property::All)
+    }
     fn checks_p4(self) -> bool {
         matches!(self, Property::P4 | Property::All)
+    }
+    /// The client property is judged on final states, exact for one file.
+    fn checks_client(self, files: u32) -> bool {
+        matches!(self, Property::Client) || (matches!(self, Property::All) && files == 1)
     }
 }
 
@@ -354,7 +476,9 @@ impl Params {
 }
 
 // =====================================================================
-// Counters (over executions that reach the judgement)
+// Counters. (2) and (4) are counted by R at the step where they fail (once
+// per run); the others by the monitor's on_stop, over the runs whose two
+// observations it saw.
 // =====================================================================
 
 static JUDGED: AtomicUsize = AtomicUsize::new(0);
@@ -369,7 +493,7 @@ static RESTART_AFTER_FAIL_RUNS: AtomicUsize = AtomicUsize::new(0);
 static FIRST_SAFE_AFTER_TIMEOUT_RUNS: AtomicUsize = AtomicUsize::new(0);
 static PROBE_NONTRIVIAL_RUNS: AtomicUsize = AtomicUsize::new(0);
 static CONFUSED_RUNS: AtomicUsize = AtomicUsize::new(0);
-/// Judged runs whose assertion fails (the engine files them as blocked).
+/// Judged runs whose client assertion fails.
 static ASSERT_FAIL_RUNS: AtomicUsize = AtomicUsize::new(0);
 
 const COUNTERS: [&AtomicUsize; 13] = [
@@ -404,16 +528,11 @@ fn count(flag: bool, c: &AtomicUsize) {
 // Sender S (Fig. 1 / Fig. 4) with its client SC
 // =====================================================================
 
-fn sender(p: Params, main_tid: ThreadId) {
+fn sender(p: Params, receiver: ThreadId) {
     let me = thread::current().id();
-    let receiver = match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
-        Msg::Init { peer } => peer,
-        m => panic!("sender: expected Init, got {m:?}"),
-    };
     let mut obs = SenderObs::default();
     // Fig. 1: ab := 0 initially.
     let mut ab = false;
-    let mut probes = 0u32;
     let mut failed_before = false;
     for file in 0..p.files {
         // idle: SC offers the next file (Sin) after any wait (Fig. 8's
@@ -432,7 +551,7 @@ fn sender(p: Params, main_tid: ThreadId) {
             // next_frame (urgent): bN := (i == n), rc := 0, then F!.
             let (b1, bn) = (i == 1, i == p.n);
             let mut rc = 0u32;
-            let frame = Msg::Frame { b1, bn, ab, file, chunk: i };
+            let frame = Msg::Frame { b1, bn, ab, file, chunk: i, from: me };
             traceforge::send_lossy_msg_timed(receiver, frame.clone(), p.lo(), p.td());
             // wait_ack (x <= T1): an ack is accepted while x < T1, i.e. at
             // most k*T1 - 1 scaled units after the (re)send; at x = T1 the
@@ -491,15 +610,17 @@ fn sender(p: Params, main_tid: ThreadId) {
             traceforge::sleep(p.sync());
             if p.property.checks_p4() {
                 traceforge::send_tagged_msg_timed(receiver, PROBE_TAG, Msg::Probe { file }, 0, 0);
-                probes += 1;
             }
             ab = false;
         }
         failed_before |= failed;
     }
     // Harness: after the last file, on the same FIFO channel as every frame.
-    traceforge::send_msg_timed(receiver, Msg::Done { probes }, p.td(), p.td());
-    traceforge::send_msg_timed(main_tid, Msg::SenderSummary { s: obs }, 0, 0);
+    // If it is lost R keeps waiting; the twin execution where it arrives is
+    // judged.
+    traceforge::send_msg_timed(receiver, Msg::Done, p.td(), p.td());
+    // Observation only: read by the monitor's on_stop.
+    traceforge::publish(obs);
 }
 
 // =====================================================================
@@ -524,11 +645,14 @@ struct RState {
     seen_any: bool,
     /// Ghost: the file of the last frame R reported (accepted as new).
     last_reported_file: Option<u32>,
+    /// Which ghost properties are asserted where they fail (the others are
+    /// only counted).
+    property: Property,
     obs: ReceiverObs,
 }
 
 impl RState {
-    fn new() -> Self {
+    fn new(property: Property) -> Self {
         Self {
             loc: RLoc::NewFile,
             exp_ab: false,
@@ -537,6 +661,7 @@ impl RState {
             last_chunk: 0,
             seen_any: false,
             last_reported_file: None,
+            property,
             obs: ReceiverObs::default(),
         }
     }
@@ -557,14 +682,22 @@ impl RState {
                     self.obs.first_safe_after_timeout += 1;
                 }
                 if !b1 {
-                    // A frame of the file R last accepted: R gave it up too
-                    // early (TR side). Of a later file: the new file started
-                    // while R still held the old one (SYNC side).
+                    // Property (2) fails here and now. A frame of the file R
+                    // last accepted: R gave it up too early (TR side). Of a
+                    // later file: the new file started while R still held
+                    // the old one (SYNC side).
+                    let tr_side = self.last_reported_file == Some(file);
+                    count(!self.obs.p2, &P2_RUNS);
+                    count(tr_side && !self.obs.p2_tr_side, &P2_TR_RUNS);
+                    count(!tr_side && !self.obs.p2_sync_side, &P2_SYNC_RUNS);
                     self.obs.p2 = true;
-                    if self.last_reported_file == Some(file) {
+                    if tr_side {
                         self.obs.p2_tr_side = true;
                     } else {
                         self.obs.p2_sync_side = true;
+                    }
+                    if self.property.checks_p2() {
+                        traceforge::assert(false);
                     }
                 }
                 self.exp_ab = ab;
@@ -618,11 +751,17 @@ impl RState {
     }
 
     fn probe(&mut self, file: u32) {
-        if self.loc == RLoc::Idle {
-            self.obs.p4 = true;
-        }
         if self.seen_any && self.last_file == file {
             self.obs.probes_nontrivial += 1;
+        }
+        if self.loc == RLoc::Idle {
+            // Property (4) fails here and now: S ends its post-failure wait
+            // while R still holds the file.
+            count(!self.obs.p4, &P4_RUNS);
+            self.obs.p4 = true;
+            if self.property.checks_p4() {
+                traceforge::assert(false);
+            }
         }
     }
 
@@ -633,29 +772,29 @@ impl RState {
 
 struct Receiver {
     me: ThreadId,
-    sender: ThreadId,
+    /// S's address, learned from the first frame that arrives (R sends
+    /// nothing and times nothing out before it).
+    sender: Option<ThreadId>,
     p: Params,
     st: RState,
-    /// Timer bookkeeping: the live epoch, and how many timers were armed
-    /// and read (every armed timer must be read before the judgement).
+    /// The live timer epoch; stale timers are ignored.
     epoch: u32,
-    armed: u32,
-    read: u32,
-    probes_read: u32,
 }
 
 impl Receiver {
-    /// z := 0: arm the timer for the next z = TR.
+    /// z := 0: arm the timer for the next z = TR. A self-send, which may be
+    /// lost like any other message (R then never times out in that run).
     fn reset_z(&mut self) {
         self.epoch += 1;
-        self.armed += 1;
         traceforge::send_msg_timed(self.me, Msg::Timer { epoch: self.epoch }, self.p.tr() - 1, self.p.tr() - 1);
     }
 
-    fn frame(&mut self, b1: bool, bn: bool, ab: bool, file: u32, chunk: u32) {
+    fn frame(&mut self, b1: bool, bn: bool, ab: bool, file: u32, chunk: u32, from: ThreadId) {
+        self.sender = Some(from);
         let (ack, reported) = self.st.frame(b1, bn, ab, file, chunk);
         if ack {
-            traceforge::send_lossy_msg_timed(self.sender, self.st.ack(), self.p.lo(), self.p.td());
+            let sender = self.sender.expect("set by the frame just read");
+            traceforge::send_lossy_msg_timed(sender, self.st.ack(), self.p.lo(), self.p.td());
         }
         if reported {
             self.reset_z();
@@ -666,17 +805,13 @@ impl Receiver {
     /// Probe sent at exactly this instant (R is still idle), then time out.
     fn timeout(&mut self) {
         traceforge::sleep(1);
-        let sender = self.sender;
         if self.p.property.checks_p4() {
             let probe = traceforge::recv_tagged_msg_timed::<_, Msg>(
-                move |s, tag| s == sender && tag == Some(PROBE_TAG),
+                move |_s, tag| tag == Some(PROBE_TAG),
                 WaitTime::Finite(0),
             );
             match probe {
-                Some(Msg::Probe { file }) => {
-                    self.probes_read += 1;
-                    self.st.probe(file);
-                }
+                Some(Msg::Probe { file }) => self.st.probe(file),
                 Some(m) => panic!("receiver: unexpected {m:?}"),
                 None => {}
             }
@@ -685,37 +820,30 @@ impl Receiver {
     }
 }
 
-fn receiver(p: Params, main_tid: ThreadId) {
+fn receiver(p: Params) {
     let me = thread::current().id();
-    let sender = match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
-        Msg::Init { peer } => peer,
-        m => panic!("receiver: expected Init, got {m:?}"),
-    };
-    let mut r = Receiver { me, sender, p, st: RState::new(), epoch: 0, armed: 0, read: 0, probes_read: 0 };
-    let probes_sent = loop {
+    let mut r = Receiver { me, sender: None, p, st: RState::new(p.property), epoch: 0 };
+    loop {
         match traceforge::recv_msg_block_timed::<Msg>() {
-            Msg::Frame { b1, bn, ab, file, chunk } => r.frame(b1, bn, ab, file, chunk),
+            Msg::Frame { b1, bn, ab, file, chunk, from } => r.frame(b1, bn, ab, file, chunk, from),
             Msg::Timer { epoch } => {
-                r.read += 1;
                 if epoch == r.epoch && r.st.loc == RLoc::Idle {
                     r.timeout();
                 }
             }
-            Msg::Probe { file } => {
-                r.probes_read += 1;
-                r.st.probe(file);
-            }
-            Msg::Done { probes } => break probes,
+            Msg::Probe { file } => r.st.probe(file),
+            Msg::Done => break,
             m => panic!("receiver: unexpected {m:?}"),
         }
-    };
+    }
     // Nothing else can come on the S -> R channel after Done (FIFO), so R's
     // remaining DKRT behaviour is its pending timeout (idle has invariant
-    // z <= TR): let it happen, since its I_NOK is a client indication.
+    // z <= TR): let it happen, since its I_NOK is a client indication. If
+    // that timer was lost, R waits here for ever (a run in which R has no
+    // clock; its client indication is then never given).
     while r.st.loc == RLoc::Idle {
         match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == me) {
             Msg::Timer { epoch } => {
-                r.read += 1;
                 if epoch == r.epoch {
                     r.timeout();
                 }
@@ -723,18 +851,8 @@ fn receiver(p: Params, main_tid: ThreadId) {
             m => panic!("receiver after Done: unexpected {m:?}"),
         }
     }
-    // Harness: every armed timer must be read. A timer evicted at sd = 0 (a
-    // later frame read first) is a timeout R never took, which DKRT's
-    // invariant z <= TR forbids; such a run blocks here, before judgement.
-    while r.read < r.armed {
-        match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == me) {
-            Msg::Timer { .. } => r.read += 1,
-            m => panic!("receiver drain: unexpected {m:?}"),
-        }
-    }
-    // A Probe evicted unread is a check never made: discard the run.
-    traceforge::assume!(r.probes_read == probes_sent);
-    traceforge::send_msg_timed(main_tid, Msg::ReceiverSummary { r: r.st.obs }, 0, 0);
+    // Observation only: read by the monitor's on_stop.
+    traceforge::publish(r.st.obs);
 }
 
 // =====================================================================
@@ -764,7 +882,7 @@ fn spin_sender(p: Params, main_tid: ThreadId) {
         let mut i = 1u32;
         let failed = loop {
             // next_frame: F!(i==1, i==n, ab, d[i]); rc = 0.
-            let frame = Msg::Frame { b1: i == 1, bn: i == p.n, ab, file, chunk: i };
+            let frame = Msg::Frame { b1: i == 1, bn: i == p.n, ab, file, chunk: i, from: thread::current().id() };
             traceforge::send_msg(line_k, frame.clone());
             let mut rc = 0u32;
             let acked = loop {
@@ -816,7 +934,7 @@ fn spin_sender(p: Params, main_tid: ThreadId) {
         failed_before |= failed;
     }
     traceforge::send_msg(line_k, Msg::Stop);
-    traceforge::send_msg(main_tid, Msg::SenderSummary { s: obs });
+    traceforge::publish(obs);
 }
 
 /// Line_K (S -> R) or Line_L (R -> S): deliver, or lose and tell S.
@@ -845,7 +963,7 @@ fn spin_line(main_tid: ThreadId) {
     }
 }
 
-fn spin_receiver(main_tid: ThreadId) {
+fn spin_receiver(p: Params, main_tid: ThreadId) {
     let (line_l, sender) = match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
         Msg::Init { peer } => match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
             Msg::Init { peer: s } => (peer, s),
@@ -853,10 +971,10 @@ fn spin_receiver(main_tid: ThreadId) {
         },
         m => panic!("spin receiver: expected Init, got {m:?}"),
     };
-    let mut st = RState::new();
+    let mut st = RState::new(p.property);
     loop {
         match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s != main_tid) {
-            Msg::Frame { b1, bn, ab, file, chunk } => {
+            Msg::Frame { b1, bn, ab, file, chunk, .. } => {
                 let (ack, _) = st.frame(b1, bn, ab, file, chunk);
                 if ack {
                     traceforge::send_msg(line_l, st.ack());
@@ -877,69 +995,87 @@ fn spin_receiver(main_tid: ThreadId) {
             m => panic!("spin receiver: unexpected {m:?}"),
         }
     }
-    traceforge::send_msg(main_tid, Msg::ReceiverSummary { r: st.obs });
+    traceforge::publish(st.obs);
 }
 
 // =====================================================================
-// Harness: main spawns the processes, then judges once all are done
+// Harness: main spawns the processes; a monitor judges the client property
 // =====================================================================
 
-fn judge(p: &Params, so: SenderObs, ro: ReceiverObs) {
-    JUDGED.fetch_add(1, Ordering::Relaxed);
-    let client = client_violation(&so, &ro);
-    count(ro.p2, &P2_RUNS);
-    count(ro.p2_tr_side, &P2_TR_RUNS);
-    count(ro.p2_sync_side, &P2_SYNC_RUNS);
-    count(ro.p4, &P4_RUNS);
-    count(client, &CLIENT_RUNS);
-    count(so.nok + so.dk > 0, &FAILED_FILE_RUNS);
-    count(ro.timeouts > 0, &TIMEOUT_RUNS);
-    count(so.restart_after_fail, &RESTART_AFTER_FAIL_RUNS);
-    count(ro.first_safe_after_timeout > 0, &FIRST_SAFE_AFTER_TIMEOUT_RUNS);
-    count(ro.probes_nontrivial > 0, &PROBE_NONTRIVIAL_RUNS);
-    count(so.confused_acks > 0, &CONFUSED_RUNS);
-    let ok = match p.property {
-        Property::P2 => !ro.p2,
-        Property::P4 => !ro.p4,
-        Property::Client => !client,
-        Property::All => !ro.p2 && !ro.p4 && (p.files > 1 || !client),
-    };
-    count(!ok, &ASSERT_FAIL_RUNS);
-    traceforge::assert(ok);
+/// The client property relates S's and R's indications, so it has no single
+/// step to assert at. S and R `publish` their observations when they end,
+/// and this monitor's on_stop reads them once main has joined every process
+/// and terminated the monitor. The monitor accepts no message (its acceptor
+/// is a plain `fn` run on a Default instance, see three_pc_timed), so it
+/// adds no read to the exploration, and the verdict waits for no message
+/// that could be lost. It also tallies the counters that need both sides.
+#[monitor(Msg)]
+#[derive(Clone, Debug, Default)]
+struct ClientMonitor {
+    property: Option<Property>,
+    files: u32,
 }
 
-/// The two summaries, in a fixed order (reading them in either order would
-/// double every execution). Main's storage lifetime is long (see
-/// build_config), so the summary that arrives first waits to be read.
-fn collect(st: ThreadId, rt: ThreadId) -> (SenderObs, ReceiverObs) {
-    let so = match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == st) {
-        Msg::SenderSummary { s } => s,
-        m => panic!("main: unexpected {m:?}"),
-    };
-    let ro = match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == rt) {
-        Msg::ReceiverSummary { r } => r,
-        m => panic!("main: unexpected {m:?}"),
-    };
-    (so, ro)
+impl Acceptor<Msg> for ClientMonitor {
+    fn accept(&mut self, _who: ThreadId, _whom: ThreadId, _what: &Msg) -> bool {
+        false
+    }
+}
+
+impl Observer<Msg> for ClientMonitor {}
+
+impl Monitor for ClientMonitor {
+    fn on_stop(&mut self, end: &ExecutionEnd) -> MonitorResult {
+        // Judge only when main terminated the monitor, i.e. after it joined
+        // every process. The engine also calls on_stop when an execution
+        // ends with a thread waiting for a lost message (an Init, Done, a
+        // Timer, the Terminate itself); the observations are then
+        // incomplete, and the twin execution without that loss is judged.
+        if end.condition != EndCondition::MonitorTerminated {
+            return Ok(());
+        }
+        let so = end.get_published::<SenderObs>().into_values().next();
+        let ro = end.get_published::<ReceiverObs>().into_values().next();
+        let (Some(so), Some(ro)) = (so, ro) else {
+            return Ok(());
+        };
+        JUDGED.fetch_add(1, Ordering::Relaxed);
+        let client = client_violation(&so, &ro);
+        count(client, &CLIENT_RUNS);
+        count(so.nok + so.dk > 0, &FAILED_FILE_RUNS);
+        count(ro.timeouts > 0, &TIMEOUT_RUNS);
+        count(so.restart_after_fail, &RESTART_AFTER_FAIL_RUNS);
+        count(ro.first_safe_after_timeout > 0, &FIRST_SAFE_AFTER_TIMEOUT_RUNS);
+        count(ro.probes_nontrivial > 0, &PROBE_NONTRIVIAL_RUNS);
+        count(so.confused_acks > 0, &CONFUSED_RUNS);
+        let checks_client = self.property.map_or(false, |pr| pr.checks_client(self.files));
+        if checks_client && client {
+            ASSERT_FAIL_RUNS.fetch_add(1, Ordering::Relaxed);
+            return Err(format!(
+                "client: SC ended in {:?} and RC in {:?} for the same file",
+                so.last_sout, ro.last_rout
+            ));
+        }
+        Ok(())
+    }
 }
 
 fn run_once(p: Params) {
     let main_tid = thread::current().id();
+    // Spawned first, so it is registered before any protocol message exists.
+    let mon = start_monitor_client_monitor(ClientMonitor { property: Some(p.property), files: p.files });
     match p.model {
         Model::Dkrt => {
-            let s = thread::spawn(move || sender(p, main_tid));
-            let r = thread::spawn(move || receiver(p, main_tid));
-            let (st, rt) = (s.thread().id(), r.thread().id());
-            traceforge::send_msg(st, Msg::Init { peer: rt });
-            traceforge::send_msg(rt, Msg::Init { peer: st });
-            let (so, ro) = collect(st, rt);
+            // No bootstrap message: R first, S last (S captures R's id).
+            let r = thread::spawn(move || receiver(p));
+            let rt = r.thread().id();
+            let s = thread::spawn(move || sender(p, rt));
             let _ = s.join();
             let _ = r.join();
-            judge(&p, so, ro);
         }
         Model::Spin => {
             let s = thread::spawn(move || spin_sender(p, main_tid));
-            let r = thread::spawn(move || spin_receiver(main_tid));
+            let r = thread::spawn(move || spin_receiver(p, main_tid));
             let k = thread::spawn(move || spin_line(main_tid));
             let l = thread::spawn(move || spin_line(main_tid));
             let (st, rt, kt, lt) = (s.thread().id(), r.thread().id(), k.thread().id(), l.thread().id());
@@ -947,13 +1083,17 @@ fn run_once(p: Params) {
                 traceforge::send_msg(to, Msg::Init { peer: a });
                 traceforge::send_msg(to, Msg::Init { peer: b });
             }
-            let (so, ro) = collect(st, rt);
             for h in [s, r, k, l] {
                 let _ = h.join();
             }
-            judge(&p, so, ro);
         }
     }
+    // Every process has ended: judge. Terminate is a message and may be
+    // lost; main then waits here, that execution goes unjudged, and its twin
+    // where Terminate arrives, identical up to this point, is judged.
+    terminate_monitor_client_monitor(mon.thread().id());
+    let verdict: MonitorResult = mon.join().unwrap();
+    traceforge::assert(verdict.is_ok());
 }
 
 fn build_config(mode: Mode, keep_going: bool, workers: usize) -> Config {
@@ -968,9 +1108,8 @@ fn build_config(mode: Mode, keep_going: bool, workers: usize) -> Config {
     }
     match mode {
         Mode::Baseline => b.build(),
-        // Every protocol send carries its own window; sd = 0 at S and R.
-        // Main only collects the two summaries: it keeps them until read.
-        Mode::Timed => b.with_timed(0, 0, 0).with_node_sd(thread::main_thread_id(), MAIN_SD).build(),
+        // Every protocol send carries its own window; sd = 0 everywhere.
+        Mode::Timed => b.with_timed(0, 0, 0).build(),
     }
 }
 
@@ -1026,26 +1165,17 @@ fn print_one(mode: Mode, p: &Params, stats: &Stats, dur: Duration) {
         load(&CONFUSED_RUNS),
         if viol > 0 { "VIOLATED" } else { "HOLDS" },
     );
-    if j == 0 {
-        println!("WARNING: no execution reached the judgement: no data, not a hold.");
+    if j == 0 && viol == 0 {
+        println!("WARNING: no execution reached the monitor's judgement and nothing failed: no data, not a hold.");
     }
     // The verdict comes from these counters, and the counters are raised by
     // PROGRAM code, which runs on every ending the search enumerates. Since
     // the (C6b) timeout-miss condition is judged only once the graph is whole,
-    // an ending that admits no timeline still executes, still reaches `judge`
-    // and still raises these counters before the engine discards it. So:
-    //   judged = complete + (feasible failures) + (impossible endings judged)
-    // and `viol > 0` is an UPPER bound on the violations. A counter-only hold
-    // is sound (no ending at all violated, feasible or not); a counter-only
-    // VIOLATED is not, and must be confirmed by the engine.
-    let fails = load(&ASSERT_FAIL_RUNS);
-    if j > stats.execs + fails + stats.timeline_impossible {
-        println!(
-            "WARNING: {j} judged runs but {} complete + {fails} failing + {} with no timeline: the \
-             verdict counts a run the engine did not certify; confirm without --keep-going.",
-            stats.execs, stats.timeline_impossible
-        );
-    }
+    // an ending that admits no timeline still executes and still raises these
+    // counters before the engine discards it, so `viol > 0` is an UPPER bound
+    // on the violations. A counter-only hold is sound (no ending at all
+    // violated, feasible or not); a counter-only VIOLATED is not, and must be
+    // confirmed by the engine.
     if viol > 0 && stats.timeline_impossible > 0 {
         println!(
             "NOTE: verdict=VIOLATED comes from program counters, and {} of the {} endings explored \

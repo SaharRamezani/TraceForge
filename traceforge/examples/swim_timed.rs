@@ -35,16 +35,20 @@
 //!
 //! Rounds are matched with round-scoped tags: receive predicates see
 //! only (sender, tag), never the payload, so Ack and Alive, the two
-//! messages that timed waits and validation reads target, encode
-//! their period in the tag (ack_tag/alive_tag); Ping and Suspect carry
+//! messages that timed waits target, encode their period in the tag
+//! (ack_tag/alive_tag); Ping and Suspect carry
 //! `round` in the payload. The prober's per-round Suspect carries its
 //! current known incarnation, so incarnations rise across rounds and
 //! the SWIM refutation rule (refute iff inc >= incarnation, bump to
 //! inc + 1) is exercised for real from round 2 on.
 //!
-//! MMsg::Done is verification harness, not SWIM: a bounded model needs
-//! the reactive threads to terminate, so the prober releases them when
-//! all R periods are resolved.
+//! There is no bootstrap or release message. The bystanders and the
+//! target are spawned first, as daemon actors, and the prober last, so
+//! it captures their ids at spawn; the target learns the prober's id
+//! from the `from` field of the Ping and Suspect it receives (the
+//! 3PC `Prepare { coord }` idiom), and the bystanders filter by
+//! message-kind tag, not by sender. The run ends when the prober has
+//! resolved all R periods.
 //!
 //! ## Deviations from the paper (deliberate, defect-first model)
 //!
@@ -55,35 +59,29 @@
 //! modeled mechanism is exactly the suspicion subprotocol whose false
 //! positive motivates Lifeguard.
 //!
-//! ## Timeout-validation assumptions (verification harness, NOT SWIM)
+//! ## No harness assumptions (since 2026-10-12)
 //!
-//! The false-positive assertion sits on timeout branches. Until
-//! 2026-09-21 the timeout branch (rf = None) of a finite-wait receive
-//! was unconstrained in timed mode, so without further constraint the
-//! assertion would have fired trivially at any parameters. The
-//! assume_* functions below therefore follow each property-relevant
-//! timeout with a BLOCKING timed receive for the very message the
-//! timer awaited: an assume("the message really was late here"). The
-//! read is feasible exactly when the message could genuinely arrive
-//! or be read after the deadline, so spurious timeouts become blocked
-//! (discarded) executions instead of false counterexamples.
-//!
-//! Since the timeout miss condition (C6b) the checker enforces that
-//! rule itself: a timeout is a real execution only where every
-//! message the receive could have taken missed its whole wait, judged
-//! when the execution is complete. The idiom is therefore no longer
-//! REQUIRED for soundness, but it is KEPT here on purpose: the
-//! validation read is part of the swept model and produces the
-//! max(0, 2L - W_PROBE) anchor term of the published law (the
-//! suspicion timer anchors at the validation read, not the probe
-//! deadline), so removing it would move the measured boundary at
-//! every cell with 2L > W_PROBE. SWIM's prober performs no such read;
-//! this is checker scaffolding, kept out of the protocol logic. Since
-//! (C6b) a spurious timeout is dropped at completion before the
-//! validation read can block on it, so hold cells at L = 0 now report
-//! blocked = 0 (the mini-SWIM pins in tests/timed_exact.rs moved from
-//! (2, 2) and (4, 6) to (2, 0) and (4, 0)); at L > 0 the read can
-//! still block for its own reasons.
+//! The false-positive assertion sits on timeout branches. A timeout
+//! branch is a real execution exactly where the checker's timeout miss
+//! condition (C6b) admits it: every message the receive could have
+//! taken missed its whole wait, judged when the execution is complete.
+//! A message misses a wait that began at t_p and ended at t_e when it
+//! arrives at or after t_e (an arrival exactly at the deadline may lose
+//! the race to the timer) or was already discarded when the wait began
+//! (arrival + sd < t_p; with sd = 0 a message is readable only at its
+//! arrival instant). A dropped send is never pending, so a lost message
+//! never constrains a timeout.
+//! Until 2026-10-12 this file additionally followed each
+//! property-relevant timeout with a BLOCKING read of the very message
+//! the timer awaited (assume_ack_was_late, assume_refutation_was_late),
+//! so that a timeout counted only if that message was eventually read.
+//! What those reads filtered out, once (C6b) handled the timing, was
+//! every execution in which the Ack or the Alive was LOST or EXPIRED
+//! unread (sd = 0), since such a message is never read. Under the
+//! model's semantics every send may be lost, a dead declaration caused
+//! by a lost message is a false positive like any other, and nothing is
+//! filtered: the reads are gone, every finite wait is SWIM's own, and the
+//! law that depended on them is withdrawn (see Expected verdicts).
 //!
 //! ## Safety properties (per-node assertions)
 //!
@@ -107,45 +105,109 @@
 //!                                   past arrival (default 0.0)
 //!   --w-probe-ratio R               W_PROBE = round(R * U) (default 1.0)
 //!   --w-suspect-ratio R             W_SUSPECT = round(R * U) (default 4.0)
+//!   --keep-going                    explore the whole state space after a
+//!                                   violation and report the number of
+//!                                   false positives (violations=) instead
+//!                                   of aborting at the first one
+//!   --dot-out PATH                  dump the execution graph (the
+//!                                   counterexample prefix on a FIRE) as
+//!                                   Graphviz dot, tau intervals in timed
+//!                                   mode
+//!   --parallel none|shared|partitioned
+//!                                   exploration strategy (default none)
 //!
 //! CLI misuse exits 2, distinct from a property violation's 101, so
 //! exit-code-based sweep harnesses cannot mistake a typo for a FIRE.
 //!
-//! ## Expected verdicts (matrix-verified; R-independent)
+//! ## Expected verdicts (re-measured 2026-10-13, after the first-arrival ruling)
 //!
-//!   baseline: FIRE (exit 101) at any parameters; no-false-positive is
-//!       inherently a timing property, an untimed checker cannot hold it.
-//!   timed:    FIRE iff W_SUSPECT <= 2U + 2sd - min(L, max(0, 2L - W_PROBE)),
-//!       hold above, at EVERY round count R (verified at R in {1,2,3};
-//!       at L = 0 this is the familiar hold-from 2U + 2sd + 1, checked
-//!       for U in {1,2}, sd in {0,1}). The max(0, 2L - W_PROBE) term is
-//!       the validation-read anchor: the Ack cannot be read before
-//!       ping_send + 2L, so with W_PROBE < 2L the suspicion timer
-//!       starts 2L - W_PROBE past the probe deadline (verified at
-//!       L = U for U in {1,2}; at U=4, L=3, Wp=4: hold from Ws=7; at
-//!       U=3, L=2, Wp=3: hold from Ws=6). The min(L, ...) cap was found
-//!       by the 2026-08-09 audit: for W_PROBE < L and N >= 3, a
-//!       BYSTANDER's suspicion timer anchors at its Suspect read (not
-//!       the validation read), losing at most L of anchor delay, so the
-//!       penalty saturates at L. The earlier formula without the cap
-//!       silently over-claimed holds in W_PROBE < L cells. Note that
-//!       L = U collapses transit nondeterminism, so holds there explore
-//!       very few executions.
+//!   baseline: FIRE (exit 101) at any parameters.
+//!   timed:    FIRE at any parameters, R >= 1. Every send may be lost, so
+//!       no choice of parameters rules out a false positive: a lost Ack
+//!       makes the prober suspect at the probe deadline, and a lost
+//!       refuting Alive lets a suspicion timer run out, so the target is
+//!       declared dead although it never crashed. A failure detector
+//!       cannot tell a lost message from a crash; under links that may
+//!       lose anything, no-false-positive is unsatisfiable, and the FIRE
+//!       is the semantics' answer. A FIRE does not even need a loss: a
+//!       delivered Ack or Alive can miss its wait by timing alone (see
+//!       the witnesses below).
+//!
+//!   Measured 2026-10-13, without --keep-going: all 1,794 timed cells
+//!   exit 101 with a certified witness, and all 52 baseline cells exit
+//!   101. The cells reach N = 8, R = 6, U = 10, with L from 0 to U, sd up
+//!   to 5U, W_PROBE up to 10U and W_SUSPECT up to 12U; N = 3, R = 1 is a
+//!   full grid over U in 1..3, L in 0..U, sd in {0, 1, U, 2U}, W_PROBE in
+//!   {1, U, 2U, 4U} and W_SUSPECT in {1, U, 2U, 3U, 4U, 8U}.
+//!
+//!   What the certified witness shows. The checker stops at the first
+//!   violating execution it completes and prints its graph; the timeline
+//!   is the causal prefix of the last assertion that failed in it (every
+//!   member that declared the target dead has a failed assertion in the
+//!   graph). N = 3, R = 1, U = 1, L = 0, sd = 0, W_PROBE = 1 and
+//!   W_SUSPECT = 4 unless noted:
+//!     defaults: the Ack is delivered but arrives at or after the probe
+//!         deadline, time 1 (its round trip is up to 2U); the refuting
+//!         Alive to the prober is [dropped]; the Alive to the bystander
+//!         is delivered at time 1, before the bystander's own Suspect
+//!         arrives (time 2, the whole transit U), so it expired unread,
+//!         and the bystander's wait [2, 6] finds nothing. Both members
+//!         declare the target dead; the printed timeline is the
+//!         bystander's.
+//!     W_PROBE = W_SUSPECT = 1: nothing is dropped. The Ack and both
+//!         Alives are delivered and arrive at or after the deadline of
+//!         the wait that expects them (ties at the deadline admitted).
+//!     W_PROBE = W_SUSPECT = 4: the Ack and the prober's Alive are
+//!         [dropped] (4 exceeds the longest Ack round trip, 2U, so a
+//!         delivered Ack is never late); the bystander's Alive arrives
+//!         at 4, before its Suspect (5), and expires unread.
+//!     L = U = 1: every transit takes exactly 1, so the Ack is late
+//!         (round trip 2 > W_PROBE = 1) and an Alive (two hops) cannot
+//!         overtake a Suspect (one hop); both refutations are [dropped].
+//!
+//!   Over all 1,794 timed cells the printed witness drops nothing in 999
+//!   and, where it drops, only Acks and Alives (never a Ping or a
+//!   Suspect).
+//!
+//!   First arrival (2026-10-13: a receive that reads s takes the message
+//!   that arrived first among those pending at it) changes nothing in
+//!   this model: no receive ever has pending matching messages from two
+//!   different senders. Every timed wait names its sender and its
+//!   period, the bystander's idle wait names the prober, and the
+//!   target's untagged receive hears only the prober, over one FIFO
+//!   channel, so there is never a second channel to order. The verdicts,
+//!   graphs and timelines of all the cells above, and the exhaustive
+//!   counts of 404 timed cells (--keep-going), are identical before and
+//!   after the ruling.
+//!
+//!   Exhaustive explored executions, execs/blocked with --keep-going, the
+//!   other parameters at their defaults ("old" is the model before
+//!   2026-10-12, with the two validation reads; it held at these cells):
+//!       N  R         old              now
+//!       3  1       4/143           29/205
+//!       3  2      16/637         494/2521
+//!       4  1     10/1465        197/3201
+//!       5  1    28/19571      1373/57193
+//!       4  2   100/24249   16772/168687   (3 to 4 minutes)
+//!
+//!   Until 2026-10-12 the two blocking validation reads (see above)
+//!   discarded every execution with a lost or expired Ack or Alive, and
+//!   the law "timed FIRE iff W_SUSPECT <= 2U + 2sd - min(L, max(0, 2L -
+//!   W_PROBE))" was reported for the executions that remained, its
+//!   anchor term coming from the validation read itself. That law
+//!   described the filtered model and is withdrawn.
 //!
 //! Timed FIREs are certified: the checker validates every reported
 //! counterexample against a single consistent timeline and prints the
-//! witness timestamps next to the graph. The historical multi-round
-//! artifact band (spurious FIREs up to ~2R(U + sd) from the interval
-//! walker's per-event relaxation, P1 feedback item 6) is gone under
-//! the exact difference-constraint engine, the only engine on this
-//! branch (the legacy walker survives only in pre-timed-exact branch
-//! history; the --timed-exact flag was removed 2026-07-27).
+//! witness timestamps next to the graph.
 //!
-//! A hold with SUSPECTS_RAISED > 0 and REFUTED_IN_TIME = 0 is
-//! suspicious (every validated suspicion's outcome was discarded); the
-//! binary prints a WARNING. Runs with execs = 0 verified nothing and
-//! also WARN. Under the exact engine DEAD_DECLARED stays 0 on a hold
-//! (the infeasible dead branch is pruned before the counter).
+//! A hold with SUSPECTS_RAISED > 0 and REFUTED_IN_TIME = 0 would mean
+//! that no suspicion's outcome was ever judged; the binary prints a
+//! WARNING. Runs with execs = 0 verified nothing and also WARN. The
+//! SUSPECTS_RAISED test does not look at dead, so with --keep-going it
+//! also prints at violating cells where no refutation can arrive within
+//! the wait (e.g. L = U = 2, W_SUSPECT = 1: refuted = 0, dead > 0);
+//! there it is not a vacuous hold.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
@@ -177,9 +239,9 @@ const DEFAULT_W_SUSPECT_RATIO: f64 = 4.0;
 
 // Round-scoped tags (see the doc header): receive predicates can only
 // see (sender, tag), so the Ack and the Alive of period r are
-// identified by tag, keeping every timed wait and validation read
-// pinned to its own period's message.
-const TAG_KINDS: u32 = 2;
+// identified by tag, keeping every timed wait pinned to its own
+// period's message.
+const TAG_KINDS: u32 = 3;
 
 fn ack_tag(round: u32) -> u32 {
     round * TAG_KINDS + 1
@@ -189,26 +251,21 @@ fn alive_tag(round: u32) -> u32 {
     round * TAG_KINDS + 2
 }
 
+/// Tag of the Suspect the prober disseminates to a bystander. Its kind
+/// (tag mod TAG_KINDS == 0) is what a bystander's idle wait matches.
+fn suspect_tag(round: u32) -> u32 {
+    round * TAG_KINDS + 3
+}
+
 /// Member-to-member protocol traffic.
 #[derive(Clone, Debug, PartialEq)]
 enum MMsg {
-    Ping { round: u32 },
+    /// `from` is the prober (the sender's own address, as in 3PC's
+    /// Prepare { coord }): the target replies to it.
+    Ping { round: u32, from: ThreadId },
     Ack,
-    Suspect { inc: u64, round: u32 },
+    Suspect { inc: u64, round: u32, from: ThreadId },
     Alive { inc: u64 },
-    /// Verification harness, not SWIM: releases the reactive threads
-    /// once the prober has resolved all R periods.
-    Done,
-}
-
-/// Bootstrap message, a separate type from MMsg (raft idiom) so the
-/// init-wait matches only Init and protocol traffic that races ahead
-/// of it stays queued.
-#[derive(Clone, Debug, PartialEq)]
-struct Init {
-    prober: ThreadId,
-    target: ThreadId,
-    bystanders: Vec<ThreadId>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -263,62 +320,18 @@ impl Bounds {
 }
 
 // =====================================================================
-// Timeout-validation assumptions (verification harness, NOT SWIM;
-// see the doc header). SWIM's prober never re-reads the Ack after
-// suspecting; these blocking reads encode assume("the message really
-// was late in this branch") so that spurious timeout branches become
-// blocked executions instead of trivial counterexamples.
-// =====================================================================
-
-/// Assume period `round`'s Ack was genuinely late: block until it is
-/// readable at or after the current (post-deadline) local time. Timed
-/// infeasible, so the execution blocks and is discarded, when the Ack
-/// provably arrived inside the probe window. Also consumes the late
-/// Ack so it cannot linger in front of later traffic.
-fn assume_ack_was_late(target: ThreadId, round: u32) {
-    loop {
-        match traceforge::recv_tagged_msg_block_timed::<_, MMsg>(move |sender, tag| {
-            sender == target && tag == Some(ack_tag(round))
-        }) {
-            MMsg::Ack => return,
-            // Unreachable: only period r's Ack carries ack_tag(r).
-            _ => {}
-        }
-    }
-}
-
-/// Assume period `round`'s refuting Alive (incarnation above `floor`)
-/// was genuinely late: block until it is readable at or after the
-/// current (post-deadline) local time. Timed-infeasible, so the
-/// execution blocks and is discarded, when the refutation provably
-/// arrived inside the suspicion window.
-fn assume_refutation_was_late(target: ThreadId, floor: u64, round: u32) {
-    loop {
-        match traceforge::recv_tagged_msg_block_timed::<_, MMsg>(move |sender, tag| {
-            sender == target && tag == Some(alive_tag(round))
-        }) {
-            MMsg::Alive { inc } if inc > floor => return,
-            // Unreachable: period r's refutation always carries
-            // inc = suspect inc + 1 > floor; skip defensively.
-            _ => {}
-        }
-    }
-}
-
-// =====================================================================
 // Prober (member 0): drives the R protocol periods
 // =====================================================================
 
-fn prober(b: Bounds, rounds: u32, main_tid: ThreadId) {
-    let Init { target, bystanders, .. } =
-        traceforge::recv_tagged_msg_block_timed::<_, Init>(move |sender, _tag| sender == main_tid);
+fn prober(b: Bounds, rounds: u32, target: ThreadId, bystanders: Vec<ThreadId>) {
+    let me = thread::current_id();
 
     // The prober's current belief of the target's incarnation; rises
     // with every refutation it accepts (SWIM's incarnation ordering).
     let mut known_inc: u64 = 0;
 
     for round in 0..rounds {
-        traceforge::send_msg(target, MMsg::Ping { round });
+        traceforge::send_msg(target, MMsg::Ping { round, from: me });
 
         // Probe window: wait W_PROBE for this period's Ack.
         let acked = loop {
@@ -340,15 +353,14 @@ fn prober(b: Bounds, rounds: u32, main_tid: ThreadId) {
         // Probe timed out: suspect the target and disseminate. The
         // Suspects go out first, at the probe deadline, so
         // dissemination timing stays faithful to SWIM.
-        traceforge::send_msg(target, MMsg::Suspect { inc: known_inc, round });
+        traceforge::send_msg(target, MMsg::Suspect { inc: known_inc, round, from: me });
         for m in &bystanders {
-            traceforge::send_msg(*m, MMsg::Suspect { inc: known_inc, round });
+            traceforge::send_tagged_msg(
+                *m,
+                suspect_tag(round),
+                MMsg::Suspect { inc: known_inc, round, from: me },
+            );
         }
-
-        // Harness assumption, not SWIM (doc header): keep only the
-        // executions in which this probe timeout was temporally real,
-        // BEFORE the suspects counter.
-        assume_ack_was_late(target, round);
 
         SUSPECTS_RAISED.fetch_add(1, Ordering::Relaxed);
 
@@ -374,26 +386,17 @@ fn prober(b: Bounds, rounds: u32, main_tid: ThreadId) {
                 known_inc = inc;
             }
             None => {
-                // Harness assumption: keep only the
-                // executions in which the refutation was genuinely
-                // late or unreadable in the window.
-                assume_refutation_was_late(target, known_inc, round);
                 DEAD_DECLARED.fetch_add(1, Ordering::Relaxed);
                 // Safety: a member declares T dead only if T actually
                 // crashed. TARGET_CRASHED is never true here, so this
-                // firing IS the SWIM false positive.
+                // firing IS the SWIM false positive, whether the Ack and
+                // the refutation were late or lost.
                 traceforge::assert(TARGET_CRASHED.load(Ordering::Relaxed));
                 // SWIM removes a dead-declared member; stop probing.
                 // (Unreachable in practice: the assert above fires.)
                 return;
             }
         }
-    }
-
-    // All periods resolved: release the reactive threads (harness).
-    traceforge::send_msg(target, MMsg::Done);
-    for m in &bystanders {
-        traceforge::send_msg(*m, MMsg::Done);
     }
 }
 
@@ -403,17 +406,15 @@ fn prober(b: Bounds, rounds: u32, main_tid: ThreadId) {
 // receives only, so it contributes no timeout branches.
 // =====================================================================
 
-fn target(main_tid: ThreadId) {
-    let Init { prober, bystanders, .. } =
-        traceforge::recv_tagged_msg_block_timed::<_, Init>(move |sender, _tag| sender == main_tid);
+fn target(bystanders: Vec<ThreadId>) {
     let mut incarnation: u64 = 0;
 
     loop {
         match traceforge::recv_msg_block_timed::<MMsg>() {
-            MMsg::Ping { round } => {
+            MMsg::Ping { round, from: prober } => {
                 traceforge::send_tagged_msg(prober, ack_tag(round), MMsg::Ack);
             }
-            MMsg::Suspect { inc, round } => {
+            MMsg::Suspect { inc, round, from: prober } => {
                 // SWIM refutation rule: a suspicion is admissible only
                 // at or above our current incarnation; refuting bumps
                 // to inc + 1. (The prober tracks refutations, so in
@@ -439,9 +440,8 @@ fn target(main_tid: ThreadId) {
                     }
                 }
             }
-            MMsg::Done => return,
             // Unreachable: only the prober sends to the target, and it
-            // sends only Ping, Suspect and Done.
+            // sends only Ping and Suspect.
             m => panic!("target: unexpected {m:?}"),
         }
     }
@@ -451,23 +451,24 @@ fn target(main_tid: ThreadId) {
 // Bystander (members 2..N-1): reactive, fully local decision
 // =====================================================================
 
-fn bystander(b: Bounds, main_tid: ThreadId) {
-    let Init { prober, target, .. } =
-        traceforge::recv_tagged_msg_block_timed::<_, Init>(move |sender, _tag| sender == main_tid);
-
+fn bystander(b: Bounds) {
     loop {
         // Idle until the prober disseminates something (SWIM sends
-        // bystanders nothing in a healthy period). FIFO from the
-        // prober delivers Suspects in period order.
-        match traceforge::recv_tagged_msg_block_timed::<_, MMsg>(move |s, _tag| s == prober) {
-            MMsg::Suspect { inc: s_inc, round } => {
+        // bystanders nothing in a healthy period). Only the prober's
+        // Suspect carries the suspect kind of tag (the target's Alive
+        // does not), and FIFO from the prober delivers Suspects in
+        // period order.
+        match traceforge::recv_tagged_msg_block_timed::<_, MMsg>(move |_s, tag| {
+            tag.is_some_and(|t| t % TAG_KINDS == 0)
+        }) {
+            MMsg::Suspect { inc: s_inc, round, .. } => {
                 // Own suspicion timer, no coordination with P or the
                 // other bystanders: wait W_SUSPECT for an Alive of
                 // this period with an incarnation above the suspected
                 // one.
                 let refuted = loop {
                     match traceforge::recv_tagged_msg_timed::<_, MMsg>(
-                        move |sender, tag| sender == target && tag == Some(alive_tag(round)),
+                        move |_sender, tag| tag == Some(alive_tag(round)),
                         WaitTime::Finite(b.w_suspect),
                     ) {
                         Some(MMsg::Alive { inc }) if inc > s_inc => break true,
@@ -479,8 +480,6 @@ fn bystander(b: Bounds, main_tid: ThreadId) {
                 if refuted {
                     REFUTED_IN_TIME.fetch_add(1, Ordering::Relaxed);
                 } else {
-                    // Harness assumption (doc header).
-                    assume_refutation_was_late(target, s_inc, round);
                     DEAD_DECLARED.fetch_add(1, Ordering::Relaxed);
                     // Same per-node safety property as the prober's.
                     traceforge::assert(TARGET_CRASHED.load(Ordering::Relaxed));
@@ -489,9 +488,7 @@ fn bystander(b: Bounds, main_tid: ThreadId) {
                     return;
                 }
             }
-            MMsg::Done => return,
-            // Unreachable: the prober sends bystanders only Suspect
-            // and Done.
+            // Unreachable: the prober sends bystanders only Suspect.
             m => panic!("bystander: unexpected {m:?}"),
         }
     }
@@ -547,28 +544,17 @@ fn run(mode: Mode, nodes: u32, b: Bounds, rounds: u32, dot_out: Option<&str>, ke
     TARGET_CRASHED.store(false, Ordering::Relaxed);
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
-        let main_tid = thread::current().id();
-        let t = thread::spawn(move || target(main_tid));
-        let p = thread::spawn(move || prober(b, rounds, main_tid));
-        let mut bys = Vec::new();
-        for _ in 0..nodes.saturating_sub(2) {
-            bys.push(thread::spawn(move || bystander(b, main_tid)));
-        }
-        let t_id = t.thread().id();
-        let p_id = p.thread().id();
-        let by_ids: Vec<ThreadId> = bys.iter().map(|h| h.thread().id()).collect();
-        let init = Init { prober: p_id, target: t_id, bystanders: by_ids.clone() };
-        // Send every Init before joining anyone.
-        traceforge::send_msg(t_id, init.clone());
-        traceforge::send_msg(p_id, init.clone());
-        for id in &by_ids {
-            traceforge::send_msg(*id, init.clone());
-        }
-        let _ = t.join();
+        // Reactive members are daemons, spawned before the prober so it
+        // captures their ids; no bootstrap or release message exists.
+        let by_ids: Vec<ThreadId> = (0..nodes.saturating_sub(2))
+            .map(|_| thread::spawn_daemon(move || bystander(b)).thread().id())
+            .collect();
+        let t_id = {
+            let bys = by_ids.clone();
+            thread::spawn_daemon(move || target(bys)).thread().id()
+        };
+        let p = thread::spawn(move || prober(b, rounds, t_id, by_ids));
         let _ = p.join();
-        for h in bys {
-            let _ = h.join();
-        }
     });
     (stats, start.elapsed())
 }
@@ -591,9 +577,8 @@ fn read_counts() -> Counts {
 }
 
 /// Vacuity guards (see the doc header): a run with zero complete
-/// executions verified nothing, and a run whose validated suspicions
-/// were never refuted NOR declared dead resolved no suspicion at all
-/// (every outcome branch was discarded at a validation read). Neither
+/// executions verified nothing, and a run whose suspicions were never
+/// refuted NOR declared dead resolved no suspicion at all. Neither
 /// exit-0 outcome is a hold.
 fn warn_if_vacuous(label: &str, execs: usize, blocked: usize, c: Counts) {
     // A violating execution is aborted by the assertion, so the checker
@@ -606,14 +591,13 @@ fn warn_if_vacuous(label: &str, execs: usize, blocked: usize, c: Counts) {
              as a hold."
         );
     }
-    // refuted == 0 alone means no suspicion outcome survived: under
-    // the exact engine dead branches are pruned before their counter,
-    // and under the legacy walker suppressed artifacts end blocked.
+    // refuted == 0 with suspects > 0 and no dead declaration means no
+    // suspicion ever reached an outcome (every suspecting run ended
+    // blocked, e.g. waiting for a lost message).
     if c.suspects > 0 && c.refuted == 0 {
         println!(
-            "WARNING ({label}): a validated suspicion was never refuted and never declared \
-             dead: every suspicion outcome was discarded at a validation read; this hold is \
-             likely vacuous, treat it as no data."
+            "WARNING ({label}): a suspicion was never refuted and never declared dead: no \
+             suspicion outcome was ever judged; this hold is likely vacuous, treat it as no data."
         );
     }
 }
@@ -651,8 +635,7 @@ fn print_compare(nodes: u32, b: Bounds, rounds: u32, baseline: (Stats, Duration)
     println!();
     // Executions EXPLORED is execs + block: a violating execution is aborted
     // by its assertion and an evicted one blocks, so both are filed under
-    // `block`. Dividing complete executions alone overstates the reduction
-    // (sensor network defaults: 7702x that way, 215x explored).
+    // `block`. Dividing complete executions alone overstates the reduction.
     let b_explored = b_stats.execs + b_stats.block;
     let t_explored = t_stats.execs + t_stats.block;
     let exec_ratio = b_explored as f64 / t_explored.max(1) as f64;

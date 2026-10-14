@@ -477,11 +477,28 @@ fn context_coupled_eligibility_complete() {
             let _ = c_thr.join();
         },
     );
-    // Every send lossy: 64 executions and 129 blocked endings (a lost
-    // id handoff or m leaves a thread waiting forever). Graph sets are
-    // identical to the old engine run with every send lossy; no ending
-    // lacks a timeline.
-    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (64, 129, 0));
+    // Every send lossy: 52 executions and 125 blocked endings (a lost
+    // id handoff or m leaves a thread waiting forever); no ending lacks
+    // a timeline. Before the first-arrival rule (2026-10-13) they were
+    // 64 and 129: R, waiting from 6, could read a later arrival (c at
+    // 7, or sig at 25 or later) while an earlier one (b, arriving at
+    // t_A in [6, 7]; c) expired unread.
+    //
+    // Hand count, A proceeding (ids and m delivered, 8 patterns of b,
+    // sig, e). R reads the first arrival of b (t_A, readable from 6),
+    // c (7) and sig (t_A + 25): b if t_A in [6, 7] (both with c at the
+    // tie t_A = 7), c if t_A > 7 or b is dead (t_A < 6) or lost, sig
+    // only with c lost and b lost or dead; E reads e iff t_A <= 3 and
+    // times out iff t_A >= 3. Over the 16 patterns of (b, sig, e, c)
+    // the distinct (E, R) pairs number 12 with e lost and 20 with e
+    // delivered, 32 in all; the 105 message, lost or not, doubles
+    // that: 64 graphs, 52 complete and 12 with R blocked. With C's id
+    // lost (C blocked) the same pairs without c give 16 x 2 = 32
+    // blocked graphs; with E's id lost, 12 pairs x 2 patterns of e =
+    // 24; with both lost, 6 x 2 = 12; and when A does not proceed (m
+    // or an id lost) R only ever sees c: 9 + 9 + 27 blocked graphs.
+    // 52 + (12 + 32 + 24 + 12 + 9 + 9 + 27) = 52 + 125.
+    assert_eq!((stats.execs, stats.block, stats.timeline_impossible), (52, 125, 0));
 }
 
 #[test]

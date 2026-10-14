@@ -89,23 +89,51 @@
 //!
 //! The checker tries every order and every allowed delay of the messages
 //! within the bounds you give, and reports whether a loop can happen.
-//! Sweeping the timers shows the exact settings where a loop first becomes
-//! possible.
+//! Every message may also be lost on the way, and a message that has
+//! arrived stays readable only for a short storage time (0 by default).
+//! A bridge that is waiting takes the message that arrived first, so it
+//! never lets a readable one go by (see Losses). The checker explores
+//! these runs like any other, and a loop they cause is reported like any
+//! other.
+//!
+//! What the checker finds, in short. A hello that is never read is news
+//! that never arrives, and no timer can make up for it. In story 1 a loop
+//! is reachable whatever the timers are: there is a run in which no hello
+//! gets through to C before the new cable opens. With a clock, in such a
+//! run each hello that could reach C earlier is lost on one of its two
+//! hops (C, waiting, would read one that reached it), and the others, if
+//! delivered, reach it no earlier than the cable opens; without a clock
+//! C may also just not pick a delivered one up. In story 2 it is
+//! reachable as soon as the run is long enough to hold one maximum age
+//! plus one switch-on wait: every hello in that window is lost. Both are
+//! reported with and without a clock, in timed mode with a witness
+//! timeline. The timer boundaries this file reported before 2026-10-13
+//! came from a harness that threw away every run in which the awaited
+//! hello was never read; they described that filtered model and are
+//! withdrawn (see Results).
 //!
 //! ## How the protocol maps onto TraceForge
 //!
-//! Threads: one per bridge (A, B, C) plus `main`, which only spawns them
-//! and sends each an `Init` with the peers' ThreadIds. Bridges read `Init`
-//! with the UNTIMED `recv_tagged_msg_block_timed`, which the timed engine treats
-//! as transparent, so every bridge clock starts at 0: the instant the
-//! cable comes up (link-up) or the start of observation (lost-hellos).
+//! Threads: one per bridge (A, B, C) plus `main`, which only spawns them.
+//! There is no bootstrap message: `main` spawns C, then B (which gets C's
+//! id through its spawn closure), then A (which gets B's id and, in
+//! link-up, C's), and every receive selects by tag alone. Every bridge
+//! clock therefore starts at 0: the instant the cable comes up (link-up)
+//! or the start of observation (lost-hellos). A bridge that only reacts
+//! is a daemon thread with a blocking receive: B in both stories (a loop
+//! that never returns) and C in link-up (its first wait is blocking). A
+//! daemon that waits for ever does not make an execution blocked. The
+//! bridges that drive a run are ordinary threads and end by themselves:
+//! A, which sleeps and sends R hellos, and C in lost-hellos, which waits
+//! only finite times. `main` joins only those.
 //! Each point-to-point LAN is a direct channel between its two bridges;
 //! only the channels that carry news in the story exist.
 //!
 //! Messages: `Hello { root, cost, sender, age }` carries the paper's Root
 //! ID, path length, transmitting bridge ID and AGE (the link identifier
-//! and MAX_AGE fields are constant here and dropped). `Msg::Done`,
-//! `Msg::ForwardingNotice` and `Init` are harness messages, see below.
+//! and MAX_AGE fields are constant here and dropped). The only other
+//! message is `Msg::ForwardingNotice`, the probe of the link-up property,
+//! see below. There is no bootstrap, release or report message.
 //! Decisions follow the paper: a bridge is Designated on a LAN unless it
 //! heard a better claim there (lower root, else shorter path, else lower
 //! bridge ID; `is_designated`), and link state moves by the p.48 table
@@ -119,8 +147,9 @@
 //!     `P` after link-up, `0 <= P <= H` (default `H`: the root's previous
 //!     hello went out just before the cable came up).
 //!   * MAX_AGE `MA` (lost-hellos only): C's finite-wait receive for B's
-//!     next hello, started at the read of the previous one. Relays are
-//!     immediate, so AGE is 0 at receipt and the wait is the paper's aging.
+//!     next hello, started at time 0 (C holds B's information with age 0)
+//!     and then at the read of each hello. Relays are immediate, so AGE is
+//!     0 at receipt and the wait is the paper's aging.
 //!   * PRE_BACKUP_DELAY `Bd` (link-up only): C's finite-wait receive right
 //!     after B's hello made it defer on B-C. The paper (p.49) gives two
 //!     lower bounds, `Bd >= MAX_AGE + MaxPropTime` and, from its root
@@ -130,35 +159,82 @@
 //!     A-B (B's end of A-B started its identical timer at the same instant,
 //!     so A's expiry stands for both ends). lost-hellos: C's finite-wait
 //!     receive after the age-out. Default `3 * MA` (paper).
-//!   * MaxDelay / MaxLostMsgs: per-hop transit `[L, U]` plus storage
-//!     lifetime `sd` over the two hops A to B to C, and `--losses K`.
+//!   * MaxDelay: per-hop transit `[L, U]` plus storage lifetime `sd` over
+//!     the two hops A to B to C. MaxLostMsgs has no counterpart: the
+//!     semantics may lose any number of hellos (see Losses).
 //!
-//! Loop detection without a clock read (link-up). The instant A-B opens
-//! is signalled by `Msg::ForwardingNotice`, sent by A to C at time `Fd`
-//! with `send_tagged_msg_timed(.., 0, 0)`: zero transit, so it arrives
-//! exactly when A-B opens, and it stays readable until `Fd + sd`. C reads
-//! it only in the two states in which its B-C end still forwards (old
-//! FORWARDING before the news, PRE_BACKUP after it). A read at time `r`
-//! therefore proves one instant (`r >= Fd`) at which A-B (both ends), B-C
-//! (both ends) and C-A (both ends, never touched) all forward: a loop.
-//! A never sends C anything else, so the notice has no ordering coupling.
-//! It is verification scaffolding, not protocol traffic. In lost-hellos
-//! the check is local: C's own B-C end opens while B (never told
-//! otherwise) keeps forwarding onto B-C, and A-B and C-A are untouched.
+//! Loop detection without a clock read (link-up). The property relates
+//! two bridges at one instant: when A-B opens, C's B-C end must not
+//! forward. It is observed with ONE probe, `Msg::ForwardingNotice`, sent
+//! by A to C at time `Fd` with `send_tagged_msg_timed(.., 0, 0)`: zero
+//! transit, so it arrives exactly when A-B opens, and it stays readable
+//! until `Fd + sd`. C asserts on its own B-C state when it reads the
+//! notice, and it reads it only in the two states in which its B-C end
+//! still forwards (old FORWARDING before the news, PRE_BACKUP after it).
+//! A read at time `r` therefore shows one instant (`r >= Fd`) at which
+//! A-B (both ends), B-C (both ends) and C-A (both ends, never touched)
+//! all forward: a loop. A never sends C anything else, so no message of
+//! its own channel stands before the notice; at C it competes only with
+//! B's relays, and the earlier arrival is read first (see Losses). It is
+//! the only message in this file that no bridge would send. Like every
+//! send it may be lost, or expire unread; that can only hide the loop of
+//! that run (the same run with the notice read is explored too), it can
+//! never create one. In lost-hellos the check is local and needs no
+//! probe: C's own B-C end opens while B (never told otherwise) keeps
+//! forwarding onto B-C, and A-B and C-A are untouched.
 //!
-//! Losses: the lossy hop's sender decides, with `traceforge::nondet()`,
-//! which of its hellos never arrive, at most `K` of them (A to B in
-//! link-up, B to C in lost-hellos). The decision is taken at the sender
-//! instead of with `with_lossy`, so that B's hellos to C carry a gap-free
-//! delivery index in their tag (`relay_tag`) and every wait at C is
-//! pinned to one specific message (see the harness section).
+//! Losses: only the semantics loses messages. Every send may be dropped,
+//! with no budget, in both modes (the Config sets `with_all_sends_lossy`).
+//! In timed mode a message that is not read within `sd` of its arrival
+//! expires, and a receive takes the matching message that arrived first
+//! (the first-arrival rule of 2026-10-13; a tie leaves both orders), so a
+//! bridge that is waiting never lets a readable message go by. A message
+//! therefore goes unread only if it is lost, if its receiver is not
+//! waiting for it when it arrives (C has stopped, or waits for the notice
+//! alone), or if it ties: it arrives at the very instant at which the
+//! receive takes another message or the wait times out. For a bridge
+//! these are the same thing: the hello is never read. The program takes
+//! no loss decision of its own (no `nondet()`, no budget, no schedule),
+//! and all of B's hellos to C carry one tag, so C takes the first of them
+//! to arrive.
+//!
+//! ## The bound of the run
+//!
+//! The root is bounded to R hellos (`--rounds`). A bounded root that has
+//! fallen silent must never be what closes a loop, and no message may
+//! announce the end of a run (it could be lost, and its loss would
+//! fabricate a loop). The bound is therefore local arithmetic.
+//!
+//!   * link-up: the check happens at `Fd`, so the root must send every
+//!     hello the real root sends up to `Fd`, those at `P + i*H <= Fd`:
+//!     `R >= (Fd - P)/H + 1` if `Fd >= P`, else 1. That is the default; a
+//!     smaller `--rounds` is refused (exit 2), a larger one is allowed.
+//!     C's B-C state can only move from forwarding to not forwarding, and
+//!     what it is at `Fd` depends only on hellos sent by then, so a loop
+//!     asserted at the read of the notice is a loop of the real root too.
+//!   * lost-hellos: hello number R of the real root, the first one the
+//!     bounded root does not send, would leave at `R*H` and reach C at
+//!     `T = R*H + 2L` at the earliest. A message that can arrive before
+//!     `T` comes from one of the R hellos that are sent, so a wait whose
+//!     DEADLINE is at most `T` sees exactly what it would see with the
+//!     real root (at the deadline itself an arrival may be missed anyway).
+//!     C cannot read its clock, but a completed wait lasted at most its
+//!     length, so C keeps `left`, `T` minus the lengths of the waits it
+//!     has started, and starts a wait only if its length still fits;
+//!     otherwise it stops, silently, with no assertion. The default R is
+//!     the smallest with `R*H + 2L >= MA + Fd` (at least 1), so that one
+//!     full age-out plus one forward delay fits. A smaller `--rounds` is
+//!     allowed; no reopening can then be reached, and the binary prints a
+//!     NOTE that a hold is vacuous for that reason.
 //!
 //! ## Deviations from the paper (deliberate)
 //!
 //!   * Topology: a triangle of point-to-point LANs, the smallest cycle.
 //!   * Start state: the model starts from a settled tree and injects one
 //!     change (a cable added, or hellos lost), instead of running the
-//!     election from power-on. Settled per-link states are hard-coded.
+//!     election from power-on. Settled per-link states are hard-coded; in
+//!     lost-hellos C starts at time 0 with B-C in BACKUP and B's
+//!     information at age 0.
 //!     A root failure or a cable failure cannot create a loop in a
 //!     triangle (it removes the only cycle), so the hazards modelled are
 //!     the two the paper's timers guard: PRE_FORWARDING vs PRE_BACKUP
@@ -187,93 +263,113 @@
 //!     root hello (A to C to B to C, each as slow as `U + sd` in the worst
 //!     timeline), so it can land no earlier than B's 2-hop periodic relay
 //!     of the same root hello (at most `2(U + sd)`), and the latest moment
-//!     news reaches C is still set by the relay. With `K = 0` the omission
-//!     therefore changes no verdict, but with `K >= 1` the answer is one
-//!     more frame that would have to be lost.
+//!     news reaches C is still set by the relay. Each omitted answer is
+//!     one more frame that would have to be lost for the same loop, and
+//!     the semantics may lose it like any other send.
 //!     In both cases the model can only report MORE loops than a real
 //!     bridge; `--phase-ratio` lets you shorten the link-up news delay.
+//!   * The root is bounded to R hellos, and in lost-hellos C stops when its
+//!     time budget is used up (see "The bound of the run").
 //!   * Priorities, link costs, the self-loop rule (p.48), one-way link
 //!     detection (p.52), the hello hold-down (p.51), the forwarding
 //!     database and non-participating bridges are omitted; none affects
 //!     the race in a triangle.
 //!   * Ties: when C's B-C end closes at exactly the instant A-B opens (or
 //!     B's hello reaches C at exactly the instant C's B-C end opens), the
-//!     timed receive may read at its deadline, so a zero-length overlap
-//!     counts as a loop. Every `<=` below would be `<` under the opposite
-//!     convention.
+//!     timed receive may read at its deadline or miss the message there
+//!     (both are explored), so a zero-length overlap counts as a loop.
 //!   * IEEE 802.1D (secondary source only; the standard was not read) has
 //!     no PRE_BACKUP state and a two-stage forward delay. `--backup-delay-
 //!     ratio 0` with `Fd = 2 * forward_delay` approximates it.
 //!
-//! ## Timeout-validation assumptions (verification harness, NOT the protocol)
+//! ## No harness (since 2026-10-13)
 //!
-//! The timeout branch of a finite-wait receive is always explorable, in
-//! either mode: it only says the awaited message had not been read by the
-//! deadline IN THIS BRANCH. An assertion placed directly on such a branch
-//! would fire at any parameters. The `assume_*` functions therefore follow
-//! each property-relevant branch with a BLOCKING timed receive for the very
-//! message that was awaited: it is feasible exactly when that message could
-//! genuinely be read at or after the moment in question, so spurious
-//! branches become blocked executions instead of false counterexamples. No
-//! bridge performs these reads.
+//! The loop assertions sit where the loop closes: on C's read of the
+//! notice (link-up) and on C's forward-delay timeout (lost-hellos). With a
+//! clock, a timeout branch is a real execution exactly where the checker's
+//! timeout miss condition admits it: no message the receive could have
+//! taken can have arrived inside the wait, judged when the execution is
+//! complete (without a clock any timeout is possible). Until 2026-10-13
+//! this file wrapped the protocol in a verification harness on top of
+//! that. It is gone:
 //!
-//!   * `assume_hello_was_late` (lost-hellos): after C's PRE_FORWARDING
-//!     timeout, read B's next hello (the tag pins its delivery index) at
-//!     or after the deadline. BEFORE `LOOP_REOPENED` and the assert. With
-//!     no later hello at the end of the run it blocks, which also removes
-//!     the end-of-horizon artifact.
-//!   * `assume_news_unprocessed` (link-up): the receiver-side order of
-//!     messages from DIFFERENT senders is unconstrained, so C could read
-//!     A's notice after letting B's hello expire unread in its mailbox,
-//!     which amounts to an extra lost message. When C reads the notice
-//!     before any news, it must still be able to read B's first hello at
-//!     or after that moment. BEFORE `LOOP_BEFORE_NEWS` and the assert.
-//!   * `assume_notice_was_late` (link-up): after C's PRE_BACKUP timeout,
-//!     read A's notice at or after the deadline. It guards only the
-//!     `SETTLED_BACKUP` evidence counter; the link-up loop assertions sit
-//!     on message reads, never on a timeout branch.
+//!   * Validation reads. Each property-relevant branch was followed by a
+//!     BLOCKING read of the very message that had been awaited
+//!     (`assume_hello_was_late` after C's forward-delay timeout,
+//!     `assume_news_unprocessed` when C read the notice before any news,
+//!     `assume_notice_was_late` after C's switch-off delay), so that the
+//!     branch counted only if that message was read later. What those
+//!     reads filtered out, once the miss condition handled the timing, was
+//!     every execution in which the hello or the notice was LOST or
+//!     EXPIRED unread, since such a message is never read. Under the
+//!     model's semantics every send may be lost, a loop caused by a hello
+//!     that is never read is a loop like any other, and nothing is
+//!     filtered. In lost-hellos C also began with a blocking wait for B's
+//!     first delivered hello, so a run started only once a hello had got
+//!     through; C now starts at time 0 in the settled state.
+//!   * The file's own loss model. `--losses K` let the sender of one hop
+//!     decide with `traceforge::nondet()` which of its hellos never
+//!     arrive, at most K of them, and B's hellos to C carried their
+//!     delivery index in the tag so that each wait at C was pinned to one
+//!     message. Only the semantics loses messages now, without a budget,
+//!     and the default number of hellos no longer follows K.
+//!   * Harness messages. `main` sent every bridge an `Init` with the
+//!     peers' ids, and `Msg::Done` travelled from A to B (in lost-hellos
+//!     on to C) to let the reactive bridges stop. Both were sends like any
+//!     other: a dropped one left a bridge waiting for ever, and an Init
+//!     took up to U to arrive, so a bridge could start up to U late (in
+//!     the old link-up witness under Results, B and C read theirs at time
+//!     1). Ids now go through the spawn closures, reactive bridges are
+//!     daemons, and the end of a run is local arithmetic (see "The bound
+//!     of the run").
 //!
-//! Known costs: holds report blocked > 0 by design where validation reads
-//! fail. No timer is started after a validation read (each is followed
-//! only by a counter and an assert or a return), so the read resolving
-//! later than the deadline never shifts a verdict.
+//! What is left that no bridge would do is the one probe of the link-up
+//! property and, in lost-hellos, the subtraction that bounds C's run.
 //!
 //! ## Properties checked
 //!
-//! Every check is a local assertion at C, counted BEFORE it fires:
+//! Every check is a local assertion at C, at the step where the loop
+//! closes, with its counter raised just before it:
 //!
 //!   link-up:     when C reads A's notice (A-B now forwards at both ends),
 //!                C's own B-C end must not forward:
-//!                  LOOP_BEFORE_NEWS    (C had not yet heard B's hello)
+//!                  LOOP_BEFORE_NEWS    (C had read no hello from B yet)
 //!                  LOOP_IN_PRE_BACKUP  (C was inside its switch-off delay)
 //!   lost-hellos: C's B-C end must never reach FORWARDING while B, the
 //!                rightful Designated Bridge, forwards onto B-C:
 //!                  LOOP_REOPENED
 //!
-//! Evidence counters: link-up NEWS_HEARD (C entered PRE_BACKUP) and
-//! SETTLED_BACKUP (C's switch-off delay ran out and A-B provably opened at
-//! or after that); lost-hellos REFRESHED, AGED_OUT (includes spurious,
-//! unvalidated age-outs) and REVERTED (a hello from B cancelled C's
-//! PRE_FORWARDING). Counters accumulate over all explored executions, so
-//! treat them as zero/nonzero evidence. HELLOS_LOST counts loss decisions.
+//! A loop is reported whatever kept the news from C: a hello that was
+//! lost or late.
+//!
+//! Evidence counters (observation only): link-up NEWS_HEARD (C entered
+//! PRE_BACKUP) and SETTLED_BACKUP (C's switch-off delay ran out before it
+//! read the notice); lost-hellos REFRESHED, AGED_OUT and REVERTED (a hello
+//! from B cancelled C's PRE_FORWARDING). Counters accumulate over all
+//! explored executions, so treat them as zero/nonzero evidence.
 //!
 //! Soundness of the link-up check: the notice arrives at `Fd` exactly and
 //! C reads it at `r >= Fd` while its B-C end forwards, so the instant `r`
-//! has all six ends forwarding. Completeness: if B's first hello can be
-//! read at `t` with `Fd <= t + Bd`, then either `Fd <= t` and C can read
-//! the notice at `Fd` before the hello, or C reads the hello at `t < Fd`
-//! and then the notice at `Fd`, inside its switch-off delay.
+//! has all six ends forwarding. Completeness: C reads the notice in both
+//! of its forwarding states. Its first wait takes whichever of the news
+//! and the notice arrives first (either, when they arrive together), so
+//! the notice is read whenever no news came before it, and its switch-off
+//! wait takes the notice up to and including its deadline.
 //!
 //! ## CLI parameters (ratios are over U)
 //!
 //!   --scenario link-up|lost-hellos  story (default link-up)
-//!   --mode baseline|timed|compare   verification mode (default timed:
-//!                                   baseline always FIREs, so compare
-//!                                   aborts in its baseline leg)
-//!   --rounds R                      root hellos sent (default K + 1 for
-//!                                   link-up, K + 2 for lost-hellos; fewer
-//!                                   is refused)
-//!   --losses K                      hellos that may be lost (default 0)
+//!   --mode baseline|timed|compare   verification mode (default timed;
+//!                                   without --keep-going compare aborts
+//!                                   at the FIRE of its baseline leg)
+//!   --rounds R                      root hellos sent. Default: from the
+//!                                   timers (see "The bound of the run").
+//!                                   link-up: (Fd - P)/H + 1 if Fd >= P,
+//!                                   else 1; fewer is refused. lost-hellos:
+//!                                   the smallest R >= 1 with R*H + 2L >=
+//!                                   MA + Fd; fewer (at least 1) is allowed,
+//!                                   a hold is then vacuous and a NOTE says
+//!                                   so
 //!   --u U                           per-hop transit upper bound (default 1)
 //!   --l-ratio LR                    L = round(LR * U) (default 0.0)
 //!   --sd-ratio SR                   sd = round(SR * U), how long a message
@@ -283,10 +379,9 @@
 //!                                   (link-up only, refused with
 //!                                   lost-hellos; default P = H)
 //!   --max-age-ratio MR              MA = round(MR * U), >= 1 (default 6.0
-//!                                   for link-up, 3.0 for lost-hellos: at
-//!                                   H = 2U a lost-hellos MA of 6U can never
-//!                                   really expire, so PRE_FORWARDING would
-//!                                   not be exercised)
+//!                                   for link-up, 3.0 for lost-hellos,
+//!                                   where the default R grows with
+//!                                   MA + Fd)
 //!   --backup-delay-ratio BR         Bd = round(BR * U) (link-up only,
 //!                                   refused with lost-hellos; default 2 * MA)
 //!   --forward-delay-ratio FR        Fd = round(FR * U) (default 3 * MA)
@@ -297,112 +392,199 @@
 //!
 //! CLI misuse exits 2, distinct from a property violation's 101, so
 //! exit-code-based sweep harnesses cannot mistake a typo for a FIRE. That
-//! includes a flag the chosen scenario does not use, and a U or scaled
-//! timer above 10^12 ticks (a cap that keeps every derived time, such as
-//! `3 * MA` or `P + R * H`, far from integer overflow).
+//! includes a flag the chosen scenario does not use, `--rounds 0`, a
+//! link-up `--rounds` below its minimum, an R above 10,000 (also when it
+//! is the default for the given timers), and a U or scaled timer above
+//! 10^12 ticks (a cap that keeps every derived time, such as `3 * MA` or
+//! `P + R * H`, far from integer overflow).
 //!
-//! ## Expected verdicts (matrix-verified, 2026-09-16)
+//! ## Results (re-measured 2026-10-13 after the first-arrival rule; "old"
+//! is the harness version at HEAD 0cbe2c7 on the same cell, one worker,
+//! measured before that rule)
 //!
-//! Every cell below was run (timeout 120 s, none hit it). "a/b" means
-//! "FIRE at a, hold at b" for the swept timer, other timers as stated.
+//! Under the model's semantics the news can always be lost. In link-up the
+//! run in which C reads no hello and then the notice exists at every
+//! setting; in lost-hellos the run in which C reads no hello for `MA + Fd`
+//! exists as soon as `R*H + 2L >= MA + Fd`. Both exist with and without a
+//! clock, so both modes FIRE, and the verdict no longer depends on the
+//! timers (in lost-hellos only on whether the run is that long). Every
+//! new row and every further cell below agrees: link-up FIREs in both
+//! modes in all of them, and lost-hellos FIREs in every one with
+//! `R*H + 2L >= MA + Fd` and holds, vacuously, in the two (R = 2 and
+//! R = 5) where it does not.
 //!
-//!   baseline: FIRE (exit 101) at any parameters, in both scenarios: an
-//!       untimed checker lets A-B open, or C's timers expire, before any
-//!       news arrives. Run at the defaults, at --max-age-ratio 100, and at
-//!       --losses 1 --max-age-ratio 50, for both scenarios. `--mode
-//!       compare` therefore exits 101 in its baseline leg. With
-//!       --keep-going: link-up defaults execs=3 violations=2 (timed: 1/0);
-//!       lost-hellos MA=3 execs=5 violations=1 (timed: 3/0); lost-hellos
-//!       K=1 MA=3 execs=26 violations=6 (timed: 18/0).
+//! Measured. Counts are from a run with --keep-going, the verdict from a
+//! run without it (FIRE = exit 101, in timed mode with a certified witness
+//! timeline; HOLD = exit 0). Timers are the defaults (U=1 L=0 sd=0 H=2;
+//! link-up P=2 MA=6 Bd=12 Fd=18; lost-hellos MA=3 Fd=9) unless a flag is
+//! shown. Command:
 //!
-//!   timed, link-up:  FIRE iff  Fd <= P + K*H + Bd + 2U + 2sd
-//!       independent of L, R and MA. The right-hand side is the latest time
-//!       C can read B's first delivered hello, plus C's switch-off delay.
-//!       Verified (R = K + 1 unless stated):
-//!         U=1 L=0 sd=0 H=2 P=2 Bd=4:  Fd 8/9 (6, 7 FIRE; 10 hold);
-//!           also at R=2 (8/9) and at L=1 (8/9)
-//!         U=1 P=0 Bd=4: 6/7;   U=1 sd=1 P=2 Bd=4: 10/11 (9 FIRE, 12 hold)
-//!         U=1 P=2 Bd=0 (802.1D-like): 4/5 (Fd 0, 1, 3 FIRE; 6 hold)
-//!         U=1 H=5 P=3 Bd=3: 8/9
-//!         U=2 H=4 P=4 Bd=8: L=0 sd=0 16/17; L=1 sd=1 18/19; L=2 sd=0
-//!           16/17;  U=2 H=4 P=1 Bd=8: 13/14
-//!         K=1 U=1 H=2 P=2 Bd=4: 10/11 (R=2 and R=3)
-//!         K=1 U=1 L=1 sd=1 H=3 P=3 Bd=2: 12/13
-//!         K=2 R=3 U=1 sd=1 H=3 P=1 Bd=2: 13/14
-//!         K=1 U=2 L=1 H=4 P=4 Bd=8: 20/21
-//!       The cells above with an explicit Bd run at the default MA = 6U
-//!       (unused by the link-up threads) and deliberately leave the
-//!       paper's range for PRE_BACKUP_DELAY (Bd >= MA + MaxPropTime and
-//!       Bd >= 2 * MaxPropTime, e.g. Bd=4 at MA=6, and the 802.1D-like
-//!       Bd=0): they sweep Bd and Fd freely to locate the Fd - Bd threshold.
-//!       Paper's simplified settings (Bd = 2MA, Fd = 3MA): FIRE iff
-//!       MA <= P + K*H + 2U + 2sd; verified U=1 H=P=2: MA 2, 3, 4 FIRE,
-//!       5 hold; sd=1: MA 6/7.
-//!       Holds: execs 1..7, news_heard > 0, settled_backup > 0, both loop
-//!       counters 0. --keep-going FIREs show the two paths: Bd=4 Fd=8
-//!       loop_in_pre_backup=1; Bd=0 Fd=1 loop_before_news=1.
-//!       Witnesses read: MA=3 defaults (A's hello at 2, B relays at 3, C
-//!       reads it at 4 and enters PRE_BACKUP until 10, A-B opens at 9 and C
-//!       reads the notice at 9) and Bd=4 Fd=8 (same, notice read at 8 =
-//!       PRE_BACKUP deadline: the tie).
+//!   spanning_tree_timed [--scenario lost-hellos] [--max-age-ratio 2]
+//!       [--rounds R] --mode timed|baseline [--keep-going]
 //!
-//!   timed, lost-hellos:  FIRE iff  MA + Fd <= (K+1)*H + 2(U - L) + 2sd
-//!       i.e. the largest gap between two reads of B's delivered hellos
-//!       (the first read 2L after the root sent it, the next one K + 1
-//!       periods later and 2U + 2sd after its root send). Verified as
-//!       (MA, Fd) pairs, FIRE / hold:
-//!         U=1 L=0 sd=0 H=2 K=0 (bound 4): (1,3)/(1,4) (2,2)/(2,3)
-//!           (3,1)/(3,2) (4,0)/(4,1); also (1,2) (2,1) FIRE; R=3 (2,2)/(2,3)
-//!         U=1 L=1 (bound 2): (1,1)/(1,2) (2,0)/(2,1)
-//!         U=1 sd=1 (bound 6): (3,3)/(3,4) (5,1)/(5,2)
-//!         U=1 H=5 (bound 7): (4,3)/(4,4)
-//!         U=2 H=4: L=0 sd=0 (bound 8) (3,5)/(3,6); L=1 sd=1 (bound 8)
-//!           (3,5)/(3,6); L=2 sd=1 (bound 6) (3,3)/(3,4)
-//!         K=1 U=1 H=2 (bound 6): (3,3)/(3,4) (5,1)/(5,2) at R=3, and
-//!           (3,3)/(3,4) at R=4
-//!         K=2 R=4 U=1 L=1 sd=1 H=3 (bound 11): (5,6)/(5,7)
-//!         K=1 U=2 L=1 H=4 (bound 10): (4,6)/(4,7)
-//!       Holds: reverted > 0 in every cell above (2..68). Witnesses read:
-//!       MA=2 Fd=2 (C reads hello 0 at 0, ages out at 2, opens at 4, hello
-//!       1 sent by A at 2 and relayed at 3 arrives at 4) and K=1 MA=3 Fd=3
-//!       (B drops the period-1 hello, C ages out at 3, opens at 6, the
-//!       period-2 relay arrives at 6).
+//! with `--rounds R` given whenever R is not the binary's own default
+//! (old: 1 in link-up, 2 in lost-hellos; new: 9, 3 and 6 in the three
+//! cells).
 //!
-//!   Harness checks: with `assume_news_unprocessed` disabled, link-up
-//!       FIREs at the predicted holds Bd=0 Fd=5, Bd=0 Fd=9 and Bd=4 Fd=9
-//!       (C lets B's hello expire unread); with `assume_hello_was_late`
-//!       disabled, lost-hellos FIREs at (MA, Fd) = (2, 3) and (6, 18).
-//!       Both guards restored, those cells hold (the (6, 18) hold prints
-//!       the reverted=0 WARNING: at MA=6, H=2 no age-out can really happen).
+//!   cell          R  ver  mode      execs   blocked  violations  verdict
+//!   link-up       1  old  timed     1       45       0           HOLD
+//!   link-up       1  old  baseline  3       45       4           FIRE
+//!   link-up       9  old  timed     12,761  174,325  6,568       FIRE
+//!   link-up       9  old  baseline  29,523  171,405  39,364      FIRE
+//!   link-up       9  new  timed     47,296  0        13,762      FIRE
+//!   link-up       9  new  baseline  77,708  0        38,854      FIRE
+//!   link-up MA 2  1  old  timed     2       46       2           FIRE
+//!   link-up MA 2  1  old  baseline  3       45       4           FIRE
+//!   link-up MA 2  3  old  timed     26      310      34          FIRE
+//!   link-up MA 2  3  old  baseline  39      297      52          FIRE
+//!   link-up MA 2  3  new  timed     73      0        37          FIRE
+//!   link-up MA 2  3  new  baseline  92      0        46          FIRE
+//!   lost-hellos   2  old  timed     18      88       0           HOLD
+//!   lost-hellos   2  old  baseline  17      73       3           FIRE
+//!   lost-hellos   2  new  timed     11      0        0           HOLD (vacuous)
+//!   lost-hellos   2  new  baseline  14      0        0           HOLD (vacuous)
+//!   lost-hellos   6  old  timed     2,165   6,933    3           FIRE
+//!   lost-hellos   6  old  baseline  3,281   6,457    1,641       FIRE
+//!   lost-hellos   6  new  timed     1,322   0        96          FIRE
+//!   lost-hellos   6  new  baseline  2,838   0        729         FIRE
 //!
-//! What this says about the paper (within the model and its deviations).
-//! Take MaxPropTime = 2(U + sd) + K*H: two hops of at most U transit plus
-//! sd reading lag, and K lost hellos.
+//! ("link-up MA 2" is `--max-age-ratio 2`, i.e. MA=2 Bd=4 Fd=6. The two
+//! vacuous holds print the NOTE of "The bound of the run".)
 //!
-//!   * link-up: no loop iff Fd >= Bd + MaxPropTime + P + 1. Perlman's
-//!     PRE_FORWARDING_DELAY >= PRE_BACKUP_DELAY + MaxPropTime is short by
-//!     the phase P (up to one HELLO_TIME: after a cable is plugged in the
-//!     news waits for the root's next hello while both PRE_FORWARDING timers
-//!     already run), plus one tick for the zero-length tie. Only Fd - Bd
-//!     matters, so this holds for any Bd inside the paper's bounds. With the
-//!     simplified settings it becomes MA >= MaxPropTime + P + 1 instead of
-//!     MA >= MaxPropTime. L never matters: the race is decided by the
-//!     latest possible news. For H > 3(U + sd) the omitted triggered hellos
-//!     could bring the news earlier, so the P term is an upper estimate
-//!     there.
-//!   * lost-hellos: the spacing counts K + 1 hello periods, as in 802.1D's
-//!     (lost_msg + 1) * hello, not Perlman's HELLO_TIME * MaxLostMsgs. With
-//!     no losses the paper's minimum MA = MaxPropTime and Fd = 3MA still
-//!     reopen B-C falsely once H >= 6U + 2L + 6sd: verified U=1 sd=0 H=10
-//!     MA 2, 3 FIRE, 4 hold; H=6 MA=2 FIRE (tie), H=5 MA=2 hold; U=2 L=1
-//!     H=16 MA 4 FIRE, 5 hold. For K >= 1 the omitted triggered reply makes
-//!     these FIREs an over-approximation.
+//! Reading the new rows. Nothing can block in this version (A, and C in
+//! lost-hellos, never wait for ever; B, and C in link-up, are daemons), and
+//! under --keep-going a violating run is filed under execs as well,
+//! because C ends right after its failed assertion. So every explored
+//! ending is a complete execution, blocked is 0, and violations counts
+//! executions: in every cell it equals the engine's own count of failed
+//! assertions (one `task-N` line each, which in timed mode the engine
+//! prints only for an execution it certified), and no ending was judged
+//! timeline-impossible (the printed `impossible=` is 0 in every cell).
+//!
+//! What the first-arrival rule changed. It orders the reads of a receive
+//! that can take messages of two senders, and C's first receive in
+//! link-up (B's relays and A's notice) is the only such receive in this
+//! file; every other receive has one sender. So only the timed link-up
+//! rows moved. Every baseline row (no clock, no rule), every lost-hellos
+//! row and every verdict are as they were before the rule; the timed
+//! link-up rows lost executions and, in most cells, violations. At the
+//! defaults this program measured 66,083 executions and 32,293 violations
+//! before it, with loop_before_news 19,683 = 3^9 in timed mode as in
+//! baseline, because C could take the notice while relays that had
+//! reached it earlier expired unread.
+//!
+//! Reading the old rows. At its own default R the old timed run holds at
+//! the default timers (rows R = 1 and R = 2), as its law said. Given as
+//! many hellos as the new default it FIREs as well, because the semantics
+//! had been dropping hellos beyond the budget K since every send became
+//! lossy (2026-09-30). Its two certified witnesses: link-up, the root's
+//! first hello is dropped, C reads the relay of the second at 6 and is
+//! still in its switch-off delay when it reads the notice at 18, the
+//! deadline tie; lost-hellos, the root's hellos sent at 2 to 8 are
+//! dropped, C times out at 3 and at 12, and the validation read takes the
+//! relay of the last hello at 12. Most of what the old version explored
+//! are blocked runs. At lost-hellos R = 2 the old baseline FIREs and the
+//! new one holds: the new program stops C by its time budget in both
+//! modes, so a run too short for one age-out plus one forward delay
+//! asserts nothing.
+//!
+//! Certified witness, link-up defaults, timed (exit 101; the same on
+//! every schedule seed tried). A's hellos leave at 2, 4, .., 18 and B
+//! reads and relays all nine. The relays of the first seven (sent at 2 to
+//! 14) are dropped on B to C; those of the last two (sent at 16 and 18)
+//! are delivered. C reads no hello: its first receive, waiting since time
+//! 0, takes the notice at 18, and A-B opens at 18 while C's B-C end is
+//! still FORWARDING: the loop. The seven relays have to be lost: a relay
+//! of the hello sent at `t` reaches C within `[t, t + 2]`, so each of
+//! those arrives before 18 if it is delivered, and C, waiting, would read
+//! it, since the receive takes the message that arrived first. The last
+//! two cannot beat the notice: the relay of the hello sent at 16 can only
+//! arrive at 18 itself, a tie that leaves both orders, and that of the
+//! hello sent at 18 arrives at 18 or later. Before the first-arrival rule
+//! C passed over the seven relays and let them expire unread, so none
+//! needed to be lost; those runs are gone. The old version discarded this
+//! run (its `assume_news_unprocessed` read of B's first relay cannot
+//! succeed: that relay is lost). At this cell loop_before_news is 1,152 =
+//! 2^7 * 3^2 in timed mode: each of the first seven hellos is dropped on
+//! A-B or its relay on B-C (two fates), and each of the last two has a
+//! third, the relay delivered; with the 12,610 loop_in_pre_backup that
+//! makes the 13,762 violations. In baseline it is 19,683 = 3^9, since
+//! without a clock a delivered relay may stay unread for any of the nine
+//! hellos.
+//!
+//! Certified witness, lost-hellos defaults, timed (exit 101; the same on
+//! every schedule seed tried). A's hellos leave at 0, 2, .., 10; B reads
+//! and relays all six. The first five relays are dropped on B to C. The
+//! sixth is delivered and never read: its hello left at 10, so it reaches
+//! C by 12, and C's two waits time out at 3 (aging) and at 12 (forward
+//! delay), which the engine admits only if nothing arrived in [0, 3) and
+//! in [3, 12); so it arrives exactly at 12, the deadline, where it may be
+//! missed. At 12 C's B-C end goes FORWARDING while B still forwards onto
+//! B-C: the loop. The clock counts here as it does in link-up: a timed
+//! timeout needs every hello that could arrive inside the wait to be lost
+//! (96 violating runs = 2^5 * 3), while without a clock a delivered relay
+//! may also simply not be read in time (729 = 3^6).
+//!
+//! Further cells, new binary, the flags added to the command above; `v of
+//! n` = violating executions of all executions explored, timed / baseline
+//! (blocked = 0 and impossible = 0 in each; every FIRE confirmed by exit
+//! 101 without --keep-going). link-up:
+//!   --max-age-ratio 5 (R 7): 1,522 of 4,924 / 4,246 of 8,492. The old
+//!       binary holds this cell at its R = 1 and FIREs with --rounds 7
+//!       (timed: 730 violations).
+//!   --max-age-ratio 4 (R 6): 809 of 1,943 / 1,394 of 2,788.
+//!   --max-age-ratio 2 --sd-ratio 1 (R 3): 37 of 73 / 46 of 92.
+//!   --max-age-ratio 2 --l-ratio 1 (R 3): 33 of 60 / 46 of 92.
+//!   --max-age-ratio 2 --phase-ratio 0 (R 4): 101 of 227 / 146 of 292.
+//!   --max-age-ratio 2 --backup-delay-ratio 0 (R 3): 28 of 74 / 46 of 92.
+//!   --max-age-ratio 2 --rounds 4 (more than the minimum): 111 of 219 /
+//!       146 of 292.
+//!   --max-age-ratio 2 --forward-delay-ratio 1 (Fd 1 < P, R 1): 3 of 6 /
+//!       4 of 8.
+//!   --u 2 --max-age-ratio 1 --hello-ratio 1 --l-ratio 0.5 --sd-ratio 0.5
+//!       (U=2 L=1 sd=1 H=2 MA=2, R 3): 42 of 69 / 46 of 92.
+//! lost-hellos (`--scenario lost-hellos`):
+//!   --max-age-ratio 2 --forward-delay-ratio 3 (R 3): 12 of 54 / 27 of 73.
+//!       The old binary holds this cell at its R = 2 and FIREs with
+//!       --rounds 3 (timed: 3 violations).
+//!   --l-ratio 1 (R 5): 32 of 243 / 243 of 858.
+//!   --sd-ratio 1 (R 6): 96 of 1,637 / 729 of 2,838.
+//!   --max-age-ratio 4 --forward-delay-ratio 3 --hello-ratio 5 (R 2): 6 of
+//!       12 / 9 of 20.
+//!   --rounds 8 (two more than the default): 1,584 of 15,069 / 12,866 of
+//!       40,777.
+//!   --rounds 5 (one short of the default): HOLD, vacuous, with the NOTE;
+//!       411 / 636 executions, reverted = 0.
+//!
+//! Cost at the link-up defaults with --keep-going, on a shared machine:
+//! new timed 47,296 executions in 51 to 68 s and new baseline 77,708 in 12
+//! to 15 s (eight runs each); old with --rounds 9, timed 187,086 endings
+//! in 106 s and baseline 200,928 in 20 s (one run each). The timed run
+//! explores fewer executions than the baseline and takes longer; no
+//! efficiency claim is made here.
+//!
+//! WITHDRAWN. Everything this header reported before 2026-10-13 was
+//! measured on 2026-09-16 with the validation reads and with losses
+//! limited to the budget K (sends became lossy without a budget on
+//! 2026-09-30), i.e. over the executions in which the awaited hello or
+//! notice is read in the end. It is no longer claimed: the link-up law
+//! (timed FIRE iff Fd <= P + K*H + Bd + 2U + 2sd, and MA <= P + K*H + 2U +
+//! 2sd at the paper's simplified settings), the lost-hellos law (timed
+//! FIRE iff MA + Fd <= (K+1)*H + 2(U - L) + 2sd), the matrix that located
+//! them and its harness checks, and the reading of both laws as
+//! corrections to Perlman's PRE_FORWARDING_DELAY rule (the phase term P,
+//! the K + 1 hello periods of 802.1D, the false reopening once
+//! H >= 6U + 2L + 6sd). The timelines those results described (news that
+//! arrives one tick too late, the tie at a deadline) are still executions
+//! of this model; they just no longer separate FIRE from HOLD, because a
+//! hello that is never read closes the loop at every setting.
 //!
 //! Timed FIREs are certified: the checker validates every reported
 //! counterexample against one consistent timeline and prints it as
 //! "Certified witness timeline". A link-up hold with news_heard = 0 or
 //! settled_backup = 0, a lost-hellos hold with reverted = 0, and any run
-//! with execs = 0 print a WARNING and are no data.
+//! with execs = 0 print a WARNING and are no data; a lost-hellos run too
+//! short for one age-out plus one forward delay prints the NOTE above.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
@@ -410,11 +592,12 @@ use std::time::{Duration, Instant};
 use traceforge::thread::{self, ThreadId};
 use traceforge::{Config, Stats, WaitTime};
 
-// Outcome counters: event counts accumulated across all explored
-// executions of one verify run (revisited prefixes may re-count, so
-// treat them as zero/nonzero evidence, not exact per-exec tallies).
-// Reset before each verify, read after.
-static HELLOS_LOST: AtomicUsize = AtomicUsize::new(0);
+// Outcome counters (observation only; the verdict is the inline
+// assertion): event counts accumulated across all explored executions of
+// one verify run, each raised at the site where the event happens
+// (revisited prefixes may re-count, so treat them as zero/nonzero
+// evidence, not exact per-exec tallies). Reset before each verify, read
+// after.
 // link-up
 static NEWS_HEARD: AtomicUsize = AtomicUsize::new(0);
 static SETTLED_BACKUP: AtomicUsize = AtomicUsize::new(0);
@@ -432,7 +615,6 @@ const DEFAULT_SD_RATIO: f64 = 0.0;
 const DEFAULT_HELLO_RATIO: f64 = 2.0;
 const DEFAULT_MAX_AGE_RATIO_LINK_UP: f64 = 6.0;
 const DEFAULT_MAX_AGE_RATIO_LOST_HELLOS: f64 = 3.0;
-const DEFAULT_LOSSES: u32 = 0;
 // Cap on U and on every scaled timer. With R <= 10_000 the largest derived
 // time (3 * MA, P + R * H, ...) stays near 10^16, far below u64::MAX.
 const MAX_TIME: u64 = 1_000_000_000_000;
@@ -443,16 +625,12 @@ const ID_A: u32 = 1;
 const ID_B: u32 = 2;
 const ID_C: u32 = 3;
 
-// Tags: receive predicates see only (sender, tag). B's hellos to C carry
-// their delivery index so that every wait at C is pinned to one message.
+// Tags: receive predicates see only (sender, tag), and every receive in
+// this file selects by tag alone, so no bridge needs a sender's id. All of
+// B's hellos to C carry the one tag TAG_RELAY: C takes any of them.
 const TAG_ROOT_HELLO: u32 = 1;
 const TAG_NOTICE: u32 = 2;
-const TAG_DONE: u32 = 3;
-const TAG_RELAY_BASE: u32 = 100;
-
-fn relay_tag(index: u32) -> u32 {
-    TAG_RELAY_BASE + index
-}
+const TAG_RELAY: u32 = 3;
 
 /// The paper's HELLO (p.46), minus the constant link identifier and
 /// MAX_AGE fields.
@@ -467,20 +645,10 @@ struct Hello {
 #[derive(Clone, Debug, PartialEq)]
 enum Msg {
     Hello(Hello),
-    /// Verification harness, not Perlman (link-up only): A to C with
-    /// zero transit at the instant A-B opens (see the doc header).
+    /// Not Perlman (link-up only): the property's one probe, A to C with
+    /// zero transit at the instant A-B opens (see the doc header). It is
+    /// the only message in this file that no bridge would send.
     ForwardingNotice,
-    /// Verification harness, not Perlman: lets reactive threads stop.
-    Done,
-}
-
-/// Bootstrap message, a separate type from Msg so the init read matches
-/// only Init.
-#[derive(Clone, Debug, PartialEq)]
-struct Init {
-    a: ThreadId,
-    b: ThreadId,
-    c: ThreadId,
 }
 
 /// Per-bridge, per-link state (p.46).
@@ -642,60 +810,15 @@ fn sleep_until(now: &mut u64, t: u64) {
     }
 }
 
-fn read_init(main_tid: ThreadId) -> Init {
-    // UNTIMED read: transparent for timing, so the clock stays at 0.
-    traceforge::recv_tagged_msg_block_timed::<_, Init>(move |s, _tag| s == main_tid)
-}
-
-// =====================================================================
-// Timeout-validation assumptions (verification harness, NOT Perlman;
-// see the doc header). No bridge performs these reads.
-// =====================================================================
-
-/// Assume B's hello with delivery index `index` was genuinely late: block
-/// until it is readable at or after the current (post-deadline) time.
-/// Timed infeasible, so the execution blocks and is discarded, when that
-/// hello provably could not be read that late, or does not exist.
-fn assume_hello_was_late(b_tid: ThreadId, index: u32) {
-    let tag = relay_tag(index);
-    match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, t| {
-        s == b_tid && t == Some(tag)
-    }) {
-        Msg::Hello(_) => {}
-        // Unreachable: only B's hellos carry relay tags.
-        m => panic!("assume_hello_was_late: unexpected {m:?}"),
-    }
-}
-
-/// Assume B's first hello was still unprocessed when C read A's notice:
-/// it must be readable at or after that read. Removes timelines in which
-/// the hello expired unread in C's mailbox (an extra, unbudgeted loss).
-fn assume_news_unprocessed(b_tid: ThreadId) {
-    assume_hello_was_late(b_tid, 0);
-}
-
-/// Assume A's notice was genuinely late for C's PRE_BACKUP wait: it must
-/// be readable at or after the deadline, i.e. A-B opened no earlier than
-/// C's B-C end closed. Guards the SETTLED_BACKUP evidence counter only.
-fn assume_notice_was_late(a_tid: ThreadId) {
-    match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, t| {
-        s == a_tid && t == Some(TAG_NOTICE)
-    }) {
-        Msg::ForwardingNotice => {}
-        m => panic!("assume_notice_was_late: unexpected {m:?}"),
-    }
-}
-
 // =====================================================================
 // Story 1: link-up. Cable A-B comes up at time 0.
 // =====================================================================
 
 /// Bridge A, the Root. Its A-B end is PRE_FORWARDING from time 0 and
 /// opens at Fd; its periodic hellos go out on A-B at P, P + H, ...
-fn root_link_up(b: Bounds, rounds: u32, losses: u32, main_tid: ThreadId) {
-    let Init { b: b_tid, c: c_tid, .. } = read_init(main_tid);
+/// An ordinary thread: it sends `rounds` hellos and ends by itself.
+fn root_link_up(b: Bounds, rounds: u32, b_tid: ThreadId, c_tid: ThreadId) {
     let mut now: u64 = 0;
-    let mut losses_left = losses;
     let mut ab = LinkState::PreForwarding;
 
     let open_ab = |now: &mut u64, ab: &mut LinkState| {
@@ -703,7 +826,11 @@ fn root_link_up(b: Bounds, rounds: u32, losses: u32, main_tid: ThreadId) {
         // PRE_FORWARDING_DELAY expired: A-B forwards (at both ends, B's
         // identical timer started at the same instant).
         *ab = LinkState::Forwarding;
-        // Harness: zero-transit notice of that instant (doc header).
+        // The property's ONE probe, not Perlman (doc header): a
+        // zero-transit notice of that instant. C asserts on its own B-C
+        // state when it reads it. Like every send it may be lost, which
+        // can only hide a loop (the twin run with the notice delivered is
+        // explored too), never create one.
         traceforge::send_tagged_msg_timed(c_tid, TAG_NOTICE, Msg::ForwardingNotice, 0, 0);
     };
 
@@ -713,20 +840,12 @@ fn root_link_up(b: Bounds, rounds: u32, losses: u32, main_tid: ThreadId) {
             open_ab(&mut now, &mut ab);
         }
         sleep_until(&mut now, t);
-        // Loss on the A to B hop, decided here (doc header).
-        if losses_left > 0 && traceforge::nondet() {
-            losses_left -= 1;
-            HELLOS_LOST.fetch_add(1, Ordering::Relaxed);
-        } else {
-            traceforge::send_tagged_msg(
-                b_tid,
-                TAG_ROOT_HELLO,
-                Msg::Hello(Hello { root: ID_A, cost: 0, sender: ID_A, age: 0 }),
-            );
-        }
+        traceforge::send_tagged_msg(
+            b_tid,
+            TAG_ROOT_HELLO,
+            Msg::Hello(Hello { root: ID_A, cost: 0, sender: ID_A, age: 0 }),
+        );
     }
-    // Harness: release B.
-    traceforge::send_tagged_msg(b_tid, TAG_DONE, Msg::Done);
     if ab != LinkState::Forwarding {
         open_ab(&mut now, &mut ab);
     }
@@ -735,14 +854,14 @@ fn root_link_up(b: Bounds, rounds: u32, losses: u32, main_tid: ThreadId) {
 /// Bridge B. Settled before the cable: root link B-C at distance 2, with
 /// C Designated on B-C. A's hello on A-B makes A-B its root link
 /// (distance 1) and B Designated on B-C, so B relays at once.
-fn bridge_b_link_up(main_tid: ThreadId) {
-    let Init { a: a_tid, c: c_tid, .. } = read_init(main_tid);
+/// Purely reactive, so a daemon: a blocking receive loop that never
+/// returns.
+fn bridge_b_link_up(c_tid: ThreadId) {
     // What B last heard on B-C from C before the change.
     let heard_on_bc = Hello { root: ID_A, cost: 1, sender: ID_C, age: 0 };
     let mut dist: u32 = 2;
-    let mut relays: u32 = 0;
     loop {
-        match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _t| s == a_tid) {
+        match traceforge::recv_tagged_msg_block_timed::<_, Msg>(|_s, t| t == Some(TAG_ROOT_HELLO)) {
             Msg::Hello(h) => {
                 // Distance = 1 + best distance heard from a Designated
                 // Bridge (p.46); A-B's end stays PRE_FORWARDING until Fd.
@@ -750,38 +869,39 @@ fn bridge_b_link_up(main_tid: ThreadId) {
                 if is_designated(h.root, dist, ID_B, Some(&heard_on_bc)) {
                     traceforge::send_tagged_msg(
                         c_tid,
-                        relay_tag(relays),
+                        TAG_RELAY,
                         Msg::Hello(Hello { root: h.root, cost: dist, sender: ID_B, age: h.age }),
                     );
-                    relays += 1;
                 } else {
                     // Unreachable in the triangle: distance 1 ties C and
                     // wins on the lower ID.
                     panic!("bridge B: expected to become Designated on B-C");
                 }
             }
-            Msg::Done => return,
+            // Unreachable: only hellos carry TAG_ROOT_HELLO.
             m => panic!("bridge B: unexpected {m:?}"),
         }
     }
 }
 
 /// Bridge C. Root link C-A at distance 1, Designated on B-C (so its B-C
-/// end forwards) until B's hello arrives.
-fn bridge_c_link_up(b: Bounds, main_tid: ThreadId) {
-    let Init { a: a_tid, b: b_tid, .. } = read_init(main_tid);
+/// end forwards) until B's hello arrives. Reactive, so a daemon: if the
+/// news and the notice are both lost it waits for ever in its first
+/// receive, which is no blocked execution.
+fn bridge_c_link_up(b: Bounds) {
     let my_root = ID_A;
     let my_dist: u32 = 1;
     let mut bc = LinkState::Forwarding;
 
     // Old state: wait for the news, or observe A-B opening first.
-    let first = traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, t| {
-        (s == b_tid && t == Some(relay_tag(0))) || (s == a_tid && t == Some(TAG_NOTICE))
+    let first = traceforge::recv_tagged_msg_block_timed::<_, Msg>(|_s, t| {
+        t == Some(TAG_RELAY) || t == Some(TAG_NOTICE)
     });
     match first {
         Msg::ForwardingNotice => {
-            // Harness assumption BEFORE the counter (doc header).
-            assume_news_unprocessed(b_tid);
+            // A-B forwards now, and C has read no news: its B-C end still
+            // forwards, whether B's hellos were lost or reach C no
+            // earlier than the notice. The loop is closed, here and now.
             LOOP_BEFORE_NEWS.fetch_add(1, Ordering::Relaxed);
             traceforge::assert(!bc.forwards());
             return;
@@ -796,15 +916,16 @@ fn bridge_c_link_up(b: Bounds, main_tid: ThreadId) {
             }
             NEWS_HEARD.fetch_add(1, Ordering::Relaxed);
         }
-        m => panic!("bridge C: unexpected {m:?}"),
     }
 
     // PRE_BACKUP: keep forwarding for PRE_BACKUP_DELAY.
     match traceforge::recv_tagged_msg_timed::<_, Msg>(
-        move |s, t| s == a_tid && t == Some(TAG_NOTICE),
+        |_s, t| t == Some(TAG_NOTICE),
         WaitTime::Finite(b.backup_delay),
     ) {
         Some(Msg::ForwardingNotice) => {
+            // A-B forwards now, and C's B-C end is still inside its
+            // switch-off delay: the loop is closed, here and now.
             LOOP_IN_PRE_BACKUP.fetch_add(1, Ordering::Relaxed);
             traceforge::assert(!bc.forwards());
         }
@@ -816,8 +937,8 @@ fn bridge_c_link_up(b: Bounds, main_tid: ThreadId) {
             if bc != LinkState::Backup {
                 panic!("bridge C: expected BACKUP after PRE_BACKUP_DELAY, got {bc:?}");
             }
-            // Harness assumption before the evidence counter.
-            assume_notice_was_late(a_tid);
+            // B-C no longer forwards, so nothing is left to check; a
+            // notice that comes later is simply not read.
             SETTLED_BACKUP.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -828,9 +949,9 @@ fn bridge_c_link_up(b: Bounds, main_tid: ThreadId) {
 // is BACKUP because B is Designated on B-C.
 // =====================================================================
 
-/// Bridge A, the Root: a hello to B every HELLO_TIME, from time 0.
-fn root_steady(b: Bounds, rounds: u32, main_tid: ThreadId) {
-    let Init { b: b_tid, .. } = read_init(main_tid);
+/// Bridge A, the Root: a hello to B every HELLO_TIME, from time 0. An
+/// ordinary thread: it sends `rounds` hellos and ends by itself.
+fn root_steady(b: Bounds, rounds: u32, b_tid: ThreadId) {
     for i in 0..rounds {
         if i > 0 {
             traceforge::sleep(b.hello);
@@ -841,74 +962,71 @@ fn root_steady(b: Bounds, rounds: u32, main_tid: ThreadId) {
             Msg::Hello(Hello { root: ID_A, cost: 0, sender: ID_A, age: 0 }),
         );
     }
-    traceforge::send_tagged_msg(b_tid, TAG_DONE, Msg::Done);
 }
 
-/// Bridge B, Designated on B-C: relays every root hello at once; the B to
-/// C hop may lose up to `losses` of them.
-fn bridge_b_steady(losses: u32, main_tid: ThreadId) {
-    let Init { a: a_tid, c: c_tid, .. } = read_init(main_tid);
-    let mut losses_left = losses;
-    let mut delivered: u32 = 0;
+/// Bridge B, Designated on B-C: relays every root hello it reads at once.
+/// Purely reactive, so a daemon: a blocking receive loop that never
+/// returns.
+fn bridge_b_steady(c_tid: ThreadId) {
     loop {
-        match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _t| s == a_tid) {
+        match traceforge::recv_tagged_msg_block_timed::<_, Msg>(|_s, t| t == Some(TAG_ROOT_HELLO)) {
             Msg::Hello(h) => {
-                if losses_left > 0 && traceforge::nondet() {
-                    losses_left -= 1;
-                    HELLOS_LOST.fetch_add(1, Ordering::Relaxed);
-                } else {
-                    traceforge::send_tagged_msg(
-                        c_tid,
-                        relay_tag(delivered),
-                        Msg::Hello(Hello { root: h.root, cost: h.cost + 1, sender: ID_B, age: h.age }),
-                    );
-                    delivered += 1;
-                }
+                traceforge::send_tagged_msg(
+                    c_tid,
+                    TAG_RELAY,
+                    Msg::Hello(Hello { root: h.root, cost: h.cost + 1, sender: ID_B, age: h.age }),
+                );
             }
-            Msg::Done => {
-                // Harness: release C (never lost).
-                traceforge::send_tagged_msg(c_tid, TAG_DONE, Msg::Done);
-                return;
-            }
+            // Unreachable: only hellos carry TAG_ROOT_HELLO.
             m => panic!("bridge B: unexpected {m:?}"),
         }
     }
 }
 
+/// The time up to which the bounded root stands for the real one
+/// (lost-hellos): the real root's next hello, number R, would leave at
+/// R*H and could reach C at R*H + 2L at the earliest (two hops), so a
+/// message that can arrive before that instant comes from one of the R
+/// hellos the bounded root does send.
+fn steady_horizon(b: Bounds, rounds: u32) -> u64 {
+    u64::from(rounds) * b.hello + 2 * b.l
+}
+
 /// Bridge C: ages B's information on B-C, reopens B-C after MAX_AGE plus
-/// PRE_FORWARDING_DELAY of silence.
-fn bridge_c_steady(b: Bounds, main_tid: ThreadId) {
-    let Init { b: b_tid, .. } = read_init(main_tid);
+/// PRE_FORWARDING_DELAY of silence. An ordinary thread with finite waits
+/// only: it ends by itself.
+fn bridge_c_steady(b: Bounds, rounds: u32) {
     let my_root = ID_A;
     let my_dist: u32 = 1;
-    let pred = move |next: u32| {
-        let tag = relay_tag(next);
-        move |s: ThreadId, t: Option<u32>| s == b_tid && (t == Some(tag) || t == Some(TAG_DONE))
-    };
+    let relay = |_s: ThreadId, t: Option<u32>| t == Some(TAG_RELAY);
 
-    // Initial stored information on B-C: B's first delivered hello.
+    // Settled state at time 0: B-C is BACKUP and C holds B's information
+    // with age 0, so the first aging wait starts at time 0.
     let mut bc = LinkState::Backup;
-    match traceforge::recv_tagged_msg_block_timed::<_, Msg>(pred(0)) {
-        Msg::Hello(h) => {
-            bc = port_rule(bc, is_designated(my_root, my_dist, ID_C, Some(&h)));
-            if bc != LinkState::Backup {
-                panic!("bridge C: expected BACKUP on B-C, got {bc:?}");
-            }
-        }
-        Msg::Done => return,
-        m => panic!("bridge C: unexpected {m:?}"),
-    }
-    let mut next: u32 = 1;
+
+    // The bound of the run, as local arithmetic (no message announces it).
+    // The root is bounded to R hellos, and the silence after the last one
+    // is the end of the model, not something the protocol did. A wait
+    // whose DEADLINE is at most T = R*H + 2L (`steady_horizon`) sees
+    // exactly what it would see with the real root, whose hello number R
+    // cannot arrive before T. C cannot read its clock, but a completed
+    // wait lasted at most its length, so `left` (T minus the lengths of
+    // the waits so far) is a lower bound of the time that remains before
+    // T. C starts a wait only if it fits in `left`; otherwise it stops,
+    // silently, with no assertion.
+    let mut left = steady_horizon(b, rounds);
 
     loop {
+        if left < b.max_age {
+            return;
+        }
+        left -= b.max_age;
         // Aging: the stored hello expires after MAX_AGE without a newer one.
-        match traceforge::recv_tagged_msg_timed::<_, Msg>(pred(next), WaitTime::Finite(b.max_age)) {
+        match traceforge::recv_tagged_msg_timed::<_, Msg>(relay, WaitTime::Finite(b.max_age)) {
             Some(Msg::Hello(_)) => {
                 REFRESHED.fetch_add(1, Ordering::Relaxed);
-                next += 1;
                 continue;
             }
-            Some(Msg::Done) => return,
             Some(m) => panic!("bridge C: unexpected {m:?}"),
             None => {}
         }
@@ -919,10 +1037,14 @@ fn bridge_c_steady(b: Bounds, main_tid: ThreadId) {
             panic!("bridge C: expected PRE_FORWARDING after the age-out, got {bc:?}");
         }
 
+        if left < b.forward_delay {
+            return;
+        }
+        left -= b.forward_delay;
         // PRE_FORWARDING: newer information reverts to BACKUP at once
         // (p.49-50).
         match traceforge::recv_tagged_msg_timed::<_, Msg>(
-            pred(next),
+            relay,
             WaitTime::Finite(b.forward_delay),
         ) {
             Some(Msg::Hello(h)) => {
@@ -931,22 +1053,19 @@ fn bridge_c_steady(b: Bounds, main_tid: ThreadId) {
                     panic!("bridge C: expected BACKUP after B's hello, got {bc:?}");
                 }
                 REVERTED.fetch_add(1, Ordering::Relaxed);
-                next += 1;
                 continue;
             }
-            Some(Msg::Done) => return,
             Some(m) => panic!("bridge C: unexpected {m:?}"),
             None => {}
         }
-        // Harness assumption BEFORE the counter (doc header).
-        assume_hello_was_late(b_tid, next);
         // PRE_FORWARDING_DELAY expired with no newer information.
         bc = timer_expired(bc);
         LOOP_REOPENED.fetch_add(1, Ordering::Relaxed);
         // B is Designated on B-C and never stopped forwarding there, so
         // C's end must not forward. bc is FORWARDING on every path that
         // gets here (the p.47 timer rule applied to PRE_FORWARDING), so
-        // reaching this line with a validated timeout IS the violation.
+        // reaching this line IS the violation, whether B's hellos were
+        // late or lost: the loop is closed, here and now.
         traceforge::assert(!bc.forwards());
         return;
     }
@@ -984,7 +1103,6 @@ fn build_config(mode: Mode, b: Bounds, keep_going: bool) -> Config {
 
 fn reset_counts() {
     for c in [
-        &HELLOS_LOST,
         &NEWS_HEARD,
         &SETTLED_BACKUP,
         &LOOP_BEFORE_NEWS,
@@ -1003,41 +1121,39 @@ fn run(
     scenario: Scenario,
     b: Bounds,
     rounds: u32,
-    losses: u32,
     keep_going: bool,
 ) -> (Stats, Duration) {
     let cfg = build_config(mode, b, keep_going);
     reset_counts();
     let start = Instant::now();
-    let stats = traceforge::verify(cfg, move || {
-        let main_tid = thread::current().id();
-        let (ha, hb, hc) = match scenario {
-            Scenario::LinkUp => (
-                thread::spawn(move || root_link_up(b, rounds, losses, main_tid)),
-                thread::spawn(move || bridge_b_link_up(main_tid)),
-                thread::spawn(move || bridge_c_link_up(b, main_tid)),
-            ),
-            Scenario::LostHellos => (
-                thread::spawn(move || root_steady(b, rounds, main_tid)),
-                thread::spawn(move || bridge_b_steady(losses, main_tid)),
-                thread::spawn(move || bridge_c_steady(b, main_tid)),
-            ),
-        };
-        let init = Init { a: ha.thread().id(), b: hb.thread().id(), c: hc.thread().id() };
-        // Send every Init before joining anyone.
-        traceforge::send_msg(init.a, init.clone());
-        traceforge::send_msg(init.b, init.clone());
-        traceforge::send_msg(init.c, init.clone());
-        let _ = ha.join();
-        let _ = hb.join();
-        let _ = hc.join();
+    // No bootstrap message: ids go through the spawn closures, so every
+    // bridge clock starts at 0. Spawn order C, B, A: B needs C's id, A
+    // needs B's (and C's for the notice). Reactive bridges are daemons;
+    // main joins only the threads that always end.
+    let stats = traceforge::verify(cfg, move || match scenario {
+        Scenario::LinkUp => {
+            let hc = thread::spawn_daemon(move || bridge_c_link_up(b));
+            let c_tid = hc.thread().id();
+            let hb = thread::spawn_daemon(move || bridge_b_link_up(c_tid));
+            let b_tid = hb.thread().id();
+            let ha = thread::spawn(move || root_link_up(b, rounds, b_tid, c_tid));
+            let _ = ha.join();
+        }
+        Scenario::LostHellos => {
+            let hc = thread::spawn(move || bridge_c_steady(b, rounds));
+            let c_tid = hc.thread().id();
+            let hb = thread::spawn_daemon(move || bridge_b_steady(c_tid));
+            let b_tid = hb.thread().id();
+            let ha = thread::spawn(move || root_steady(b, rounds, b_tid));
+            let _ = ha.join();
+            let _ = hc.join();
+        }
     });
     (stats, start.elapsed())
 }
 
 #[derive(Clone, Copy, Debug)]
 struct Counts {
-    lost: usize,
     news: usize,
     settled: usize,
     loop_before: usize,
@@ -1056,7 +1172,6 @@ impl Counts {
 
 fn read_counts() -> Counts {
     Counts {
-        lost: HELLOS_LOST.load(Ordering::Relaxed),
         news: NEWS_HEARD.load(Ordering::Relaxed),
         settled: SETTLED_BACKUP.load(Ordering::Relaxed),
         loop_before: LOOP_BEFORE_NEWS.load(Ordering::Relaxed),
@@ -1071,9 +1186,10 @@ fn read_counts() -> Counts {
 /// Vacuity guards: a run with zero complete executions verified nothing,
 /// and an exit-0 run whose interesting path was never explored is no hold.
 fn warn_if_vacuous(label: &str, scenario: Scenario, execs: usize, blocked: usize, c: Counts) {
-    // A violating execution is aborted by the assertion, so the checker
-    // files it under `blocked`, not `execs`. Warning on execs == 0 alone
-    // would tell the reader to discard a run that found counterexamples.
+    // A run that found counterexamples is never "no data", wherever the
+    // checker files its violating executions (here under `execs`: C ends
+    // right after its failed assertion), so warn only when there is no
+    // violation either.
     if execs == 0 && c.violations() == 0 {
         println!(
             "WARNING ({label}): 0 complete executions (blocked={blocked}): every execution \
@@ -1088,7 +1204,7 @@ fn warn_if_vacuous(label: &str, scenario: Scenario, execs: usize, blocked: usize
             if c.news == 0 || c.settled == 0 {
                 println!(
                     "WARNING ({label}): news_heard={} settled_backup={}: C never both heard the \
-                     news and provably closed B-C before A-B opened; this hold is vacuous, treat \
+                     news and closed B-C before it read A's notice; this hold is vacuous, treat \
                      it as no data.",
                     c.news, c.settled
                 );
@@ -1098,13 +1214,45 @@ fn warn_if_vacuous(label: &str, scenario: Scenario, execs: usize, blocked: usize
             if c.reverted == 0 {
                 println!(
                     "WARNING ({label}): reverted=0: no execution had C enter PRE_FORWARDING and \
-                     then get corrected by B's hello. Either MAX_AGE covers every gap between B's \
-                     hellos (no age-out can really happen, so the PRE_FORWARDING race was never \
-                     exercised) or every such path was discarded; treat this hold as no data for \
-                     the forward-delay race."
+                     then get corrected by B's hello, so the PRE_FORWARDING race was never \
+                     exercised; treat this hold as no data for the forward-delay race."
                 );
             }
         }
+    }
+}
+
+/// The counters are raised by program code, so they also see endings that
+/// the timeout-miss condition later judges to admit no timeline (those run
+/// to completion first). A count of zero is sound; a count above zero is
+/// then an upper bound, and the verdict is the engine's (exit 101 with a
+/// certified witness, without --keep-going).
+fn note_if_upper_bound(label: &str, stats: &Stats, c: Counts) {
+    if stats.timeline_impossible > 0 && c.violations() > 0 {
+        println!(
+            "NOTE ({label}): {} of the {} endings explored admit no timeline and were counted \
+             above too; violations={} is an upper bound. Re-run without --keep-going (exit 101 = \
+             the engine certified a counterexample) before quoting it.",
+            stats.timeline_impossible,
+            stats.execs + stats.block + stats.timeline_impossible,
+            c.violations()
+        );
+    }
+}
+
+/// lost-hellos only, computed from the parameters: if one age-out plus one
+/// forward delay does not fit before the horizon R*H + 2L, C stops before
+/// it could reopen B-C, so no loop can be reached and a hold is vacuous.
+fn note_if_too_short(scenario: Scenario, b: Bounds, rounds: u32) {
+    let horizon = steady_horizon(b, rounds);
+    if scenario == Scenario::LostHellos && horizon < b.max_age + b.forward_delay {
+        println!(
+            "NOTE: R*H + 2L = {horizon} < MA + Fd = {}: C's time budget cannot hold one age-out \
+             plus one forward delay, so C stops before it could reopen B-C and a hold here is \
+             vacuous (the default --rounds for these timers is {}).",
+            b.max_age + b.forward_delay,
+            default_rounds(scenario, b)
+        );
     }
 }
 
@@ -1112,14 +1260,14 @@ fn warn_if_vacuous(label: &str, scenario: Scenario, execs: usize, blocked: usize
 // Reporting
 // =====================================================================
 
-fn params_line(scenario: Scenario, b: Bounds, rounds: u32, losses: u32) -> String {
+fn params_line(scenario: Scenario, b: Bounds, rounds: u32) -> String {
     match scenario {
         Scenario::LinkUp => format!(
-            "scenario=link-up R={rounds} K={losses}  L={} U={} sd={} H={} P={} MA={} Bd={} Fd={}",
+            "scenario=link-up R={rounds}  L={} U={} sd={} H={} P={} MA={} Bd={} Fd={}",
             b.l, b.u, b.sd, b.hello, b.phase, b.max_age, b.backup_delay, b.forward_delay
         ),
         Scenario::LostHellos => format!(
-            "scenario=lost-hellos R={rounds} K={losses}  L={} U={} sd={} H={} MA={} Fd={}",
+            "scenario=lost-hellos R={rounds}  L={} U={} sd={} H={} MA={} Fd={}",
             b.l, b.u, b.sd, b.hello, b.max_age, b.forward_delay
         ),
     }
@@ -1128,43 +1276,40 @@ fn params_line(scenario: Scenario, b: Bounds, rounds: u32, losses: u32) -> Strin
 fn counts_line(scenario: Scenario, c: Counts) -> String {
     match scenario {
         Scenario::LinkUp => format!(
-            "lost={} news_heard={} settled_backup={} loop_before_news={} loop_in_pre_backup={} \
+            "news_heard={} settled_backup={} loop_before_news={} loop_in_pre_backup={} \
              violations={}",
-            c.lost, c.news, c.settled, c.loop_before, c.loop_pre_backup, c.violations()
+            c.news, c.settled, c.loop_before, c.loop_pre_backup, c.violations()
         ),
         Scenario::LostHellos => format!(
-            "lost={} refreshed={} aged_out={} reverted={} loop_reopened={} violations={}",
-            c.lost, c.refreshed, c.aged_out, c.reverted, c.reopened, c.violations()
+            "refreshed={} aged_out={} reverted={} loop_reopened={} violations={}",
+            c.refreshed, c.aged_out, c.reverted, c.reopened, c.violations()
         ),
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn print_one(
     label: &str,
     scenario: Scenario,
     b: Bounds,
     rounds: u32,
-    losses: u32,
     stats: &Stats,
     dur: Duration,
     c: Counts,
 ) {
     println!(
-        "{label:<9} {}  execs={:<5} blocked={:<5} {} time={dur:?}",
-        params_line(scenario, b, rounds, losses),
+        "{label:<9} {}  execs={:<5} blocked={:<5} impossible={:<3} {} time={dur:?}",
+        params_line(scenario, b, rounds),
         stats.execs,
         stats.block,
+        stats.timeline_impossible,
         counts_line(scenario, c),
     );
 }
 
-#[allow(clippy::too_many_arguments)]
 fn print_compare(
     scenario: Scenario,
     b: Bounds,
     rounds: u32,
-    losses: u32,
     baseline: (Stats, Duration),
     timed: (Stats, Duration),
     bc: Counts,
@@ -1175,11 +1320,20 @@ fn print_compare(
     println!();
     println!("Perlman spanning tree ({}): MUST vs MUST-timed", scenario.name());
     println!("======================================================");
-    println!("{}", params_line(scenario, b, rounds, losses));
+    println!("{}", params_line(scenario, b, rounds));
     println!();
-    println!("{:<10} {:>10} {:>10} {:>14}", "mode", "execs", "blocked", "time");
-    println!("{:<10} {:>10} {:>10} {:>14?}", "baseline", b_stats.execs, b_stats.block, b_dur);
-    println!("{:<10} {:>10} {:>10} {:>14?}", "timed", t_stats.execs, t_stats.block, t_dur);
+    println!(
+        "{:<10} {:>10} {:>10} {:>10} {:>14}",
+        "mode", "execs", "blocked", "impossible", "time"
+    );
+    println!(
+        "{:<10} {:>10} {:>10} {:>10} {:>14?}",
+        "baseline", b_stats.execs, b_stats.block, b_stats.timeline_impossible, b_dur
+    );
+    println!(
+        "{:<10} {:>10} {:>10} {:>10} {:>14?}",
+        "timed", t_stats.execs, t_stats.block, t_stats.timeline_impossible, t_dur
+    );
     println!();
     println!("baseline: {}", counts_line(scenario, bc));
     println!("timed:    {}", counts_line(scenario, tc));
@@ -1193,7 +1347,6 @@ struct Args {
     scenario: String,
     mode: String,
     rounds: Option<u32>,
-    losses: u32,
     u: u64,
     l_ratio: f64,
     sd_ratio: f64,
@@ -1215,13 +1368,13 @@ fn parse_num<T: std::str::FromStr>(v: String, flag: &str) -> T {
 }
 
 fn parse_args() -> Args {
-    // Default mode is `timed`: baseline always FIREs for this benchmark,
-    // so compare's first leg aborts the process (see the doc header).
+    // Default mode is `timed`: both modes FIRE for this benchmark, so
+    // without --keep-going compare aborts in its first leg, the baseline
+    // (see the doc header).
     let mut a = Args {
         scenario: String::from("link-up"),
         mode: String::from("timed"),
         rounds: None,
-        losses: DEFAULT_LOSSES,
         u: DEFAULT_U,
         l_ratio: DEFAULT_L_RATIO,
         sd_ratio: DEFAULT_SD_RATIO,
@@ -1240,7 +1393,6 @@ fn parse_args() -> Args {
             "--scenario" => a.scenario = next_val(&mut args, "--scenario"),
             "--mode" => a.mode = next_val(&mut args, "--mode"),
             "--rounds" => a.rounds = Some(parse_num(next_val(&mut args, "--rounds"), "--rounds")),
-            "--losses" => a.losses = parse_num(next_val(&mut args, "--losses"), "--losses"),
             "--u" => a.u = parse_num(next_val(&mut args, "--u"), "--u"),
             "--l-ratio" => a.l_ratio = parse_num(next_val(&mut args, "--l-ratio"), "--l-ratio"),
             "--sd-ratio" => a.sd_ratio = parse_num(next_val(&mut args, "--sd-ratio"), "--sd-ratio"),
@@ -1272,13 +1424,15 @@ fn parse_args() -> Args {
             "--help" | "-h" => {
                 eprintln!(
                     "Usage: spanning_tree_timed [--scenario link-up|lost-hellos] \
-                     [--mode baseline|timed|compare] [--rounds R] [--losses K] [--u U] \
+                     [--mode baseline|timed|compare] [--rounds R] [--u U] \
                      [--l-ratio LR] [--sd-ratio SR] [--hello-ratio HR] [--phase-ratio PR] \
                      [--max-age-ratio MR] [--backup-delay-ratio BR] [--forward-delay-ratio FR] \
                      [--keep-going] [--parallel none|shared|partitioned]\n\
-                     Ratios are over U. Defaults: link-up, timed, K=0, R=K+1 (link-up) or K+2 \
-                     (lost-hellos), U=1, L/U=0, sd/U=0, H/U=2, P=H, MA/U=6 (link-up) or 3 \
-                     (lost-hellos), Bd=2*MA, Fd=3*MA.\n\
+                     Ratios are over U. Defaults: link-up, timed, U=1, L/U=0, sd/U=0, H/U=2, \
+                     P=H, MA/U=6 (link-up) or 3 (lost-hellos), Bd=2*MA, Fd=3*MA, and R from the \
+                     timers: link-up (Fd - P)/H + 1 if Fd >= P, else 1 (fewer is refused); \
+                     lost-hellos the smallest R >= 1 with R*H + 2L >= MA + Fd (fewer is allowed, \
+                     a hold is then vacuous).\n\
                      --keep-going explores past a violation, exits 0 and prints violations=.\n\
                      Exit 0 = no transient loop over the explored state space; exit 101 = a \
                      transient loop is reachable; exit 2 = CLI misuse."
@@ -1310,24 +1464,6 @@ fn main() {
             }
         }
     }
-    // Enough root hellos that K losses cannot fake a loop at the horizon:
-    // link-up needs one delivered hello, lost-hellos a delivered hello on
-    // each side of K consecutive losses.
-    let min_rounds = match scenario {
-        Scenario::LinkUp => a.losses.saturating_add(1),
-        Scenario::LostHellos => a.losses.saturating_add(2),
-    };
-    let rounds = a.rounds.unwrap_or(min_rounds);
-    if rounds < min_rounds {
-        cli_bail(&format!(
-            "--rounds must be >= {min_rounds} for --scenario {} with --losses {}",
-            scenario.name(),
-            a.losses
-        ));
-    }
-    if rounds > MAX_ROUNDS {
-        cli_bail(&format!("--rounds must be <= {MAX_ROUNDS} (and --losses below it)"));
-    }
     let b = Bounds::from_ratios(
         a.u,
         a.l_ratio,
@@ -1341,6 +1477,28 @@ fn main() {
         a.backup_delay_ratio,
         a.forward_delay_ratio,
     );
+    // The bound of the run is local arithmetic on the timers (doc header).
+    let need = default_rounds(scenario, b);
+    let rounds = a.rounds.map(u64::from).unwrap_or(need);
+    if rounds < 1 {
+        cli_bail("--rounds must be >= 1");
+    }
+    if scenario == Scenario::LinkUp && rounds < need {
+        cli_bail(&format!(
+            "--rounds must be >= {need} for --scenario link-up with these timers: the root's \
+             hellos go out at P + i*H, and with fewer than {need} of them the bounded root would \
+             fall silent before A-B opens at Fd = {}, so a FIRE could be an artifact of the \
+             bounded run",
+            b.forward_delay
+        ));
+    }
+    if rounds > u64::from(MAX_ROUNDS) {
+        cli_bail(&format!(
+            "--rounds must be <= {MAX_ROUNDS} (got {rounds}{})",
+            if a.rounds.is_none() { ", the default for these timers" } else { "" }
+        ));
+    }
+    let rounds = rounds as u32;
     match a.mode.as_str() {
         "baseline" | "timed" => {
             let (mode, label) = if a.mode == "baseline" {
@@ -1348,22 +1506,46 @@ fn main() {
             } else {
                 (Mode::Timed, "timed")
             };
-            let (s, d) = run(mode, scenario, b, rounds, a.losses, a.keep_going);
+            let (s, d) = run(mode, scenario, b, rounds, a.keep_going);
             let c = read_counts();
-            print_one(label, scenario, b, rounds, a.losses, &s, d, c);
+            print_one(label, scenario, b, rounds, &s, d, c);
             warn_if_vacuous(label, scenario, s.execs, s.block, c);
+            note_if_upper_bound(label, &s, c);
         }
         "compare" => {
-            let baseline = run(Mode::Baseline, scenario, b, rounds, a.losses, a.keep_going);
+            let baseline = run(Mode::Baseline, scenario, b, rounds, a.keep_going);
             let bc = read_counts();
-            let timed = run(Mode::Timed, scenario, b, rounds, a.losses, a.keep_going);
+            let timed = run(Mode::Timed, scenario, b, rounds, a.keep_going);
             let tc = read_counts();
-            let (b_vac, t_vac) =
-                ((baseline.0.execs, baseline.0.block), (timed.0.execs, timed.0.block));
-            print_compare(scenario, b, rounds, a.losses, baseline, timed, bc, tc);
-            warn_if_vacuous("baseline", scenario, b_vac.0, b_vac.1, bc);
-            warn_if_vacuous("timed", scenario, t_vac.0, t_vac.1, tc);
+            let (b_stats, t_stats) = (baseline.0.clone(), timed.0.clone());
+            print_compare(scenario, b, rounds, baseline, timed, bc, tc);
+            warn_if_vacuous("baseline", scenario, b_stats.execs, b_stats.block, bc);
+            warn_if_vacuous("timed", scenario, t_stats.execs, t_stats.block, tc);
+            note_if_upper_bound("baseline", &b_stats, bc);
+            note_if_upper_bound("timed", &t_stats, tc);
         }
         other => cli_bail(&format!("invalid --mode: {other} (expected baseline|timed|compare)")),
+    }
+    note_if_too_short(scenario, b, rounds);
+}
+
+/// The number of root hellos a run needs so that its bound cannot cause a
+/// FIRE (doc header, "Bound of the run"). link-up: every hello the real
+/// root sends up to Fd, the instant of the check, i.e. those at P + i*H <=
+/// Fd. lost-hellos: the smallest R >= 1 with R*H + 2L >= MA + Fd, so that
+/// one full age-out plus one forward delay fits before the horizon.
+fn default_rounds(scenario: Scenario, b: Bounds) -> u64 {
+    match scenario {
+        Scenario::LinkUp => {
+            if b.forward_delay >= b.phase {
+                (b.forward_delay - b.phase) / b.hello + 1
+            } else {
+                1
+            }
+        }
+        Scenario::LostHellos => {
+            let need = (b.max_age + b.forward_delay).saturating_sub(2 * b.l);
+            need.div_ceil(b.hello).max(1)
+        }
     }
 }

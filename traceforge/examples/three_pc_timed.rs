@@ -91,7 +91,6 @@ enum PMsg {
 
 #[derive(Clone, Debug, PartialEq)]
 enum CMsg {
-    Init { peers: Vec<ThreadId> },
     Yes  { round: u32 },
     No   { round: u32 },
     Ack  { round: u32 },
@@ -182,7 +181,7 @@ impl Monitor for Atomicity {}
 
 impl Acceptor<CMsg> for Atomicity {
     fn accept(&mut self, _who: ThreadId, _whom: ThreadId, what: &CMsg) -> bool {
-        // Votes only: Init carries no decision information and Ack is
+        // Votes only: Ack is
         // not part of either clause (rejecting here is cheaper than
         // receiving and ignoring, see the spawn_monitor docs).
         if OBSERVE_NOTHING.load(Ordering::Relaxed) {
@@ -292,13 +291,7 @@ fn maybe_crash(crashes: bool) -> bool {
 // Coordinator
 // =====================================================================
 
-fn coordinator(b: Bounds, crashes: bool, rounds: u32, inject: bool) {
-    let ps: Vec<ThreadId> = loop {
-        match traceforge::recv_msg_block_timed::<CMsg>() {
-            CMsg::Init { peers } => break peers,
-            _ => {}
-        }
-    };
+fn coordinator(b: Bounds, crashes: bool, rounds: u32, inject: bool, ps: Vec<ThreadId>) {
     let me = thread::current().id();
 
     for round in 0..rounds {
@@ -503,13 +496,16 @@ fn run(mode: Mode, num_ps: u32, b: Bounds, crashes: bool, rounds: u32, inject: b
             handles.push(thread::spawn(move || participant(b, crashes, rounds)));
         }
         let peer_ids: Vec<ThreadId> = handles.iter().map(|h| h.thread().id()).collect();
-        let c = thread::spawn(move || coordinator(b, crashes, rounds, inject));
-        traceforge::send_msg(c.thread().id(), CMsg::Init { peers: peer_ids });
+        // Participants first, the coordinator last: it captures their ids at
+        // spawn, so no bootstrap message exists. The participants learn the
+        // coordinator from the Prepare they receive.
+        let c = thread::spawn(move || coordinator(b, crashes, rounds, inject, peer_ids));
         for h in handles { let _ = h.join(); }
         let _ = c.join();
-        terminate_monitor_atomicity(mon.thread().id());
-        let verdict: MonitorResult = mon.join().unwrap();
-        assert!(verdict.is_ok(), "{}", verdict.unwrap_err());
+        // The monitor is a daemon and asserts at the violating step (the
+        // generated loop calls traceforge::assert on a notify error); there
+        // is nothing to terminate or judge at the end.
+        let _ = mon;
     });
     (stats, start.elapsed())
 }

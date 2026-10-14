@@ -40,6 +40,8 @@ use std::io::Write;
 
 const EXECS: &str = "execs";
 const BLOCKED: &str = "blocked";
+/// Executions that ended at a certified failed assert (a subset of BLOCKED).
+const VIOLATING: &str = "violating";
 const EXECS_EST: &str = "execs_est";
 /// Assert violations whose graphs admit no consistent timeline
 /// (relaxation artifacts of the legacy interval walker), suppressed by
@@ -231,6 +233,7 @@ impl Must {
         let telemetry = Telemetry::new(conf.keep_per_execution_coverage);
         let _ = telemetry.register_counter(&EXECS.to_owned());
         let _ = telemetry.register_counter(&BLOCKED.to_owned());
+        let _ = telemetry.register_counter(&VIOLATING.to_owned());
         let _ = telemetry.register_counter(&SUPPRESSED_SPURIOUS.to_owned());
         let _ = telemetry.register_counter(&TIMELINE_IMPOSSIBLE.to_owned());
         let _ = telemetry.register_counter(&PRUNED.to_owned());
@@ -280,6 +283,7 @@ impl Must {
         self.telemetry = Telemetry::default();
         let _ = self.telemetry.register_counter(&EXECS.to_owned());
         let _ = self.telemetry.register_counter(&BLOCKED.to_owned());
+        let _ = self.telemetry.register_counter(&VIOLATING.to_owned());
         let _ = self.telemetry.register_counter(&SUPPRESSED_SPURIOUS.to_owned());
         let _ = self.telemetry.register_counter(&TIMELINE_IMPOSSIBLE.to_owned());
         let _ = self.telemetry.register_counter(&PRUNED.to_owned());
@@ -444,6 +448,7 @@ impl Must {
         self.telemetry = Telemetry::new(self.config.keep_per_execution_coverage);
         let _ = self.telemetry.register_counter(&EXECS.to_owned());
         let _ = self.telemetry.register_counter(&BLOCKED.to_owned());
+        let _ = self.telemetry.register_counter(&VIOLATING.to_owned());
         let _ = self.telemetry.register_counter(&SUPPRESSED_SPURIOUS.to_owned());
         let _ = self.telemetry.register_counter(&TIMELINE_IMPOSSIBLE.to_owned());
         let _ = self.telemetry.register_counter(&PRUNED.to_owned());
@@ -1735,9 +1740,9 @@ impl Must {
     /// replay information, and panics (the original fire-time
     /// behavior, moved after the graph is whole). An infeasible or
     /// inconsistent graph suppresses them all.
-    fn judge_pending_asserts(&mut self) {
+    fn judge_pending_asserts(&mut self) -> bool {
         if self.pending_asserts.is_empty() {
-            return;
+            return false;
         }
         let pending = std::mem::take(&mut self.pending_asserts);
         let certified = self.is_consistent()
@@ -1752,7 +1757,7 @@ impl Must {
                 "timed certification: suppressing {} counterexample(s) with no consistent timeline",
                 pending.len()
             );
-            return;
+            return false;
         }
         let mut abort_pos: Option<Event> = None;
         for (pos, name) in pending {
@@ -1775,6 +1780,7 @@ impl Must {
             std::io::stderr().flush().unwrap();
             panic!("assertion failed (certified timed counterexample; graph and witness above)");
         }
+        true
     }
 
     /// Immediate-path certification gate. In a timed run assert reports
@@ -1921,7 +1927,7 @@ impl Must {
         // the feasibility verdict is schedule independent (see the
         // pending_asserts field doc). May panic on a certified
         // violation, exactly like the old fire-time report.
-        self.judge_pending_asserts();
+        let certified_violation = self.judge_pending_asserts();
         // Debug: print events that were not replayed during this execution.
         let unreplayed = &self.current.graph.unreplayed_events;
         if !unreplayed.is_empty() {
@@ -1960,6 +1966,23 @@ impl Must {
             }
             if !timed_impossible && self.is_consistent() {
                 self.telemetry.counter(BLOCKED.to_owned()); // increment BLOCKED
+                // A violation: the run ends at a failed assert. Timed runs
+                // defer the report, so only a certified one counts (an
+                // uncertified one stays an ordinary blocked execution).
+                let ended_at_assert = self
+                    .current
+                    .graph
+                    .threads
+                    .iter()
+                    .any(|t| matches!(t.labels.last(), Some(LabelEnum::Block(b)) if matches!(b.btype(), BlockType::Assert)));
+                let is_violation = if self.defers_assert_reports() {
+                    certified_violation
+                } else {
+                    ended_at_assert
+                };
+                if is_violation {
+                    self.telemetry.counter(VIOLATING.to_owned());
+                }
                 let event_count: usize = self.current.graph.threads.iter().map(|t| t.labels.len()).sum();
                 if event_count > self.max_graph_events {
                     self.max_graph_events = event_count;
@@ -3970,6 +3993,7 @@ impl Must {
         Stats {
             execs: self.telemetry.read_counter(EXECS.into()).unwrap_or(0) as usize,
             block: self.telemetry.read_counter(BLOCKED.into()).unwrap_or(0) as usize,
+            violating: self.telemetry.read_counter(VIOLATING.into()).unwrap_or(0) as usize,
             timeline_impossible: self
                 .telemetry
                 .read_counter(TIMELINE_IMPOSSIBLE.into())

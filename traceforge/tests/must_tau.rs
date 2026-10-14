@@ -183,6 +183,26 @@ fn retransmission(r_first: bool) -> impl Fn() + Clone + Send + Sync + 'static {
 /// The retransmission program plus a thread Q waiting for a Y message:
 /// main sends it y0, and S sends it y on its timeout besides x. "Q reads
 /// y" is launched by a revisit that can delete R's events.
+///
+/// Count under the first-arrival rule (2026-10-13), by hand: y0 arrives
+/// by 2 and y at 6 or later, so a waiting Q reads y0 whenever it is
+/// delivered and y only when y0 is lost (it was also allowed to read y
+/// with y0 expired unread, which is what the old (25, 41) counted).
+/// Let idR, idS be the two zero-transit handoffs. Both lost: 2 blocked
+/// (y0 delivered or not). idR only: S blocked, R waits for data that
+/// never comes: 2 blocked. idS only: R blocked; S sends f, times out
+/// (no ack can exist), sends x and y: 2 (f) x 2 (x) x 2 (y) x 2 (y0) =
+/// 16 blocked. Both delivered: (i) f lost: S times out, x and y are
+/// sent; R reads x if delivered and then sends an ack (2 ways) that S
+/// never reads; Q completes unless y0 and y are both lost: complete
+/// 2 x 3 = 6, blocked 2 + 4 = 6; (ii) f delivered and read by R: if the
+/// ack is delivered S reads it (y0 delivered: complete; lost: Q
+/// blocks), if the ack is lost S times out and sends x (2) and y (2),
+/// 4 x 2 patterns of y0: complete 6, blocked 2; so (ii) gives
+/// complete 7, blocked 3; (iii) f delivered but dead before R listens:
+/// S times out, R reads x (the same 6 + 2 as (i)) or, with x lost,
+/// blocks (4): complete 6, blocked 6. Total complete 6 + 7 + 6 = 19,
+/// blocked 2 + 2 + 16 + 6 + 3 + 6 = 35.
 fn retransmission_with_q(r_first: bool) -> impl Fn() + Clone + Send + Sync + 'static {
     move || {
         let body_r = |sid: traceforge::thread::ThreadId| {
@@ -231,6 +251,20 @@ fn retransmission_with_q(r_first: bool) -> impl Fn() + Clone + Send + Sync + 'st
     }
 }
 
+/// Count under the first-arrival rule (2026-10-13), by hand: u and y
+/// both lost: S, R blocked (1). y only: S reads y, sends b, blocks at
+/// its second receive; b arrives by 3 and R listens from 5 with sd = 1,
+/// so b is dead: b delivered or lost, R blocks (2). u only: S reads u
+/// at 0..3, b arrives in 0..5: R reads it (arrival 4 or 5), or finds it
+/// dead, or it was lost: 3. Both delivered: S reads y first (u arrives
+/// no earlier) or u first in the tie a(u) = 0 (reading u over a y
+/// arrived earlier is no longer possible), reads the other, and sends
+/// s at 4 + the second read; b is always dead by 5: b delivered or lost
+/// (2) x s delivered (R reads it: 4 complete) or lost (4 blocked).
+/// Total 4 complete, 1 + 2 + 3 + 4 = 10 blocked (it was 13: the three
+/// worlds in which S read u over the readable y, which expired, are
+/// gone).
+///
 /// A GC refusal as the only launcher (adversarial review, 2026-09-29).
 /// L=0 U=2 sd=1 FIFO. A: send u to S. B: send y to S, window [0,0].
 /// S: recv (u or y); send b to R; recv; sleep 4; send s to R.
@@ -364,6 +398,15 @@ fn two_receives() -> impl Fn() + Clone + Send + Sync + 'static {
 
 /// Five senders with windows [0,1] .. [4,5] to a receiver waiting [0,5]
 /// (L=0 U=4 sd=0): each delivered one alone rules the timeout out.
+///
+/// Count under the first-arrival rule (2026-10-13), by hand: with the
+/// delivered set D, a message i can be the first arrival iff i <=
+/// j + 1 for every other delivered j (windows [i, i+1], [j, j+1]), that
+/// is, iff i is the smallest of D or one more than it. So a non-empty D
+/// with minimum m gives 1 execution, 2 when m + 1 is in D: 31 + 15 =
+/// 46; the timeout beside the read of 4 when D = {4} (an arrival at
+/// the deadline may lose the race) and the empty D: 48. It was 82
+/// (every delivered message could be read, 80, plus the same two).
 fn five_candidates() -> impl Fn() + Clone + Send + Sync + 'static {
     move || {
         let r = thread::spawn(|| {
@@ -421,11 +464,13 @@ fn choice_killed() -> impl Fn() + Clone + Send + Sync + 'static {
     }
 }
 
-/// Reads are not eager across senders (a documented property of the
-/// timed system, not of Must-tau): R waits from 0, x (one sender)
-/// arrives at 1 and stays until 6, s (another sender) arrives at 3.
-/// "R reads s" is an execution; a timeout is not (x was readable).
-/// L=0 U=0 sd=5 FIFO.
+/// Reads are eager across senders (first-arrival rule, 2026-10-13; it
+/// used to be a documented property that they were not): R waits from
+/// 0, x (one sender) arrives at 1 and stays until 6, s (another
+/// sender) arrives at 3. "R reads s" is NOT an execution (R would pass
+/// over x, which was readable during its wait, and read a later
+/// arrival); a timeout is not either (x was readable). With both
+/// delivered R reads x. L=0 U=0 sd=5 FIFO.
 fn cross_sender(blocking: bool) -> impl Fn() + Clone + Send + Sync + 'static {
     move || {
         let r = thread::spawn(move || {
@@ -517,16 +562,24 @@ fn cross_sender_reads_not_eager() {
 }
 
 const EXPECT_RETRANS: (usize, usize) = (7, 8);
-const EXPECT_Q: (usize, usize) = (25, 41);
-const EXPECT_REFUSAL_LAUNCHER: (usize, usize) = (4, 13);
+// retransmission_with_q was (25, 41), refusal_launcher (4, 13) and
+// five_candidates (82, 0) before the first-arrival rule (2026-10-13);
+// the derivations of the new pins are in the comments above their
+// programs.
+const EXPECT_Q: (usize, usize) = (19, 35);
+const EXPECT_REFUSAL_LAUNCHER: (usize, usize) = (4, 10);
 const EXPECT_REFUSAL_PREVIOUS: (usize, usize) = (3, 12);
 const EXPECT_DRAWING: (usize, usize) = (6, 0);
 const EXPECT_TWO_RECEIVES: (usize, usize) = (18, 0);
-const EXPECT_FIVE: (usize, usize) = (82, 0);
+const EXPECT_FIVE: (usize, usize) = (48, 0);
 const EXPECT_FIFO_TWO: (usize, usize) = (5, 0);
 const EXPECT_CHOICE_KILLED: (usize, usize) = (4, 2);
-const EXPECT_CROSS_FINITE: (usize, usize) = (5, 0);
-const EXPECT_CROSS_BLOCKING: (usize, usize) = (4, 1);
+// First-arrival rule (2026-10-13), derived by hand. cross_sender: both
+// delivered 1 (R reads x), x only 1, s only 1, none: a timeout (finite,
+// 4 + 0) or a blocked receive (blocking, 3 + 1); it was 5 / 4 + 1 with
+// "R reads s" beside "R reads x" when both are delivered.
+const EXPECT_CROSS_FINITE: (usize, usize) = (4, 0);
+const EXPECT_CROSS_BLOCKING: (usize, usize) = (3, 1);
 
 // ---------------------------------------------------------------------
 // The shared-pool explorer (`with_parallel(true)`) hands the graph of a
@@ -675,15 +728,20 @@ fn assert_after_a_rejected_send_is_certified() {
 
 #[test]
 fn code_after_a_rejected_send_runs_in_the_dropped_child() {
-    check_cfg("send; assert", (0, 0, 10), ConsType::FIFO, EXPECT_SEND_THEN, true, send_then(|| traceforge::assert(false)));
-    check_cfg("recv; send; assert", (0, 0, 10), ConsType::FIFO, EXPECT_GUARDED_SEND, true, guarded_send_then_assert());
+    // Under keep-going a failed assert parks its thread (like assume), so
+    // the violating executions are `block`, not `execs`: before 2026-10-14
+    // (the thread ran on and ended behind its block) these were (2, 0) and
+    // (4, 0).
+    check_cfg("send; assert", (0, 0, 10), ConsType::FIFO, EXPECT_SEND_THEN_ASSERT, true, send_then(|| traceforge::assert(false)));
+    check_cfg("recv; send; assert", (0, 0, 10), ConsType::FIFO, EXPECT_GUARDED_SEND_ASSERT, true, guarded_send_then_assert());
     check("send; channel", (0, 0, 10), ConsType::FIFO, EXPECT_SEND_THEN, send_then(|| {
         let _ = traceforge::channel::Builder::<u32>::new().build();
     }));
 }
 
 const EXPECT_SEND_THEN: (usize, usize) = (2, 0);
-const EXPECT_GUARDED_SEND: (usize, usize) = (4, 0);
+const EXPECT_SEND_THEN_ASSERT: (usize, usize) = (0, 2);
+const EXPECT_GUARDED_SEND_ASSERT: (usize, usize) = (2, 2);
 
 /// A rejection that does not depend on the schedule. R: blocking receive.
 /// S: send with window [2, 2]; send with window [0, 0]; assert(false).

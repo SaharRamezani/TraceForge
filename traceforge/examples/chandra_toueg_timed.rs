@@ -14,10 +14,7 @@
 //! "p-is-alive"; Task 2 suspects q if it hears nothing from q during the last
 //! timeout ticks ("counting the number of steps that it takes"); Task 3, on a
 //! message from a suspected q, trusts q again and increases timeout by one.
-//! The initial timeout (TKW's TODefault) is a free parameter: too small, and a
-//! correct sender is suspected. TKW verify it with TODefault = 6*Phi + Delta
-//! (Table 1, HOLDS) and TODefault = Delta + 1 (Table 2, VIOLATED); they do
-//! not say where between the two the property starts to hold.
+//! The initial timeout (TKW's TODefault) is a free parameter.
 //!
 //! TKW'S MODEL, AND WHERE EACH PART IS HERE. Global rounds; each round runs
 //! sub-rounds SSched, RSched, IncMsgAge, SSnd, RNoSnd, RRcv, RComp in order.
@@ -30,133 +27,149 @@
 //!                           arrival (storage lifetime sd = 0). A message sent in
 //!                           round s is old (must be delivered) at the first RRcv
 //!                           in a round >= s + Delta, and optional before.
-//!   the buffer           -> `buffer` thread (TKW's existsMsgOfAge): holds
-//!                           arrived messages; the receiver touches it only in its
-//!                           Receive step (Query/Answer, transit exactly 0).
+//!   the buffer           -> the receiver's count of Alive messages read since
+//!                           its last step (TKW's existsMsgOfAge): RRcv delivers
+//!                           everything that arrived before its Tick; one that
+//!                           arrives at the Tick's instant is read before or
+//!                           after it (both orders are explored).
 //!   RNoSnd/RRcv/RComp    -> `Detector::step`, line for line (wt + 1 only while
 //!                           wt < timeout; RRcv resets wt on a delivery and, if
 //!                           suspected, trusts again with timeout + 1 (Task 3);
 //!                           RComp suspects when wt >= timeout (Task 2)).
-//!   StrongAccuracy       -> `judge`: assert that no Comp step ever suspected.
+//!   StrongAccuracy       -> the assertion in `Detector::step`, at the Comp
+//!                           step that suspects (TKW's invariant ~suspected,
+//!                           violated there and then).
 //! One time unit is one round. Every constraint is an interval on a send, so
 //! timed TraceForge handles it symbolically and enumerates only event ORDERS.
-//!
-//! WHY THE PORT IS EXACT (Delta >= 1). A message sent in round s is delivered
-//! at a Receive step at time r iff it arrived by r (read before the Query in a
-//! same-instant tie, both orders are explored). Arrival in [s, s + Delta - 1]
-//! makes delivery possible at every Receive step in [s, s + Delta - 1] and
-//! forced at the first one at or after s + Delta: TKW's choice set. Delivering
-//! everything that arrived loses nothing: the receiver observes only whether a
-//! Receive step delivered at least one message, and any young message TKW
-//! keeps can arrive later here. FIFO arrival loses nothing: messages are
-//! interchangeable and deadlines grow with send time, so sorting TKW's
-//! delivery rounds into send order keeps every step's observation. Delta = 0
-//! would need a send to precede a same-round Receive strictly; it is refused.
 //! The horizon H: main's EndOfRun arrives at exactly H; a step at H is kept or
-//! cut by the tie order. So every JUDGED run is a TKW prefix (sound; blocked
-//! runs may carry eviction artifacts, which the guards cut before any
-//! judgement), and every H-round TKW behaviour has a judged run with the same
-//! receiver steps and the same delivered/not-delivered outcome at every
-//! Receive step (complete up to H for Strong Accuracy).
+//! cut by the tie order. The sender is bounded by COUNT (floor(H/3) Sends, the
+//! most TKW's sender can make by round H) and the receiver by H ticks (never
+//! binding before H in timed mode); untimed, these caps are what bounds the
+//! run (same program in both modes).
 //!
-//! HARNESS (sd = 0 hazards, each closed BEFORE the judgement). At sd = 0 a
-//! receive may read a later message from another channel and silently evict
-//! an earlier one (TraceForge constrains skips only within one channel), and a
-//! timed assertion is certified on timeline feasibility even if another thread
-//! blocks afterwards. Unguarded, an eviction fakes a silence and a FALSE
-//! violation gets certified (an earlier draft whose sender stopped on a
-//! cross-channel EndOfRun did exactly that: its own pending Tick was evicted,
-//! i.e. a Send never made, and the receiver's suspicion was reported).
-//! Every input channel of every thread, and what closes an eviction on it:
-//!   sender   <- sender   Tick      none possible: the sender is bounded by
-//!                                  COUNT (floor(H/3) Sends, each after its
-//!                                  own Tick) and receives nothing else
-//!   receiver <- receiver Tick      `Clock::drain` blocks (a step never taken)
-//!   receiver <- main     EndOfRun  the tick cap H stops re-arming; the
-//!                                  receiver then waits for EndOfRun forever
-//!   receiver <- buffer   Answer    read by a receive tagged with the buffer,
-//!                                  right after its own Query: nothing to skip
-//!   buffer   <- sender   Alive     `check_seq` (sequence gap), `check_done`
-//!                                  (an Alive lost after the last one read)
-//!   buffer   <- sender   Done      the buffer loop never exits without it
-//!   buffer   <- receiver Query     the receiver blocks waiting for its Answer
-//!   buffer   <- receiver Stop      the buffer loop never exits without it
-//! The buffer judges only after the sender's Done and the receiver's Stop, so
-//! every guard of every thread is causally before the assertion. The caps
-//! never bind early in an eviction-free timed run (the sender's k-th Send is
-//! at time >= 3k, the receiver's k-th step at >= k); untimed, they are what
-//! bounds the run (same program in both modes).
+//! THE SEMANTICS THIS PORT LIVES IN (since 2026-10-12; first-arrival receives
+//! since 2026-10-13). Every send may be lost (`with_all_sends_lossy`, the
+//! model's rule), and a message is readable only at its arrival instant (sd =
+//! 0: Alive, EndOfRun and the two self-Ticks alike). A receive reads the
+//! message that ARRIVED FIRST among those pending at it (a tie leaves both
+//! orders explored; a message that arrived before the wait began is gone), so
+//! a waiting receiver never reads a later arrival while an earlier one of
+//! another sender expires unread. The port never sleeps and handles every
+//! message in zero time, so no message arrives while its receiver is busy. A
+//! lost Alive is a silence the receiver cannot tell from a slow sender, and so
+//! is an Alive that arrives at the instant of a Receive step and is read after
+//! that step's Tick (it counts at the next Receive step). A sender whose Tick
+//! is lost stalls for good (TKW's sender never stalls); a receiver whose Tick
+//! or EndOfRun is lost ends. No execution is filtered: there is no drain, no
+//! `assume!`, no reliability condition and no harness message the verdict
+//! waits for. The two waits are finite (`recv_msg_timed(Finite(3*Phi))` at the
+//! sender, `Finite(Phi)` at the receiver), as long as the largest transit of
+//! the Tick awaited. The engine admits a timeout only when nothing arrives
+//! before the deadline (C6b, half-open): the Tick was lost, or (in a wait that
+//! began when it was armed) it arrives exactly at the deadline and loses the
+//! race to the timer, so a stall needs no lost message. No thread ever waits
+//! for ever: the only blocked endings are the failed assertions.
 //!
-//! RESULTS. Data, drivers and the TLC ground truth are in
-//! docs/research/ta_problems/need-from-user-papers/tkw-forte2021-fd-artifact/sweep
-//! (README.md there). Numbers are for Delta = 2, Phi = 4 unless stated.
+//! WHAT THIS GIVES. Under links that may lose anything, Strong Accuracy is
+//! unsatisfiable: a stalled sender (which needs no lost message, see above),
+//! or enough lost Alives, and the receiver suspects a process that never
+//! crashed. The verdict is therefore VIOLATED at every TODefault at which the
+//! receiver can take enough steps within H (3*ceil((to + 1)/3) steps; the
+//! binary prints a NOTE when H is too short, a HOLD there is vacuous), in both
+//! modes. Swept at Delta 1, Phi 1, H 8 (to = 1..5) and at Delta 2, Phi 2, H 10
+//! (to = 1..8): VIOLATED in both modes at every to, and a vacuous HOLD at the
+//! next one (6, 9). Each FIRE prints a counterexample graph; in timed mode it
+//! carries a certified witness timeline. The timing cases (a slow sender, late
+//! delivery) are still explored but no longer separate in the verdict.
+//! Chandra and Toueg assume reliable links and prove only EVENTUAL accuracy,
+//! so nothing here is a bug in their algorithm.
 //!
-//! Ground truth. TLC on TKW's spec with TODefault a parameter: 1350 cells
-//! (Delta 0..8, Phi 1..6, TODefault 1..6*Phi+Delta), 0 errors, the verdict
-//! monotone in TODefault in every (Delta, Phi). The least safe TODefault is
-//!     thr = 3*Phi + Delta - [Delta mod 3 == 2]      (Phi >= 2)
-//!     thr = 3 + 3*ceil(max(Delta - 2, 0) / 3)       (Phi = 1)
-//! on all 1350 cells. It was derived by hand from the two worst silences, the
-//! start-up one (first Send as late as 3*Phi, wt counting from time 0) and the
-//! steady one (a Send delivered in its own round, the next forced 3*Phi +
-//! Delta later), both rounded to the receiver's 3-step cycle, and then
-//! checked blind on Delta 5..8 and Phi 6; it is fitted, not proven beyond the
-//! grid. At TKW's Table 1 cell it is 13, not the verified 6*Phi+Delta = 26.
-//! TKW state no least value; their report (App. D.2) says only that below
-//! 6*Phi+Delta the receiver "might have a wrong suspicion". Delta+1 is not
-//! always unsafe either: it is the threshold itself at Phi = 1, Delta = 2, 5, 8.
+//! HISTORY. Until 2026-10-12 this file carried a harness: sequence numbers on
+//! Alive with `assume!` guards (`check_seq`, `check_done`), a receiver tick
+//! drain and a buffer thread, judged at the end of the run. Written against
+//! sd = 0 cross-channel eviction (a receive reading a later message of another
+//! channel while an earlier one expired unread, which the first-arrival rule
+//! of 2026-10-13 now excludes), the guards also discarded every run with a
+//! lost Alive once all sends became lossy (2026-09-30), i.e. they re-created
+//! reliable links, and on that filtered model the port reproduced TLC's least
+//! safe TODefault on TKW's spec (thr = 3*Phi + Delta - [Delta mod 3 == 2] for
+//! Phi >= 2; 13 at TKW's Table 1 cell, where they verified 26). That
+//! threshold is a fact about TKW's reliable-link model, established by TLC and
+//! still reproduced by `--mode rounds` (TKW's own round model has no messages
+//! to lose); it is no longer a claim of this port, and no boundary is. Facts
+//! about TKW's artifact found with TLC, not TraceForge, still stand: their
+//! Table 1 rows 5-6 printed (Delta 4, Phi 5) match (4, 6) exactly (44,733
+//! states, depth 267); fd-paras/fd_paras.tla parses `x'[Delta] = a \/ b` as
+//! `(x'[Delta] = a) \/ b`, so as shipped it VIOLATES Strong Accuracy at their
+//! own 6*Phi+Delta (Delta = Phi = 1, N = 2) and holds with the parentheses;
+//! their published tables use the two-process specs, which have them.
 //!
-//! 1. The timed port gives TLC's verdicts. One exploration per (Delta, Phi)
-//!    at a horizon from TLC's depths (R_diam; for Phi = 5 the round of TLC's
-//!    shortest counterexample plus 3) gives W*, and W* + 1 equals TLC's
-//!    threshold on all 36 pairs run (Phi 1..4 with Delta 1..8, Phi 5 with
-//!    Delta 1..4), each W* strictly below the most the horizon allows, and the
-//!    explored count identical across TODefault within each pair. 725 cells
-//!    compared (346 run, 379 derived from W*): 0 disagreements with TLC, 0
-//!    errors (65 of the runs cannot suspect within H and hold by W*). At
-//!    H = 25 = TLC's diameter here:
-//!      to = 12  VIOLATED  (943 of 58,533 judged runs suspect)
-//!      to = 13  HOLDS     explored 235,230 = 58,533 judged + 176,697 blocked
-//!      to = 26  HOLDS     (TKW's Table 1)
-//!    and `--control crashed-sender` is VIOLATED. The unbounded HOLD is TLC's;
-//!    TraceForge's bounded verdicts coincide with it on every cell.
-//! 2. Untimed, the same program cannot express partial synchrony: its W* is
-//!    3*floor(H/3) - 1, the most H steps allow (8, 11, 14, 17 at H = 10, 13,
-//!    16, 19), so it reports a violation at every TODefault it can reach, e.g.
-//!    13 at H = 16 where TLC holds. Timed W* equals it up to H = 13 and stays
-//!    at 12 = thr - 1 from H = 16 on.
-//! 3. Cost, explored executions (single worker, loaded machine; seconds are
-//!    indicative only):
-//!      H    timed            untimed, same program   TKW's rounds, untimed
-//!      10   671 (1.0 s)      370 (0.1 s)              37,722 (1.4 s)
-//!      13   2,204 (3.7 s)    1,377 (0.4 s)            1,012,229 (30 s)
-//!      16   7,198 (13 s)     5,138 (1.7 s)            27,445,895 (846 s)
-//!      19   23,102 (51 s)    19,294 (5.1 s)           over 1 h
-//!      22   73,681 (206 s)   72,918 (20 s)            -
-//!      25   235,230 (580 s)  277,121 (61 s)           -
-//!    On the same program untimed is wrong, and faster in wall-clock at every
-//!    H (a timed execution costs about 10x more); in executions it grows x3.8
-//!    per 3 rounds against timed's x3.2, so timed explores fewer from H = 25
-//!    on. Against a stateless
-//!    enumeration of TKW's explicit-time rounds, timed explores 56x to 3,800x
-//!    fewer executions (x3.3 per 3 rounds against x27). TLC, which hashes
-//!    states, is cheaper than both: 10,158 states, about 3 s, unbounded. 70
-//!    to 75% of timed "explored" are runs the sd = 0 guards block.
-//! 4. The adaptive timeout (TKW report, Formula 36: timeout <= 6*Phi+Delta
-//!    from a start below it): TLC gives timeout <= max(TODefault, thr) on all
-//!    28 runs over 10 (Delta, Phi) pairs.
-//! What it is NOT: not a bug in Chandra and Toueg (they prove EVENTUAL
-//! accuracy; a suspicion below thr is allowed and raises the timeout), and thr
-//! belongs to TKW's two-process model: starting the receiver's cycle one phase
-//! later (rPC = RNoSnd) moves (2,4) from 13 to 14 under TLC.
-//! Side results from checking TKW's artifact with TLC, not TraceForge: their
-//! Table 1 rows 5-6 (printed Delta 4, Phi 5: 44.7K states, depth 267) match
-//! Delta 4, Phi 6 exactly (44,733, 267), not Phi 5 (28,492, 225); and their
-//! N-process spec fd-paras/fd_paras.tla parses `x'[Delta] = a \/ b` as
-//! `(x'[Delta] = a) \/ b`, so old messages can vanish: as shipped it VIOLATES
-//! Strong Accuracy at their own 6*Phi+Delta (Delta = Phi = 1, N = 2), and holds
-//! with the parentheses added. Their published tables use the two-process
-//! specs, which have the parentheses.
+//! RESULTS (re-measured 2026-10-13 after the first-arrival ruling, one worker,
+//! --keep-going; "old" is the harness version at HEAD 0cbe2c7 on the same
+//! cells; thr is TLC's least safe TODefault on TKW's reliable-link spec, which
+//! the old port reproduced):
+//!
+//!   Delta Phi to  H   old timed              new timed               new baseline
+//!   1     1   2   8   VIOLATED 2 of 602      VIOLATED 28 of 156      VIOLATED 62 of 914
+//!   1     1   3   8   HOLDS (thr = 3)        VIOLATED 14 of 436      VIOLATED 62 of 1,919
+//!   2     2   6   10  VIOLATED 3 of 6,597    VIOLATED 67 of 9,012    VIOLATED 226 of 19,675
+//!   2     2   7   10  HOLDS (thr = 7)        VIOLATED 36 of 9,080    VIOLATED 88 of 20,392
+//!   2     4   9   13  VIOLATED 11 of 39,698  VIOLATED 365 of 108,471 VIOLATED 736 of 216,574
+//!   2     4   12  13  HOLDS, vacuous in both (15 steps needed; new: 109,908 explored, 0 blocked)
+//!   2     4   12  15  HOLDS (H < TLC's 16)   VIOLATED, no count (*)  VIOLATED 2,224 of 1,842,172
+//!   2     4   12  16  VIOLATED 3 of 170,291  VIOLATED, no count (*)  VIOLATED 2,224 of 2,353,201
+//!   1     1   3   8   --mode rounds (TKW's model, no messages): HOLDS in both; new: to 2 VIOLATED
+//!   2     2   7   10  --mode rounds: HOLDS (5,975 executions), to 6 VIOLATED (4 of 5,975)
+//!   2     4   13  16  --mode rounds: HOLDS (27,445,895 executions), to 12 VIOLATED
+//!
+//! (*) The timed --keep-going run did not finish within 15 min, so there is no
+//! count; the verdict is the exit 101 of a run without --keep-going.
+//!
+//! "n of m": violating endings (each the first suspecting Comp step of its
+//! run) of all endings explored (execs + blocked + impossible). In the new
+//! version blocked equals the violation count in every cell: a failed
+//! assertion ends its run as blocked, and nothing else ever blocks. The old
+//! explored counts were mostly guard-blocked runs (e.g. 600 of the 602).
+//!
+//! Before the first-arrival rule the timed legs of the same cells gave 28 of
+//! 156, 24 of 496, 106 of 13,963, 72 of 14,131 and 604 of 224,979 (and 229,219
+//! explored at H 13): the rule removes the executions in which a waiting
+//! receive read a later arrival while an earlier one of another sender
+//! expired unread. The untimed leg has no clock, so it is unchanged, and no
+//! verdict that was known has moved.
+//!
+//! Certified witness at Delta 1, Phi 1, to 3, H 8 (exit 101 without
+//! --keep-going): the sender's first Alive is sent at 3 and lost (the printed
+//! graph marks the send `[dropped]`). The receiver steps at every time unit; its
+//! sixth step, at 6, is a Comp step with wt = 3 = to (wt reached 3 at step 3,
+//! and the Receive step 5 delivered nothing): suspected. The second Alive,
+//! sent at 6, arrives at 6 and is read just before that Tick (a tie, both
+//! orders are explored), but a Comp step does not consult what was read. In
+//! TKW's model the first message is delivered at the Receive step of round 5
+//! and no suspicion follows. Before the first-arrival rule this witness had
+//! the first Alive arrive at 3 and not be lost: the receiver read its own
+//! Tick instead, and the Alive, readable only at 3 (sd = 0), expired unread.
+//! That execution is gone.
+//!
+//! Other certified witnesses. Below thr they lose no send: at Delta 1, Phi 1,
+//! to 2 the first Alive, arriving at 3, is read just before the Tick of step 3,
+//! a Comp step with wt = 2 = to; at Delta 2, Phi 2, to 6 (and Delta 2, Phi 4,
+//! to 12, H 16) the first Alive is delivered at once, the sender's second Send
+//! comes late (at 8, a gap of 5 in [3, 6]; at 14, a gap of 11 in [3, 12]) and
+//! its Alive takes the full transit Delta - 1, arriving at the instant of a
+//! Receive step and read after that step's Tick, so the next Comp step has
+//! wt = to. At thr and above (to 3..5 at Delta 1, Phi 1, H 8; to 7, 8 at
+//! Delta 2, Phi 2, H 9..10), and at Delta 2, Phi 4, to 12 with H 15, one short
+//! of TLC's counterexample depth, the first Alive is lost. In some of these
+//! graphs the sender's last wait times out, after the events that matter.
+//!
+//! Cost (machine loaded, seconds indicative): at Delta 2, Phi 4, H 13 the new
+//! version explores 109,908 timed executions in 106 s (229,219 in 106 s before
+//! the first-arrival rule; old: 39,698, of which 39,067 guard-blocked, 24 s)
+//! and 221,895 untimed ones in 14 s. At H 15 and H 16 the untimed leg alone
+//! explores 1,842,172 executions in 202 s and 2,353,201 in 216 s (VIOLATED
+//! 2,224 both times); the timed --keep-going run finished at neither within
+//! 15 min. No efficiency claim is made here.
 //!
 //! Modes (same `--delta/--phi/--to/--horizon` everywhere):
 //!   timed     the port above under timed TraceForge (symbolic time)
@@ -164,17 +177,16 @@
 //!   rounds    TKW's own round model (sa_fnc.tla transliterated sub-round by
 //!             sub-round into one Rust thread, each disjunction a nondet()
 //!             choice) under untimed TraceForge: a stateless enumeration of
-//!             explicit-time rounds (no state hashing; TLC, which hashes
-//!             states, is far cheaper on this finite model)
+//!             explicit-time rounds with no messages, so nothing is lost and
+//!             TLC's thr is reproduced (TLC, which hashes states, is far
+//!             cheaper on this finite model)
 //!   compare   baseline, then timed;  all  baseline, timed, rounds
-//! `--encoding direct` is an ablation: no buffer thread, the receiver reads
-//! Alive messages itself between steps (exact too, more interleavings).
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use traceforge::thread::{self, ThreadId};
-use traceforge::{Config, ConsType, Stats};
+use traceforge::{Config, ConsType, Stats, WaitTime};
 
 // =====================================================================
 // Messages
@@ -184,52 +196,21 @@ use traceforge::{Config, ConsType, Stats};
 enum Msg {
     /// Self-timer. Sender: its next Send round. Receiver: its next active round.
     Tick,
-    /// "p-is-alive" (CT Fig. 10, Task 1). `seq` is the eviction guard.
-    Alive { seq: u32 },
+    /// "p-is-alive" (CT Fig. 10, Task 1).
+    Alive,
     /// From main, arriving at exactly H: stop taking protocol steps.
     EndOfRun,
-    /// Sender to its Alive destination after its drain: how many it sent.
-    Done { sent: u32 },
-    /// Buffer encoding: the receiver's Receive step asks the buffer to
-    /// deliver (TKW RRcv), and the buffer answers whether it delivered any.
-    Query { reply_to: ThreadId },
-    Answer { delivered: bool },
-    /// Buffer encoding: the receiver is past H and drained; its summary.
-    Stop { summary: Summary },
 }
 
-/// What one receiver run observed, judged after every guard has passed.
-/// Observation only: the protocol never reads it.
+/// What one receiver run observed. Observation only: the protocol never
+/// reads it, and the verdict does not depend on it (see `Detector::step`).
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 struct Summary {
     ever_suspected: bool,
-    /// Largest waitingTime compared against the timeout at a Comp step
-    /// (None: the run took no Comp step).
-    max_wt: Option<u64>,
     /// Active rounds (receiver steps), Receive steps, delivering ones.
     steps: usize,
     receives: usize,
     deliveries: usize,
-    /// Alive messages the sender sent (filled in by whoever checks Done).
-    sent: usize,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Encoding {
-    /// TKW's message buffer is its own thread; the receiver touches it only
-    /// in its Receive step, as in TKW's RRcv.
-    Buffer,
-    /// Ablation: the receiver reads Alive messages itself between steps and
-    /// keeps the undelivered ones as a local count.
-    Direct,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Control {
-    None,
-    /// The sender never sends Alive. Must FIRE whenever the receiver can
-    /// take 3*ceil((to+1)/3) steps within H (checks the property can fail).
-    CrashedSender,
 }
 
 /// The receiver's program counter `rPC` (TKW: RNoSnd, RRcv, RComp).
@@ -280,8 +261,6 @@ struct Params {
     /// Horizon in rounds: main's EndOfRun arrives at exactly H; the round
     /// model runs rounds 1..=H.
     h: u64,
-    encoding: Encoding,
-    control: Control,
 }
 
 impl Params {
@@ -301,9 +280,9 @@ impl Params {
     fn steps_to_suspect(&self) -> u64 {
         3 * (self.to + 1).div_ceil(3)
     }
-    /// Round of TLC's shortest counterexample at TODefault = threshold - 1,
-    /// as fitted on every (Delta, Phi) of the TLC grid (Delta <= 8, Phi <= 6):
-    /// a horizon below it can under-report the threshold.
+    /// Default-horizon helper: the round of TLC's shortest counterexample
+    /// at TODefault = thr - 1 in TKW's reliable-link model, as fitted on
+    /// their grid (Delta <= 8, Phi <= 6). Only a default for H; no claim.
     fn h_min(&self) -> u64 {
         if self.phi == 1 {
             3 + 3 * self.delta.saturating_sub(2).div_ceil(3)
@@ -314,34 +293,32 @@ impl Params {
 }
 
 // =====================================================================
-// Outcome counters (over executions that reach the judgement)
+// Outcome counters (observation only; the verdict is the inline assertion)
 // =====================================================================
 
 const ZERO: AtomicUsize = AtomicUsize::new(0);
-const MAXW: usize = 512;
 
+/// Receiver runs that reached EndOfRun, and runs with a suspicion (each
+/// counted once, at the first Comp step that suspects). Counters are raised
+/// by program code on every ending the search enumerates, so with
+/// --keep-going `SUSPECTED` is a count of violating endings, not a verdict:
+/// the verdict is the engine's (exit 101 with a certified witness).
 static COMPLETED: AtomicUsize = AtomicUsize::new(0);
 static SUSPECTED: AtomicUsize = AtomicUsize::new(0);
-/// Histogram of the per-execution max_wt. W* (its largest bin) is the
-/// largest waiting time any execution compares at a Comp step: the verdict
-/// is VIOLATED iff W* >= TODefault, and at TODefault > W* the threshold
-/// W* + 1 comes out of ONE run (control flow never reads wt or to).
-static WHIST: [AtomicUsize; MAXW + 1] = [ZERO; MAXW + 1];
-/// [min, max] of steps, receives, deliveries, sent over judged executions.
+/// Finite waits that timed out, which the engine admits only when nothing
+/// arrived before the deadline: the awaited message was lost, or it arrives
+/// exactly at the deadline and loses the race to the timer. A sender that
+/// timed out stops sending; a receiver that timed out stops.
+static STALLED_SENDERS: AtomicUsize = AtomicUsize::new(0);
+static RECEIVER_TIMEOUTS: AtomicUsize = AtomicUsize::new(0);
+/// [min, max] of steps, receives, deliveries (over receiver runs that
+/// ended) and of Alive sends (over sender runs that ended).
 const PAIR: [AtomicUsize; 2] = [ZERO; 2];
 static RANGES: [[AtomicUsize; 2]; 4] = [PAIR; 4];
-/// Guard hits, as EVENT counts (a blocked execution is not observable
-/// otherwise): a sequence gap at an Alive, a count mismatch at Done.
-static GUARD_SEQ: AtomicUsize = AtomicUsize::new(0);
-static GUARD_DONE: AtomicUsize = AtomicUsize::new(0);
 
 fn reset_counts() {
-    COMPLETED.store(0, Ordering::Relaxed);
-    SUSPECTED.store(0, Ordering::Relaxed);
-    GUARD_SEQ.store(0, Ordering::Relaxed);
-    GUARD_DONE.store(0, Ordering::Relaxed);
-    for b in &WHIST {
-        b.store(0, Ordering::Relaxed);
+    for c in [&COMPLETED, &SUSPECTED, &STALLED_SENDERS, &RECEIVER_TIMEOUTS] {
+        c.store(0, Ordering::Relaxed);
     }
     for r in &RANGES {
         r[0].store(usize::MAX, Ordering::Relaxed);
@@ -349,38 +326,17 @@ fn reset_counts() {
     }
 }
 
-/// Record one judged execution and check TKW's StrongAccuracy == ~suspected
-/// over every state up to H. Called only after every eviction guard passed.
-fn judge(s: Summary) {
+fn range_add(i: usize, v: usize) {
+    RANGES[i][0].fetch_min(v, Ordering::Relaxed);
+    RANGES[i][1].fetch_max(v, Ordering::Relaxed);
+}
+
+/// Record one receiver run that ended (observation only).
+fn record(s: Summary) {
     COMPLETED.fetch_add(1, Ordering::Relaxed);
-    if let Some(w) = s.max_wt {
-        WHIST[(w as usize).min(MAXW)].fetch_add(1, Ordering::Relaxed);
+    for (i, v) in [s.steps, s.receives, s.deliveries].into_iter().enumerate() {
+        range_add(i, v);
     }
-    for (r, v) in RANGES.iter().zip([s.steps, s.receives, s.deliveries, s.sent]) {
-        r[0].fetch_min(v, Ordering::Relaxed);
-        r[1].fetch_max(v, Ordering::Relaxed);
-    }
-    if s.ever_suspected {
-        SUSPECTED.fetch_add(1, Ordering::Relaxed);
-    }
-    traceforge::assert(!s.ever_suspected);
-}
-
-/// The eviction guard on every Alive channel (sd = 0 lets a receive skip a
-/// message that arrived earlier on another channel; see header).
-fn check_seq(seq: u32, expected: &mut u32) {
-    if seq != *expected {
-        GUARD_SEQ.fetch_add(1, Ordering::Relaxed);
-    }
-    traceforge::assume!(seq == *expected);
-    *expected += 1;
-}
-
-fn check_done(sent: u32, expected: u32) {
-    if sent != expected {
-        GUARD_DONE.fetch_add(1, Ordering::Relaxed);
-    }
-    traceforge::assume!(sent == expected);
 }
 
 // =====================================================================
@@ -432,12 +388,22 @@ impl Detector {
             }
             // RComp: CT Task 2.
             Phase::Comp => {
-                self.obs.max_wt = Some(self.obs.max_wt.map_or(self.waiting_time, |m| m.max(self.waiting_time)));
                 if self.waiting_time < self.timeout {
                     self.waiting_time += 1;
                 } else {
+                    // Suspect. Strong Accuracy (TKW's invariant: ~suspected
+                    // in every state) is violated here and now. The sender
+                    // never crashes in this model, so every suspicion is a
+                    // false one, whatever caused the silence: slow steps,
+                    // late delivery, or heartbeats that were lost, which
+                    // the model's semantics allow for every send (including
+                    // the sender's own timer).
+                    if !self.obs.ever_suspected {
+                        SUSPECTED.fetch_add(1, Ordering::Relaxed);
+                    }
                     self.suspected = true;
                     self.obs.ever_suspected = true;
+                    traceforge::assert(false);
                 }
             }
         }
@@ -445,31 +411,37 @@ impl Detector {
 }
 
 // =====================================================================
-// The port: sender, receiver, buffer (timed and baseline modes)
+// The port: sender and receiver (timed and baseline modes)
 // =====================================================================
 
-/// Process 1 of TKW's cutoff instance: CT Fig. 10, Task 1. `dest` is where
-/// Alive and Done go: the buffer thread, or the receiver (direct encoding).
-/// Bounded by COUNT, not by EndOfRun: it makes every Send TKW's sender can
-/// make by round H and stops. It receives only its own Ticks, one at a time,
-/// so no receive of it can skip (and evict) anything.
-fn sender(p: Params, dest: ThreadId) {
+/// Process 1 of TKW's cutoff instance: CT Fig. 10, Task 1. Bounded by
+/// COUNT, not by EndOfRun: it makes every Send TKW's sender can make by
+/// round H and stops. Its timer is a self-sent message like any other and
+/// may be lost. The wait for it is finite: a Tick that arrives at all
+/// arrives within 3*Phi, so the timeout branch, which the engine admits
+/// only when no Tick arrives before the deadline, is the lost-Tick case or
+/// a Tick arriving exactly at the deadline (its largest transit), and the
+/// sender then stops for good.
+fn sender(p: Params, receiver: ThreadId) {
     let me = thread::current().id();
-    let mut sent = 0u32;
+    let mut sent = 0usize;
     for _ in 0..p.sender_sends() {
         // TKW sTimer: the first Send round is in [3, 3*Phi], so is every gap.
         traceforge::send_msg_timed(me, Msg::Tick, 3, 3 * p.phi);
-        let m: Msg = traceforge::recv_msg_block_timed();
-        assert_eq!(m, Msg::Tick, "sender: only its own Tick can arrive");
+        match traceforge::recv_msg_timed::<Msg>(WaitTime::Finite(3 * p.phi)) {
+            Some(Msg::Tick) => {}
+            Some(m) => panic!("sender: unexpected {m:?}"),
+            None => {
+                STALLED_SENDERS.fetch_add(1, Ordering::Relaxed);
+                break;
+            }
+        }
         // SSnd with sTimer = 0: send "p-is-alive". Old at age Delta means
         // arrival at most Delta - 1 rounds after the Send round.
-        if p.control != Control::CrashedSender {
-            traceforge::send_msg_timed(dest, Msg::Alive { seq: sent }, 0, p.delta - 1);
-            sent += 1;
-        }
+        traceforge::send_msg_timed(receiver, Msg::Alive, 0, p.delta - 1);
+        sent += 1;
     }
-    // Arrives no earlier than any Alive (same FIFO channel).
-    traceforge::send_msg_timed(dest, Msg::Done { sent }, p.delta - 1, p.delta - 1);
+    range_add(3, sent);
 }
 
 /// The receiver's self-timer (TKW rTimer): the first active round is in
@@ -478,12 +450,11 @@ struct Clock {
     me: ThreadId,
     phi: u64,
     left: u64,
-    armed: bool,
 }
 
 impl Clock {
     fn start(p: &Params) -> Self {
-        let mut c = Self { me: thread::current().id(), phi: p.phi, left: p.receiver_ticks(), armed: false };
+        let mut c = Self { me: thread::current().id(), phi: p.phi, left: p.receiver_ticks() };
         c.arm();
         c
     }
@@ -491,137 +462,49 @@ impl Clock {
         if self.left > 0 {
             self.left -= 1;
             traceforge::send_msg_timed(self.me, Msg::Tick, 1, self.phi);
-            self.armed = true;
-        }
-    }
-    /// Harness: a Tick evicted for EndOfRun is a step never taken; waiting
-    /// for it blocks such a run before it can be judged.
-    fn drain(&mut self) {
-        if self.armed {
-            let m: Msg = traceforge::recv_msg_block_timed();
-            assert_eq!(m, Msg::Tick, "receiver drain");
-            self.armed = false;
         }
     }
 }
 
-/// Buffer encoding, process 2: steps on its own clock and touches the
-/// buffer only in its Receive step.
-fn receiver_buffered(p: Params, buffer: ThreadId) {
-    let me = thread::current().id();
+/// Process 2 of TKW's cutoff instance: steps on its own clock (TKW rTimer)
+/// and keeps the Alive messages read since its last step as a count, TKW's
+/// message buffer (their RRcv delivers everything that has arrived). The
+/// wait is finite: a Tick that arrives at all arrives within Phi of its
+/// arming, and EndOfRun (at exactly H) has arrived by the time the tick cap
+/// is reached (the k-th Tick is at time >= k), so the timeout branch, which
+/// the engine admits only when nothing arrives before the deadline, is the
+/// lost-Tick or lost-EndOfRun case or a Tick arriving exactly at the
+/// deadline (its largest transit); the receiver then stops.
+fn receiver(p: Params) {
     let mut d = Detector::new(&p);
     let mut clock = Clock::start(&p);
+    let mut held: u32 = 0;
     loop {
-        match traceforge::recv_msg_block_timed::<Msg>() {
-            Msg::Tick => {
-                clock.armed = false;
-                d.step(|| {
-                    traceforge::send_msg_timed(buffer, Msg::Query { reply_to: me }, 0, 0);
-                    match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == buffer) {
-                        Msg::Answer { delivered } => delivered,
-                        m => panic!("receiver: unexpected {m:?} from the buffer"),
-                    }
-                });
+        match traceforge::recv_msg_timed::<Msg>(WaitTime::Finite(p.phi)) {
+            Some(Msg::Alive) => held += 1,
+            Some(Msg::Tick) => {
+                d.step(|| std::mem::take(&mut held) > 0);
                 clock.arm();
             }
-            Msg::EndOfRun => break,
-            m => panic!("receiver: unexpected {m:?}"),
+            Some(Msg::EndOfRun) => break,
+            None => {
+                RECEIVER_TIMEOUTS.fetch_add(1, Ordering::Relaxed);
+                break;
+            }
         }
     }
-    clock.drain();
-    traceforge::send_msg_timed(buffer, Msg::Stop { summary: d.obs }, 0, 0);
-}
-
-/// Buffer encoding, TKW's message buffer (their `existsMsgOfAge`): holds
-/// every Alive message that has arrived, and on a Query delivers all of
-/// them. It judges the run once the sender's Done and the receiver's Stop
-/// are in: causally after every eviction guard of every thread.
-fn buffer() {
-    let mut held: u32 = 0;
-    let mut expected: u32 = 0;
-    let mut done = false;
-    let mut stop: Option<Summary> = None;
-    while !(done && stop.is_some()) {
-        match traceforge::recv_msg_block_timed::<Msg>() {
-            Msg::Alive { seq } => {
-                check_seq(seq, &mut expected);
-                held += 1;
-            }
-            Msg::Query { reply_to } => {
-                traceforge::send_msg_timed(reply_to, Msg::Answer { delivered: held > 0 }, 0, 0);
-                held = 0;
-            }
-            Msg::Done { sent } => {
-                check_done(sent, expected);
-                done = true;
-            }
-            Msg::Stop { summary } => stop = Some(summary),
-            m => panic!("buffer: unexpected {m:?}"),
-        }
-    }
-    let mut s = stop.unwrap();
-    s.sent = expected as usize;
-    judge(s);
-}
-
-/// Direct encoding (ablation), process 2: reads Alive messages itself
-/// between steps and keeps the undelivered ones as a local count.
-fn receiver_direct(p: Params) {
-    let mut d = Detector::new(&p);
-    let mut clock = Clock::start(&p);
-    let mut held: u32 = 0;
-    let mut expected: u32 = 0;
-    let mut done = false;
-    let mut ended = false;
-    // One order-agnostic loop: at sd = 0 a fixed drain order would kill
-    // whichever message it does not wait for first.
-    while !(ended && done && !clock.armed) {
-        match traceforge::recv_msg_block_timed::<Msg>() {
-            Msg::Alive { seq } => {
-                check_seq(seq, &mut expected);
-                held += 1;
-            }
-            Msg::Done { sent } => {
-                check_done(sent, expected);
-                done = true;
-            }
-            Msg::Tick => {
-                clock.armed = false;
-                if !ended {
-                    d.step(|| std::mem::take(&mut held) > 0);
-                    clock.arm();
-                }
-            }
-            Msg::EndOfRun => ended = true,
-            m => panic!("receiver: unexpected {m:?}"),
-        }
-    }
-    let mut s = d.obs;
-    s.sent = expected as usize;
-    judge(s);
+    record(d.obs);
 }
 
 fn port(p: Params) {
-    let (mut handles, rt, dest) = match p.encoding {
-        Encoding::Buffer => {
-            let b = thread::spawn(buffer);
-            let bt = b.thread().id();
-            let r = thread::spawn(move || receiver_buffered(p, bt));
-            let rt = r.thread().id();
-            (vec![b, r], rt, bt)
-        }
-        Encoding::Direct => {
-            let r = thread::spawn(move || receiver_direct(p));
-            let rt = r.thread().id();
-            (vec![r], rt, rt)
-        }
-    };
-    handles.push(thread::spawn(move || sender(p, dest)));
-    // After the spawns: nothing main sends precedes an Alive in any order.
+    let r = thread::spawn(move || receiver(p));
+    let rt = r.thread().id();
+    let s = thread::spawn(move || sender(p, rt));
+    // The horizon, arriving at exactly H. Like every message it may be
+    // lost; the receiver then runs to its tick cap and times out.
     traceforge::send_msg_timed(rt, Msg::EndOfRun, p.h, p.h);
-    for h in handles {
-        let _ = h.join();
-    }
+    let _ = s.join();
+    let _ = r.join();
 }
 
 // =====================================================================
@@ -639,6 +522,7 @@ fn rounds_model(p: Params) {
     // existsMsgOfAge[0..=Delta]
     let mut msgs = vec![false; d + 1];
     let mut det = Detector::new(&p);
+    let mut sent = 0usize;
     for _round in 1..=p.h {
         // SSched: reset allowed iff sTimer >= 2, increment iff < 3*Phi - 1.
         let reset_ok = s_timer >= 2;
@@ -656,9 +540,9 @@ fn rounds_model(p: Params) {
             msgs = aged;
         }
         // SSnd.
-        if s_timer == 0 && p.control != Control::CrashedSender {
+        if s_timer == 0 {
             msgs[0] = true;
-            det.obs.sent += 1;
+            sent += 1;
         }
         // The receiver's step. RRcv: MsgDeliver or NoMsgDeliver. Both are
         // "existsMsgOfAge' = a subset of existsMsgOfAge without age Delta":
@@ -677,7 +561,8 @@ fn rounds_model(p: Params) {
             });
         }
     }
-    judge(det.obs);
+    range_add(3, sent);
+    record(det.obs);
 }
 
 // =====================================================================
@@ -721,25 +606,13 @@ fn range(i: usize) -> String {
 }
 
 fn print_one(mode: Mode, p: &Params, stats: &Stats, dur: Duration, max_execs: Option<u64>) {
-    let comp = COMPLETED.load(Ordering::Relaxed);
+    let runs = COMPLETED.load(Ordering::Relaxed);
     let susp = SUSPECTED.load(Ordering::Relaxed);
-    let wstar = (0..=MAXW).rev().find(|&w| WHIST[w].load(Ordering::Relaxed) > 0);
-    let w_at = wstar.map_or(0, |w| WHIST[w].load(Ordering::Relaxed));
     let verdict = if susp > 0 { "VIOLATED" } else { "HOLDS" };
-    let enc = match (mode, p.encoding) {
-        (Mode::Rounds, _) => "rounds",
-        (_, Encoding::Buffer) => "buffer",
-        (_, Encoding::Direct) => "direct",
-    };
-    let control = match p.control {
-        Control::None => "none",
-        Control::CrashedSender => "crashed-sender",
-    };
     println!(
-        "{:<8} enc={enc} control={control} delta={} phi={} to={} H={}  execs={} blocked={} \
-         impossible={} explored={} completed={comp} violations={susp} W*={} (attained by {w_at}) steps={} \
-         receives={} deliveries={} sent={} guard_seq_events={} guard_done_events={} \
-         verdict={verdict} time={dur:?}",
+        "{:<8} delta={} phi={} to={} H={}  execs={} blocked={} impossible={} \
+         explored={} receiver_runs={runs} violations={susp} stalled_senders={} receiver_timeouts={} \
+         steps={} receives={} deliveries={} sent={} verdict={verdict} time={dur:?}",
         mode.name(),
         p.delta,
         p.phi,
@@ -749,45 +622,29 @@ fn print_one(mode: Mode, p: &Params, stats: &Stats, dur: Duration, max_execs: Op
         stats.block,
         stats.timeline_impossible,
         stats.execs + stats.block + stats.timeline_impossible,
-        wstar.map_or(String::from("-"), |w| w.to_string()),
+        STALLED_SENDERS.load(Ordering::Relaxed),
+        RECEIVER_TIMEOUTS.load(Ordering::Relaxed),
         range(0),
         range(1),
         range(2),
         range(3),
-        GUARD_SEQ.load(Ordering::Relaxed),
-        GUARD_DONE.load(Ordering::Relaxed),
     );
-    // Every counter above is raised by PROGRAM code, so it also sees endings
-    // that the (C6b) timeout-miss condition later judges to admit no timeline:
-    // those endings run to completion, raise the counters, and are only then
-    // discarded by the engine. Both the verdict and W* are therefore UPPER
-    // bounds. A counter-based HOLDS is sound (nothing suspected anywhere);
-    // a counter-based VIOLATED, and any threshold derived from W*, are not.
-    if stats.timeline_impossible > 0 {
+    // The counters are raised by PROGRAM code, so they also see endings that
+    // the (C6b) timeout-miss condition later judges to admit no timeline
+    // (those run to completion first). A count of zero is sound; a count
+    // above zero is an upper bound. The verdict is the engine's: exit 101
+    // with a certified witness, without --keep-going.
+    if stats.timeline_impossible > 0 && susp > 0 {
         println!(
-            "NOTE: {} of the {} endings explored admit no timeline, and the counters above were \
-             raised on them too. violations={susp} and W* are upper bounds: re-run without \
-             --keep-going (exit 101 = the engine certified a counterexample) before quoting a \
-             VIOLATED verdict or a W*-derived threshold.",
+            "NOTE: {} of the {} endings explored admit no timeline and were counted above too; \
+             violations={susp} is an upper bound. Re-run without --keep-going (exit 101 = the \
+             engine certified a counterexample) before quoting it.",
             stats.timeline_impossible,
             stats.execs + stats.block + stats.timeline_impossible
         );
     }
-    // Depending on the mode, the engine files a violating execution under
-    // execs or under blocked; `completed` counts every judged execution.
-    if comp == 0 {
-        println!("WARNING ({}): no execution reached the judgement: no data, not a hold.", mode.name());
-    }
-    // The verdict comes from the harness counters. In the port modes every
-    // judged execution must also be one the engine counts as complete; a
-    // mismatch would mean a judged run the engine did not certify.
-    if mode != Mode::Rounds && comp != stats.execs {
-        println!(
-            "WARNING ({}): {comp} judged executions but the engine counts {} complete: the \
-             harness verdict may include runs the engine did not certify; confirm without --keep-going.",
-            mode.name(),
-            stats.execs
-        );
+    if runs == 0 && susp == 0 {
+        println!("WARNING ({}): no receiver run ended and nothing was suspected: no data, not a hold.", mode.name());
     }
     if let Some(n) = max_execs {
         if (stats.execs + stats.block) as u64 >= n {
@@ -798,40 +655,14 @@ fn print_one(mode: Mode, p: &Params, stats: &Stats, dur: Duration, max_execs: Op
             );
         }
     }
-    if wstar.is_none() && susp > 0 {
-        println!("INTERNAL ERROR ({}): a suspicion without any Comp step", mode.name());
-    }
-    if let Some(w) = wstar {
-        if (w as u64 >= p.to) != (susp > 0) {
-            println!("INTERNAL ERROR ({}): W* = {w} but verdict {verdict} at to = {}", mode.name(), p.to);
-        }
-        if susp == 0 {
-            println!(
-                "         W* + 1 = {}: every TODefault >= {} holds and every smaller one is violated, \
-                 at this H (one run; control flow never reads wt or to).",
-                w + 1,
-                w + 1
-            );
-        }
-    }
     if p.h < p.steps_to_suspect() {
         println!(
-            "NOTE ({}): H = {} < {} steps a receiver needs to suspect at to = {}: no behaviour can \
-             suspect within H, so this run alone shows nothing at this to; its HOLD follows from \
-             W* (every to > W* holds at this H).",
+            "NOTE ({}): H = {} < {}, the steps a receiver needs to suspect at to = {}: no run can \
+             suspect within this horizon, so a HOLD here is vacuous.",
             mode.name(),
             p.h,
             p.steps_to_suspect(),
             p.to
-        );
-    }
-    if mode != Mode::Baseline && p.control == Control::None && p.h < p.h_min() {
-        println!(
-            "NOTE ({}): H = {} < {}, the round of TLC's shortest counterexample at the threshold \
-             boundary (fitted on the TLC grid): the threshold may be under-reported.",
-            mode.name(),
-            p.h,
-            p.h_min()
         );
     }
 }
@@ -841,28 +672,12 @@ fn main() {
     let mut mode = String::from("timed");
     let (mut delta, mut phi, mut to, mut h) = (2u64, 4u64, None, None);
     let mut keep_going = false;
-    let mut encoding = Encoding::Buffer;
-    let mut control = Control::None;
     let mut workers = 1usize;
     let mut max_execs = None;
     while let Some(a) = args.next() {
         let mut val = |f: &str| args.next().unwrap_or_else(|| panic!("{f} needs a value"));
         match a.as_str() {
             "--mode" => mode = val("--mode"),
-            "--encoding" => {
-                encoding = match val("--encoding").as_str() {
-                    "buffer" => Encoding::Buffer,
-                    "direct" => Encoding::Direct,
-                    e => panic!("unknown encoding {e}"),
-                }
-            }
-            "--control" => {
-                control = match val("--control").as_str() {
-                    "none" => Control::None,
-                    "crashed-sender" => Control::CrashedSender,
-                    c => panic!("unknown control {c}"),
-                }
-            }
             "--delta" => delta = val("--delta").parse().expect("--delta"),
             "--phi" => phi = val("--phi").parse().expect("--phi"),
             "--to" => to = Some(val("--to").parse().expect("--to")),
@@ -872,15 +687,15 @@ fn main() {
             "--max-execs" => max_execs = Some(val("--max-execs").parse().expect("--max-execs")),
             _ => panic!(
                 "unknown flag {a}. Usage: chandra_toueg_timed [--mode timed|baseline|rounds|compare|all] \
-                 [--delta D>=1] [--phi P>=1] [--to T] [--horizon H] [--encoding buffer|direct] \
-                 [--control none|crashed-sender] [--keep-going] [--workers N] [--max-execs N]"
+                 [--delta D>=1] [--phi P>=1] [--to T] [--horizon H] \
+                 [--keep-going] [--workers N] [--max-execs N]"
             ),
         }
     }
     assert!(delta >= 1, "Delta = 0 is not representable exactly by the port (see header)");
     assert!(phi >= 1, "Phi >= 1");
     let to = to.unwrap_or(6 * phi + delta);
-    let mut p = Params { delta, phi, to, h: 0, encoding, control };
+    let mut p = Params { delta, phi, to, h: 0 };
     // Default H: the TLC diameter bound is not known here; h_min + 3*Phi is
     // past the boundary counterexample with one more sender period of slack.
     p.h = h.unwrap_or(p.h_min() + 3 * phi);

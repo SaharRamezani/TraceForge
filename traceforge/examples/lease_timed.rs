@@ -208,7 +208,6 @@ const DEFAULT_ROUNDS: u32 = 1;
 // grant t uniquely across all rounds, so lingering stale Releases can
 // never satisfy the current holder's Release wait.
 const TAG_ACQ: u32 = 1;
-const TAG_INIT: u32 = 3;
 // Service -> client messages are tagged too: every send may be lost, so
 // after a dropped Grant the service times out, finishes the round and
 // sends the next RoundStart, which an untagged Grant read would take.
@@ -223,7 +222,6 @@ fn rel_tag(token: u64) -> u32 {
 /// Messages received by the LockService.
 #[derive(Clone, Debug, PartialEq)]
 enum SMsg {
-    Init { clients: Vec<ThreadId> },
     Acquire { client: ThreadId, round: u32 },
     Release { token: u64 },
 }
@@ -231,8 +229,9 @@ enum SMsg {
 /// Messages received by a client.
 #[derive(Clone, Debug, PartialEq)]
 enum CMsg {
-    Init { service: ThreadId, storage: ThreadId },
-    RoundStart { round: u32 },
+    /// `from` is the service's own address: the clients (spawned before it)
+    /// learn it here, as 3PC's participants learn the coordinator.
+    RoundStart { round: u32, from: ThreadId },
     Grant { token: u64 },
     WriteAck,
 }
@@ -289,21 +288,15 @@ impl Bounds {
 // LockService
 // =====================================================================
 
-fn lock_service(main_tid: ThreadId, ttl: u64, rounds: u32) {
-    // Setup handshake, sender-filtered so a racing Acquire cannot be
-    // read in its place (the raft_leader_election Init idiom).
-    let clients = match traceforge::recv_tagged_msg_block_timed::<_, SMsg>(move |s, _tag| s == main_tid)
-    {
-        SMsg::Init { clients } => clients,
-        m => panic!("service: expected Init, got {m:?}"),
-    };
+fn lock_service(clients: Vec<ThreadId>, ttl: u64, rounds: u32) {
+    let me = thread::current().id();
 
     let mut token: u64 = 1;
     for round in 0..rounds {
         // (a) Open the round. RoundStart r+1 is only sent after every
         // round-r lease resolved, so rounds never overlap here.
         for c in &clients {
-            traceforge::send_tagged_msg(*c, TAG_ROUND, CMsg::RoundStart { round });
+            traceforge::send_tagged_msg(*c, TAG_ROUND, CMsg::RoundStart { round, from: me });
         }
 
         // (b) Drain: accept and queue this round's C concurrent
@@ -362,12 +355,7 @@ fn lock_service(main_tid: ThreadId, ttl: u64, rounds: u32) {
 // Client (shared by the pauser and the contenders)
 // =====================================================================
 
-fn client(main_tid: ThreadId, pause: u64, rounds: u32) {
-    let (service, storage_tid) =
-        match traceforge::recv_tagged_msg_block_timed::<_, CMsg>(move |s, _tag| s == main_tid) {
-            CMsg::Init { service, storage } => (service, storage),
-            m => panic!("client: expected Init, got {m:?}"),
-        };
+fn client(storage_tid: ThreadId, pause: u64, rounds: u32) {
     let me = thread::current().id();
 
     for round in 0..rounds {
@@ -375,16 +363,18 @@ fn client(main_tid: ThreadId, pause: u64, rounds: u32) {
         // lossy a Grant may be dropped and the next RoundStart follow, so
         // each read selects its variant by tag. A client whose Grant or
         // RoundStart was lost blocks here (a blocked ending).
-        match traceforge::recv_tagged_msg_block_timed::<_, CMsg>(move |s, tag| {
-            s == service && tag == Some(TAG_ROUND)
+        // The service's address is the `from` of the RoundStart.
+        let service = match traceforge::recv_tagged_msg_block_timed::<_, CMsg>(move |_s, tag| {
+            tag == Some(TAG_ROUND)
         }) {
-            CMsg::RoundStart { round: r } => {
+            CMsg::RoundStart { round: r, from } => {
                 if r != round {
                     panic!("client: RoundStart{{{r}}} in round {round}");
                 }
+                from
             }
             m => panic!("client: expected RoundStart, got {m:?}"),
-        }
+        };
 
         // Demand is concurrent: every client acquires as soon as it
         // sees the round open (Kleppmann's contending clients). No
@@ -422,11 +412,10 @@ fn client(main_tid: ThreadId, pause: u64, rounds: u32) {
 // Storage
 // =====================================================================
 
-fn storage(total_writes: u32, fencing: bool) {
+fn storage(fencing: bool) {
     let mut last_applied: u64 = 0;
-    for _ in 0..total_writes {
-        // Every granted client always writes, so exactly C*R writes
-        // arrive and a blocking timed recv is safe.
+    loop {
+        // A reactor daemon: the run ends when no client can move.
         let w: WMsg = traceforge::recv_msg_block_timed();
         if fencing && w.token < last_applied {
             // Fencing check: reject stale tokens. (Tokens are unique,
@@ -518,31 +507,22 @@ fn run(
     STALE_APPLIED.store(0, Ordering::Relaxed);
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
-        let main_tid = thread::current().id();
-        let total_writes = num_clients * rounds;
-        let storage_h = thread::spawn(move || storage(total_writes, fencing));
-        let storage_tid = storage_h.thread().id();
-        let service_h = thread::spawn(move || lock_service(main_tid, b.ttl, rounds));
-        let service_tid = service_h.thread().id();
+        // No bootstrap message. Spawn order: the storage (a daemon reactor),
+        // then the clients (they capture its id), then the service last
+        // (it captures the client ids). The clients learn the service's
+        // address from the RoundStart they wait for.
+        let storage_tid = thread::spawn_daemon(move || storage(fencing)).thread().id();
         let mut clients = Vec::new();
         for i in 0..num_clients {
             let pause = if i == 0 { b.pause } else { 0 };
-            clients.push(thread::spawn(move || client(main_tid, pause, rounds)));
+            clients.push(thread::spawn(move || client(storage_tid, pause, rounds)));
         }
         let client_ids: Vec<ThreadId> = clients.iter().map(|h| h.thread().id()).collect();
-        // Send every Init before joining anything.
-        traceforge::send_tagged_msg(service_tid, TAG_INIT, SMsg::Init { clients: client_ids });
-        for h in &clients {
-            traceforge::send_msg(
-                h.thread().id(),
-                CMsg::Init { service: service_tid, storage: storage_tid },
-            );
-        }
+        let service_h = thread::spawn(move || lock_service(client_ids, b.ttl, rounds));
         for h in clients {
             let _ = h.join();
         }
         let _ = service_h.join();
-        let _ = storage_h.join();
     });
     (stats, start.elapsed())
 }

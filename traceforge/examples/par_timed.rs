@@ -84,10 +84,12 @@
 //!   these bounds.
 //! * The assertion needs 4 messages to fail (message 2 lost and its place
 //!   taken by message 4), so K >= 4 is needed for a FIRE.
-//! * Harness. A Done message (transit dK + dR + 2, so it reaches an idle
-//!   receiver) ends the reactive receiver. Like every send it may be
-//!   dropped, as may main's Init bootstrap; the receiver then stays blocked
-//!   (a blocked execution, not a violation).
+//! * No harness message. The receiver is a daemon reactor spawned before
+//!   the sender, which captures its id; the receiver learns the sender's
+//!   address from the `from` of the frames. Until 2026-10-14 main sent an
+//!   Init to each and the sender a Done to the receiver; they were lossy
+//!   sends that only added blocked executions (and counted each violating
+//!   execution twice, once per fate of the Done).
 //!
 //! Integer time: the listing is a discrete-time model, and TraceForge's
 //! timed engine uses integer instants, so the two share one time domain.
@@ -195,10 +197,9 @@ const MAX: u8 = 8;
 /// Sender to receiver.
 #[derive(Clone, Debug, PartialEq)]
 enum SMsg {
-    /// The listing's `A!mt,sn`.
-    Frame { mt: u8, sn: u8 },
-    /// Harness: ends the receiver. May be dropped like every send.
-    Done,
+    /// The listing's `A!mt,sn`. `from` is the sender's own address, the
+    /// reply address of the ack (as in 3PC's Prepare { coord }).
+    Frame { mt: u8, sn: u8, from: ThreadId },
 }
 
 /// Receiver to sender: the listing's `C!1`. `answers` is ghost data (the
@@ -207,13 +208,6 @@ enum SMsg {
 #[derive(Clone, Debug, PartialEq)]
 struct Ack {
     answers: u8,
-}
-
-/// Bootstrap from main.
-#[derive(Clone, Debug, PartialEq)]
-struct Init {
-    sender: ThreadId,
-    receiver: ThreadId,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -245,9 +239,8 @@ fn cli_bail(msg: &str) -> ! {
 // Sender
 // =====================================================================
 
-fn sender(p: Params, main_tid: ThreadId) {
-    let Init { receiver, .. } =
-        traceforge::recv_tagged_msg_block_timed::<_, Init>(move |s, _tag| s == main_tid);
+fn sender(p: Params, receiver: ThreadId) {
+    let me = thread::current().id();
 
     let mut mt: u8 = 0;
     let mut sn: u8 = 0;
@@ -266,7 +259,7 @@ fn sender(p: Params, main_tid: ThreadId) {
 
         let mut resends: u32 = 0;
         // S_f: A!mt,sn; set(sc,To)
-        traceforge::send_lossy_msg_timed(receiver, SMsg::Frame { mt, sn }, p.dk, p.dk);
+        traceforge::send_lossy_msg_timed(receiver, SMsg::Frame { mt, sn, from: me }, p.dk, p.dk);
         loop {
             // W_s: D?_ (any ack) or expire(sc) at To.
             match traceforge::recv_tagged_msg_timed::<_, Ack>(
@@ -296,41 +289,26 @@ fn sender(p: Params, main_tid: ThreadId) {
             // times (bounded-run scaffolding: the sender stops).
             if resends == bound {
                 GAVE_UP.fetch_add(1, Ordering::Relaxed);
-                send_done(p, receiver);
                 return;
             }
             resends += 1;
-            traceforge::send_lossy_msg_timed(receiver, SMsg::Frame { mt, sn }, p.dk, p.dk);
+            traceforge::send_lossy_msg_timed(receiver, SMsg::Frame { mt, sn, from: me }, p.dk, p.dk);
         }
     }
-    send_done(p, receiver);
-}
-
-/// Harness: Done arrives dK + dR + 2 after it is sent. Every frame was sent
-/// no later, so it arrives at least dR + 2 after the last frame, when the
-/// receiver (busy at most dR + 1 after a frame) is waiting again.
-fn send_done(p: Params, receiver: ThreadId) {
-    let t = p.dk + p.dr + 2;
-    traceforge::send_msg_timed(receiver, SMsg::Done, t, t);
 }
 
 // =====================================================================
 // Receiver
 // =====================================================================
 
-fn receiver(p: Params, main_tid: ThreadId) {
-    let Init { sender, .. } =
-        traceforge::recv_tagged_msg_block_timed::<_, Init>(move |s, _tag| s == main_tid);
-
+fn receiver(p: Params) {
     let mut me: u8 = 1;
     let mut esn: u8 = 0;
     loop {
         // W_f: B?mr,rsn
-        let (mr, rsn) =
-            match traceforge::recv_tagged_msg_block_timed::<_, SMsg>(move |s, _tag| s == sender) {
-                SMsg::Frame { mt, sn } => (mt, sn),
-                SMsg::Done => return,
-            };
+        let (mr, rsn, sender) = match traceforge::recv_msg_block_timed::<SMsg>() {
+            SMsg::Frame { mt, sn, from } => (mt, sn, from),
+        };
         if p.errs && traceforge::nondet() {
             // MSGerr: the frame is taken as corrupt, goto W_f.
             MSGERRS.fetch_add(1, Ordering::Relaxed);
@@ -374,8 +352,7 @@ fn build_config(mode: Mode, keep_going: bool) -> Config {
     if keep_going {
         builder = builder.with_keep_going_after_error(true);
     }
-    // Every protocol send carries its own exact transit; the global window
-    // only times main's Init sends, which are read untimed. sd = 0: a copy
+    // Every protocol send carries its own exact transit. sd = 0: a copy
     // is readable only at the instant it arrives (see Deviations).
     match mode {
         Mode::Baseline => builder.build(),
@@ -394,13 +371,11 @@ fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
     reset_counts();
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
-        let main_tid = thread::current().id();
-        let r = thread::spawn(move || receiver(p, main_tid));
-        let s = thread::spawn(move || sender(p, main_tid));
-        let init = Init { sender: s.thread().id(), receiver: r.thread().id() };
-        traceforge::send_msg(r.thread().id(), init.clone());
-        traceforge::send_msg(s.thread().id(), init);
-        let _ = r.join();
+        // No bootstrap or release message: the receiver is a daemon reactor,
+        // spawned first; the sender is spawned last and captures its id. The
+        // receiver learns the sender's address from the frames.
+        let r = thread::spawn_daemon(move || receiver(p)).thread().id();
+        let s = thread::spawn(move || sender(p, r));
         let _ = s.join();
     });
     (stats, start.elapsed())

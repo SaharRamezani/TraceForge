@@ -46,19 +46,34 @@
 //! and every product and amount the shoppers can pick, and reports a
 //! failure if the stock count can ever go below zero.
 //!
+//! Lost messages. The checker does not assume a safe network: any message
+//! may be lost on the way, in both modes, and nothing in this file
+//! prevents that or looks away from it. A lost message can only take an
+//! order away, so it never causes an oversell. It does leave a shopper
+//! without an answer: without a deadline that shopper waits for ever and
+//! the run is reported as a deadlock; with a deadline the shopper gives
+//! up and the run is reported as a late answer.
+//!
 //! Timers. The original design has no timers at all, and neither does
 //! this example unless you ask for one:
 //!
 //!   * In timed mode every message takes some time to travel, somewhere
 //!     between a shortest and a longest travel time, and a message that
-//!     sits unread for too long after it arrives is thrown away. The
-//!     program is exactly the same as in untimed mode; only the checker's
-//!     view of time changes. The trip to the shipping desk and back is
-//!     counted as travel time.
+//!     sits unread for too long after it arrives is thrown away, which
+//!     for the shop is one more lost message. A receiver that is waiting
+//!     always takes the message that arrived first among those it can
+//!     still read (messages that arrive at the same instant may be taken
+//!     in either order), so a message can only be thrown away unread when
+//!     its receiver is not waiting for it: a service in the middle of
+//!     another order, or a shopper that has already given up. The program
+//!     is exactly the same as in untimed mode; only the checker's view of
+//!     time changes. The trip to the shipping desk and back is counted as
+//!     travel time.
 //!   * Optionally, a shopper gives up waiting for an answer after a set
 //!     time (a checkout deadline). The checker then reports whether a
-//!     shopper could ever be left waiting longer than that. The repaired
-//!     version answers sooner, because it needs two fewer messages.
+//!     shopper could ever be left without an answer for that long. One
+//!     lost message is enough for that, so the answer is yes at every
+//!     deadline.
 //!
 //! Source: Ehsan Khamespanah and Mohammad Mahdi Jaghoori, "20 Years of
 //! Actor Model Checking with Rebeca From Dining Philosophers to
@@ -74,21 +89,34 @@
 //!
 //! ## How the model maps onto TraceForge
 //!
-//! Threads (default 5, all long-lived, harness Init from main as in
-//! swim_timed.rs):
+//! Threads (default 5 besides main). Main spawns the inventory, then the
+//! order services (each gets the inventory's id through its spawn
+//! closure), then the customers (each gets the services' ids), and joins
+//! the customers only:
 //!
-//!   Customer c (x C)        Listing 4.2: R orders, one at a time; each
-//!                           order picks a product in 0..P and an amount
-//!                           in 1..=Q (the models' ?(0,1) and ?(1,2)),
-//!                           then waits for the Reply on its own topic.
-//!   OrderService k (x N)    Listing 4.3 (v1) or 4.4 (v2): getMessage is
-//!                           a blocking receive for the next Order; while
-//!                           an order is open it reads ONLY from the
-//!                           inventory (and its own shipping message), so
-//!                           queued orders wait, exactly like the Kafka
-//!                           consumer that asks for the next message only
-//!                           after answering.
-//!   Inventory (x 1)         Listing 2.3 (v1) or 4.4 (v2); stock[p] = S.
+//!   Customer c (x C)        ordinary thread. Listing 4.2: R orders, one
+//!                           at a time; each order picks a product in
+//!                           0..P and an amount in 1..=Q (the models'
+//!                           ?(0,1) and ?(1,2)), then waits for the Reply
+//!                           on its own topic. It ends after its R-th
+//!                           Reply (or at a deadline, see Properties).
+//!   OrderService k (x N)    daemon thread, never ends. Listing 4.3 (v1)
+//!                           or 4.4 (v2): getMessage is a blocking
+//!                           receive for the next Order; while an order
+//!                           is open it reads ONLY from the inventory
+//!                           (and its own shipping message), so queued
+//!                           orders wait, exactly like the Kafka consumer
+//!                           that asks for the next message only after
+//!                           answering.
+//!   Inventory (x 1)         daemon thread, never ends. Listing 2.3 (v1)
+//!                           or 4.4 (v2); stock[p] = S.
+//!
+//! A daemon may wait for ever without making an execution blocked, so
+//! the reactive actors need nobody to tell them that the run is over.
+//! The bound of the run is local: each customer counts its own R orders.
+//! An execution is complete when every customer has ended, and blocked
+//! when a customer waits for ever (or when the stock assertion has
+//! stopped the inventory).
 //!
 //! Message flow of one order (v1; v2 skips Confirm/Confirmed and takes
 //! the items inside Check):
@@ -103,8 +131,11 @@
 //!
 //! Receives in TraceForge do NOT filter by Rust type (a mismatching type
 //! panics), so every thread has exactly one message enum and all
-//! filtering is by sender: services read orders with `sender != inventory
-//! && sender != self` and order replies with `sender == inventory`.
+//! filtering is by sender: Kafka services read orders with `sender !=
+//! inventory && sender != self`, the inventory's answers with `sender ==
+//! inventory` and their shipping message with `sender == self`. The
+//! customers, the inventory and the direct service take whatever they are
+//! sent.
 //!
 //! `--variant direct` is the Section 2 model (Listings 2.1 to 2.5, no
 //! broker): the order service is purely reactive and keeps several
@@ -112,11 +143,6 @@
 //! (the listing's `cu, product, qty` parameters). The inventory echoes
 //! `customer, product, qty` in all variants; the Kafka services ignore
 //! the echo, so this changes no behaviour.
-//!
-//! Harness messages, not the paper: OsMsg::Init / CustMsg::Init (thread
-//! ids) and OsMsg::Done / InvMsg::Done (a customer releases its
-//! service(s) after R orders, a service releases the inventory), so the
-//! reactive threads terminate in a bounded model.
 //!
 //! ## Deviations from the paper (deliberate)
 //!
@@ -130,30 +156,33 @@
 //!     dispatch (every order picks a service freely; it also lets an
 //!     order queue at a busy service while the other is idle, an
 //!     over-approximation of the broker). The default `--assign fixed`
-//!     (customer c always uses service c mod N) is this harness's cost
+//!     (customer c always uses service c mod N) is this port's cost
 //!     choice, not the paper's: it does not hide the race, because the
 //!     race needs two orders open at different services at once, and a
 //!     customer has only one open order, so those two orders always come
-//!     from different customers (measured: v1 FIREs under both
-//!     assignments). Transit [L,U] is read as the whole
+//!     from different customers (v1 FIREs under both assignments, see
+//!     Results). Transit [L,U] is read as the whole
 //!     producer-to-consumer trip through the broker.
 //!   * The listing's buffer code is not copied. Listing 4.1 lines 40-44
 //!     (and both local models) shift the topic buffer using `size`
 //!     instead of `cnt`, so the head slot is never overwritten after a
 //!     consume: with 2 queued messages the first is delivered twice and
 //!     the second is lost. This contradicts the paper's own "exactly-once"
-//!     and "first-in-first-out" statements; we implement the stated
-//!     intent (every order delivered once, in order).
+//!     and "first-in-first-out" statements. Of that stated intent the
+//!     channels here keep "at most once" and "in order"; whether an order
+//!     arrives at all is the checker's semantics (see the last item).
 //!   * ShippingService is not a thread. Its arrangeDelivery /
 //!     shippingIsScheduled round trip is a single self-addressed
 //!     ShippingScheduled message sent with send_msg_timed over
 //!     [2L, 2U + sd] (outbound hop, the desk's read slack sd, return
 //!     hop; the service's own read slack is added by the checker at the
 //!     read). The service stays busy until it reads it, as in Listing 4.3
-//!     where getMessage follows shippingIsScheduled. In untimed mode it is
-//!     an ordinary self-message (send_msg_timed is inert by library
-//!     design), so both modes verify the same program. Real shipping
-//!     services take time to book a delivery; this keeps that cost.
+//!     where getMessage follows shippingIsScheduled. Like every send it
+//!     may be lost; a lost self-message stands for a lost hop of that
+//!     round trip. In untimed mode it is an ordinary self-message
+//!     (send_msg_timed is inert by library design), so both modes verify
+//!     the same program. Real shipping services take time to book a
+//!     delivery; this keeps that cost.
 //!   * Browsing without buying (`buying = ?(true,false)` then
 //!     `self.browse()`) is omitted: every round places an order, and the
 //!     infinite browse loop is bounded by `--rounds R`. A non-buying
@@ -168,11 +197,11 @@
 //!     (default log.retention.hours = 168); TraceForge makes a message
 //!     unreadable sd after it arrives. In configurations where an order
 //!     can wait for a busy Kafka service (`--order-services 1`,
-//!     `--assign any`, or more customers than services), a small sd
-//!     silently discards real executions as blocked (measured below: at
-//!     L = U = 1, execs = 0 at sd = 5). Raise `--sd-ratio` until timed execs match
-//!     what the timing allows; the binary prints a NOTE in these
-//!     configurations.
+//!     `--assign any`, or more customers than services), an order that
+//!     waits longer than sd expires unread. That is a lost message like
+//!     any other: the shopper who sent it gets no answer. A larger
+//!     `--sd-ratio` keeps queued orders readable for longer; the binary
+//!     prints a NOTE in these configurations.
 //!   * Optional `--deadline-ratio`: a checkout request timeout at the
 //!     customer, a bounded reading of the local .property files'
 //!     untimed formula G(!c1Buying || F(!c1Buying)). It is not in the
@@ -181,25 +210,50 @@
 //!   * Not modelled, because neither the paper nor the models have them:
 //!     reservation expiry (v2 takes the items immediately, there is no
 //!     reservation), consumer rebalancing or redelivery timers,
-//!     at-least-once duplicates, crashes, message loss.
+//!     at-least-once duplicates, crashes.
+//!   * Message loss is not in the paper, and it IS in this model. Rebeca's
+//!     mailboxes and the paper's broker lose nothing. Under the checker's
+//!     semantics every send may be lost, with no budget, in both modes,
+//!     and in timed mode a message that is not read within sd of its
+//!     arrival expires, which for the shop is the same thing. The file
+//!     adds nothing to that and removes nothing from it: no scripted
+//!     loss, no loss budget, no filter (see No harness). What it does to
+//!     each property is stated under Properties checked.
 //!
-//! ## Timeout-validation assumptions (verification harness, NOT the protocol)
+//! ## No harness (since 2026-10-13)
 //!
-//! Only relevant with `--deadline-ratio`; without it the model has no
-//! finite wait and no timeout branch at all. The timeout branch
-//! (rf = None) of a finite-wait receive is by design always explorable,
-//! in either mode: it only means "the reply had not arrived by the
-//! deadline IN THIS BRANCH". An assertion placed directly on it would
-//! fire at any parameters. assume_reply_was_late therefore follows the
-//! timeout with a BLOCKING timed receive for the very reply the customer
-//! was waiting for (the customer has exactly one open order, so the next
-//! message from any service is that reply). The read is feasible exactly
-//! when the reply could genuinely be read at or after the deadline, so
-//! spurious timeouts become blocked (discarded) executions instead of
-//! false counterexamples. A real storefront does not re-read a reply
-//! after giving up; this is checker scaffolding kept out of the protocol
-//! logic. Costs: deadline holds report blocked > 0 by design, and an
-//! untimed checker still FIREs at every deadline (it cannot bound time).
+//! The file contains the protocol and nothing else: every message is an
+//! order, a stock request or an answer of the listings, and no code
+//! filters executions. Until 2026-10-13 it carried three pieces of
+//! verification harness:
+//!
+//!   * Init messages (OsMsg::Init, CustMsg::Init), by which main told
+//!     every thread the ids it needed. Ids now travel through the spawn
+//!     closures. Like every send an Init could be lost, and its thread
+//!     then never started.
+//!   * Done messages (OsMsg::Done, InvMsg::Done), by which a customer
+//!     released its service(s) after its R orders and a service released
+//!     the inventory, so that the reactive threads terminated and main
+//!     could join them. A lost Done left a service waiting for ever, and
+//!     the execution blocked although no shopper was waiting for
+//!     anything. The services and the inventory are now daemon threads
+//!     that serve for ever, and the run is bounded by each customer's own
+//!     count of R orders.
+//!   * The timeout validation read (assume_reply_was_late). After its
+//!     deadline the customer made a BLOCKING read of the very Reply it
+//!     had been waiting for, so that a timeout counted only if that
+//!     Reply was eventually read. The timing of a timeout is judged by
+//!     the checker itself: a timeout branch is a real execution exactly
+//!     where no matching message could have arrived during the whole
+//!     wait, judged when the execution is complete. What the extra read
+//!     still filtered out was every execution in which the Reply, or any
+//!     message before it, was LOST or expired unread: such a Reply is
+//!     never read, so the read waited for ever and the execution was
+//!     discarded as blocked. Under the model's semantics every send may
+//!     be lost, and a shopper without an answer at the deadline is late
+//!     whether the answer was slow or lost. The read is gone, the
+//!     assertion sits directly on the timeout branch, and the boundaries
+//!     that depended on the read are withdrawn (see Results).
 //!
 //! ## Properties checked
 //!
@@ -207,31 +261,38 @@
 //!       stock[p] >= 0 for every product p. Checked at the inventory
 //!       right after every decrement with traceforge::assert. Stock is
 //!       local state of one thread, so the check needs no clock and no
-//!       global observer.
-//!   Bounded response (optional, deviation above): a customer's Reply is
-//!       read strictly before D has passed since it sent its Order (a
-//!       reply that arrives exactly at the deadline may lose to the
-//!       timeout, so it counts as late), checked with the
-//!       timeout-validation idiom.
+//!       global observer. A lost message takes an order away or stops a
+//!       service; it never adds a decrement, so loss cannot cause an
+//!       oversell.
+//!   Bounded response (optional, deviation above): a customer reads the
+//!       Reply to an order before D has passed since it sent the Order.
+//!       The customer waits Finite(D) for the Reply; on the timeout
+//!       branch it counts the miss and asserts false, there and then,
+//!       and stops ordering. The checker admits that branch only where no
+//!       Reply could have arrived during the whole wait (a Reply that
+//!       arrives exactly at the deadline may be read or missed, both are
+//!       explored). A Reply that never comes, because it or any message
+//!       before it was lost or expired, is a late Reply: no condition
+//!       exempts it.
 //!   Deadlock freedom (paper: "no deadlock"): without a deadline every
-//!       receive is blocking, so blocked > 0 in UNTIMED mode is a genuine
-//!       deadlock: the binary prints a DEADLOCK line and exits 3 (distinct
-//!       from a hold's 0 and a violation's 101). This is enforced only in
-//!       untimed runs without a deadline. In timed mode blocked > 0 is
-//!       expected even without a deadline: TraceForge's timed receive may
-//!       take a message that arrived later than another unread matching
-//!       one, and the skipped message is then dropped (the engine's
-//!       skip-means-evict rule), so that execution ends blocked; with
-//!       queueing, sd evictions add more (see deviations). None of these
-//!       is a behaviour of the paper's exactly-once broker. What counts
-//!       is that timed mode keeps the completed executions (execs) the
-//!       timing allows.
+//!       receive is blocking, as in the listings. A shopper whose Order,
+//!       Reply or any message in between is lost waits for ever, and the
+//!       execution ends blocked (the services and the inventory are
+//!       daemons, their waiting never counts). So blocked > 0 without a
+//!       deadline and without a violation is a deadlock: the binary
+//!       prints a DEADLOCK line and exits 3 (distinct from a hold's 0 and
+//!       a violation's 101), by the same rule in both modes. The paper's
+//!       claim is about Rebeca mailboxes, which lose nothing. Under
+//!       semantics that may lose any message, shoppers and services that
+//!       wait without a timeout cannot be deadlock free, and the DEADLOCK
+//!       verdict says exactly that.
 //!
 //! ## Evidence counters and vacuity warnings
 //!
 //! Static counters, reset before each verify, accumulated over all
 //! explored executions (revisited prefixes may re-count: treat them as
-//! zero/nonzero evidence):
+//! zero/nonzero evidence). They are observation only: each is raised at
+//! the site where its event happens, and no protocol decision reads one.
 //!
 //!   accepted / rejected   Status replies with available = true / false.
 //!                         rejected > 0 proves stock exhaustion was
@@ -239,7 +300,8 @@
 //!   overlap               the inventory handled a Check while another
 //!                         order was open at some service (a global
 //!                         in-flight count, evidence only, never read by
-//!                         protocol logic).
+//!                         protocol logic; an order whose service is
+//!                         stuck behind a lost message stays open).
 //!   race_window           (v1, direct) the inventory answered a Check
 //!                         while another order of the same product had
 //!                         been approved but not yet taken off the count:
@@ -248,9 +310,22 @@
 //!   contended_reject      a Check was rejected while another order was
 //!                         open: in v2 this is the would-be oversell that
 //!                         the atomic step turned into a refusal.
-//!   oversold              a count went below zero (counted before the
-//!                         assert, so --keep-going reports how often).
-//!   in_time / late        deadline replies read in time / validated late.
+//!   oversold              a count went below zero (counted just before
+//!                         the assert, so --keep-going reports how often).
+//!   in_time / late        Replies read before the deadline / deadlines
+//!                         that passed without a Reply, late or lost
+//!                         (counted just before the assert, one per
+//!                         shopper).
+//!
+//! Where --keep-going files a violating execution. The stock assertion
+//! stops the inventory, so that execution counts as blocked. A shopper
+//! that gives up at its deadline fails its assertion and ends its thread,
+//! so that execution counts under execs when nothing else blocks it
+//! (blocked = 0 in every deadline cell measured). Either way the tool
+//! prints one line naming the failing task per violating execution
+//! (task-N in spawn order: 1 the inventory, then the services, then the
+//! customers). That line count is the number of violating executions;
+//! oversold and late count events.
 //!
 //! The binary prints a WARNING when a run cannot count as a hold:
 //! execs = 0; rejected = 0 (stock never ran out); overlap = 0 with two or
@@ -259,13 +334,16 @@
 //! with in_time = 0. The rejected, overlap and contended_reject warnings
 //! are evidence for the stock property only, so a deadline run skips them
 //! (its cells use a large stock on purpose, so no order is ever rejected)
-//! and prints a NOTE instead: a deadline verdict is judged by execs > 0,
-//! in_time > 0 and late = 0. It prints a NOTE for a single Kafka service
-//! (overlap is 0 by construction) and for timed runs where orders can
-//! queue (sd acts as retention, compare execs with baseline); for
-//! blocked > 0 without a deadline it prints a NOTE in timed mode and a
-//! DEADLOCK line (exit 3) in untimed mode. With --keep-going a VIOLATIONS
-//! line replaces the hold warnings when oversold > 0 or late > 0.
+//! and prints a NOTE instead: a deadline hold would be judged by
+//! execs > 0, in_time > 0 and late = 0. No deadline run gets that far
+//! while every send may be lost (late is never 0); the two deadline
+//! guards stay so that an exit 0 could never be read as a hold. It prints
+//! a NOTE for a single Kafka service (overlap is 0 by construction) and,
+//! in timed mode, where orders can queue (an order that outlives sd
+//! expires, which is a lost message). For blocked > 0 without a deadline
+//! and without a violation it prints a DEADLOCK line and exits 3, in both
+//! modes. With --keep-going a VIOLATIONS line replaces the hold warnings
+//! when oversold > 0 or late > 0.
 //!
 //! ## CLI parameters (ratios are over U, like swim_timed)
 //!
@@ -296,110 +374,233 @@
 //!                                   deadline, blocking reply wait (default)
 //!   --keep-going                    explore past a violation, report counts
 //!
-//! Exit codes: 0 = no violation over the explored state space; 101 = a
-//! property violation (stock below zero, or a late reply); 2 = CLI misuse
-//! (including a negative or non-finite ratio), so exit-code-based sweep
-//! harnesses cannot mistake a typo for a FIRE; 3 = a genuine deadlock
-//! (blocked > 0 in an untimed run without a deadline), so a deadlock is
-//! never recorded as a hold.
+//! Exit codes: 0 = no violation and no deadlock over the explored state
+//! space; 101 = a property violation (stock below zero, or a deadline
+//! that passed without a Reply); 2 = CLI misuse (including a negative or
+//! non-finite ratio), so exit-code-based sweep harnesses cannot mistake a
+//! typo for a FIRE; 3 = a deadlock (blocked > 0 in a run without a
+//! deadline and without a violation, in either mode: a shopper waits for
+//! ever), so a deadlock is never recorded as a hold. With --keep-going a
+//! violation is reported by the VIOLATIONS line and the exit code is 0.
 //!
-//! ## Expected verdicts (matrix-verified)
+//! ## Results (2026-10-13, re-measured after the first-arrival ruling)
 //!
-//! Every line below was run (single-threaded, `timeout 120`); none is a
-//! prediction. "execs a = b" compares the two modes or two runs named.
-//! Default cell = C=2 R=2 S=5 P=1 Q=2 fixed assignment.
+//! Every number below was measured (one worker, `timeout 300`, on a
+//! machine shared with other runs); none is a prediction and none is
+//! carried over from the harness version. "old" is that version, HEAD
+//! 0cbe2c7, on the same cell. All new numbers are of this file on the
+//! engine as it stands after the ruling of 2026-10-13 on timed receives:
+//! a receive that reads a message reads the one that ARRIVED first among
+//! the matching messages pending at it (a tie leaves both orders), and
+//! only a message already discarded when the wait began (its sd had run
+//! out) is passed over. Baseline mode has no clock and is not touched by
+//! the rule. Before the ruling the same code had more timed executions,
+//! because a waiting receive could take a later arrival while an earlier
+//! one expired unread (33,720 blocked instead of 27,964 in the v1 cell,
+//! 60 executions instead of 52 for v2 at D >= 7); no verdict and no
+//! baseline count differs. A cell is written as the flags that follow
+//! `retail_saga_timed --mode M`. The verdict of a cell is the exit code
+//! of the run WITHOUT --keep-going: 101 = violation (in timed mode with a
+//! certified witness timeline), 3 = deadlock, 0 = hold. The counts are
+//! from the same cell WITH --keep-going. Default cell: C=2 R=2 S=5 P=1
+//! Q=2, N=2 (1 for direct), fixed assignment, L=0 U=1 sd=0. The engine
+//! reported timeline_impossible = 0 in every run that finished
+//! (TF_PRINT_STATS=1), so the counters count events of real executions
+//! only.
 //!
-//! SafeStockLevel (the paper's property):
+//! Without a deadline (`--variant V`; the last cell adds
+//! `--order-services 1`). Counts are execs / blocked / violating
+//! executions (the tool's failing-task lines):
 //!
-//!   v1, 2 services: FIRE (exit 101) in BOTH modes, at every timing
-//!       tried: baseline at the minimal cell (R=1 S=1 Q=1), the default
-//!       cell, P=2, and C=3 R=1 S=3; timed at the minimal cell (L=0 U=1
-//!       sd=0; L=U=2) and the default cell at (U,L,sd) = (1,0,0),
-//!       (1,1,0), (2,0,1), (2,2,0), (2,1,1), and P=2. Every counter-
-//!       example read is the paper's race: the inventory answers both
-//!       services' Checks with available = true before either Confirm
-//!       (default cell: 1 + 1 leaves 3, then two concurrent orders of 2
-//!       both pass 3 >= 2 and the count ends at -1); the timed witness
-//!       at L=U=2 reads both Checks at 4 and both Confirms at 8.
-//!       --keep-going, minimal cell: execs 6 and oversold 8 in both modes.
-//!       --assign any, minimal cell: FIRE baseline and timed (L=0, and
-//!       L=U=1), witness with the two customers on different services.
-//!   v1, 2 services, R=1 S=5 (total demand 4 <= 5): HOLD, execs 80 in
-//!       both modes, race_window > 0 but rejected = 0 (WARNING printed):
-//!       a control showing the race window alone is not a violation.
-//!   1 service (before auto-scaling), v1 and v2: HOLD in both modes, as
-//!       in Table 1's 1O rows. Default cell execs 320 baseline = 320 timed
-//!       (L=0 U=1 sd=0), rejected > 0, overlap = 0 by construction; v1
-//!       P=2: 5120 = 5120 (timed 26 s); v1 C=3 R=1 S=3: 720 = 720. Orders
-//!       queue here, so sd matters in timed mode: v1 default cell at
-//!       L=U=1 gives execs 0 at sd in {0, 4, 5} (vacuous, WARNING), 164 at
-//!       sd=6, 192 at sd in {7, 8, 10, 12}, 320 = baseline at sd in {20, 40}.
-//!   v2, 2 services: HOLD in both modes at every cell tried, with
-//!       rejected, overlap and contended_reject all > 0:
-//!         minimal cell      baseline execs 6 (contended 3), timed 6 (6)
-//!         default cell      baseline 320 (rejected 240, overlap 648,
-//!                           contended 57); timed 320 at (U,L,sd) =
-//!                           (1,0,0) and (2,0,1); 88 at L=U in {1, 2};
-//!                           192 at (2,1,1); contended >= 51 in each
-//!         P=2               5120 in both modes (timed 14.6 s)
-//!         C=3 R=1 S=3       480 in both modes
-//!         --assign any      minimal cell baseline 96; timed L=0: 96;
-//!                           L=U=1: 8 at sd=0, 32 at sd in {1, 2}, 64 at
-//!                           sd=4, 96 at sd in {6, 20} (queueing NOTE)
-//!   direct (Section 2, 1 reactive service, 2 customers): FIRE in BOTH
-//!       modes at the default cell and the minimal cell, and in baseline
-//!       at P=2. Witness (timed, L=1 U=2): the single service forwards
-//!       both customers' Checks before either Confirm, the same race
-//!       inside one service. Control R=1 S=5: HOLD, execs 296 in both
-//!       modes. --keep-going baseline default cell: execs 42498, oversold
-//!       542. See the note on Table 1 below.
+//!   cell     mode      exit old/new  new counts            old counts
+//!   v1       timed     101 / 101     668/27,964/1,464      2,340/67,930/2,496
+//!   v1       baseline  101 / 101     668/27,964/1,464      2,340/54,478/2,496
+//!   v2       timed       0 / 3       96/3,128/0            320/8,444/0
+//!   v2       baseline    3 / 3       96/3,128/0            320/6,854/0
+//!   direct   timed     101 / 101     11,194/182,450/2,174  42,498/522,552/2,704
+//!   direct   baseline  101 / 101     11,194/182,450/2,174  42,498/384,734/2,704
+//!   v2, N=1  timed       0 / 3       96/2,212/0            320/4,762/0
+//!   v2, N=1  baseline    3 / 3       96/1,980/0            320/3,970/0
 //!
-//!   No timing boundary exists for SafeStockLevel: nothing in the
-//!   program separates two services' Checks in time, so the race is
-//!   realizable at every L, U, sd, including the lockstep L = U.
+//! (The old direct cell in timed mode with --keep-going did not finish in
+//! 300 s; its counts above are from a run with a limit of 600 s, which
+//! took 389 s, and another took 411 s.) Wall time of the --keep-going
+//! runs, new against old, two runs each, taken one after the other on a
+//! machine with a load average of 13 to 21 on 16 cores (the absolute
+//! times are inflated, so only the ratios carry): v1 timed 32 to 39 s
+//! against 72 to 75 s, v1 baseline 8 to 10 s against 22 s, direct
+//! baseline 48 to 61 s against 121 to 127 s, v2 timed 3.0 to 3.2 s
+//! against 7.1 to 7.6 s, direct timed 239 to 280 s against 389 and 411 s
+//! (a limit of 300 s is tight there). The ruling costs a little in timed
+//! mode: the same code before it took 32 to 34 s (v1 timed), 2.6 to 2.7 s
+//! (v2 timed) and 168 to 205 s (direct timed) in the same series.
 //!
-//! Deadlock freedom: every untimed hold above without a deadline has
-//! blocked = 0 (v1 and v2 with 1 service at the default cell; v1 with
-//! 1 service at P=2 and at C=3 R=1 S=3; v2 with 2 services at the minimal and default cells, P=2,
-//! C=3 R=1 S=3 and --assign any; the v1 and direct R=1 S=5 controls), so
-//! none prints DEADLOCK and all exit 0.
+//! SafeStockLevel keeps its verdicts. v1 and direct FIRE in both modes;
+//! v2 never oversells (oversold = 0 over all its executions, with
+//! rejected, overlap and contended_reject all > 0, so the atomic step was
+//! exercised under contention). Certified witness, v1 timed: both
+//! shoppers first buy 1 (5 becomes 3) and then order 2 each; the
+//! inventory answers the first service's Check (3 >= 2: yes) and the
+//! second service's Check (3 >= 2: yes) before either Confirm, takes 2
+//! (1 left) and takes 2 again: -1. Every event of the witness is at
+//! instant 0, which L = 0 allows, and no message of that execution is
+//! lost. The direct witness is the same race inside the one reactive
+//! service. The race needs no loss: a hand enumeration of the executions
+//! of the v1 cell in which no send is dropped gives 668 that finish (the
+//! engine's 668) and 368 that oversell, so 368 of the 1,464 violating
+//! executions lose no message, in both modes; in 24 of them the other
+//! order's Check or Confirm is still pending at the stopped inventory.
+//! (Printed graphs of a copy of this file built with
+//! Config::with_verbose(2) before the ruling, which leaves this cell's
+//! counts unchanged, gave the same 344 + 24 split.)
 //!
-//! Bounded response (--deadline-ratio; S=20 so no order is rejected or
-//! oversold; fixed assignment, 2 services, direct with 1 service):
+//! Also measured, in both modes unless noted. The minimal cell `--variant
+//! v1 --rounds 1 --stock 1 --max-qty 1` FIREs (16 violating executions of
+//! 108, in both modes), also with `--assign any` (witness with the two
+//! customers on different services), and in timed mode at L = U = 1
+//! (`--l-ratio 1`), at L = U = 2 (`--u 2 --l-ratio 1`: both Checks read
+//! at 4, both Confirms at 8) and at U = 2, L = 1, sd = 1 (`--u 2
+//! --l-ratio 0.5 --sd-ratio 0.5`). Nothing in the program separates the
+//! two services' Checks in time, so this property has no timing boundary.
+//! The paper's two products (`--products 2`) FIRE for v1 and for direct,
+//! and so do 3 customers (`--customers 3`).
+//! Controls in which the stock property holds (oversold = 0) and the run
+//! exits 3 for the deadlock: `--variant v1 --rounds 1` (demand at most 4
+//! of 5: race_window > 0 but rejected = 0, WARNING printed), `--variant
+//! v1 --order-services 1` (overlap = 0 by construction) and the minimal
+//! cell with `--variant v2`.
 //!
-//!   baseline: FIRE at every deadline (tried v2, D=50): an untimed
-//!       checker cannot bound response time.
-//!   timed v1:     FIRE iff D <= 8(U + sd), HOLD from 8(U + sd) + 1
-//!   timed v2:     FIRE iff D <= 6(U + sd), HOLD from 6(U + sd) + 1
-//!   timed direct: FIRE iff D <= 8(U + sd), HOLD from 8(U + sd) + 1
+//! The complete executions are now the protocol's own. v2: 96 = 16
+//! choices of amounts x 6 orders in which the inventory can take the two
+//! Checks of each of the two services. The old 320 = 16 x 20 also ordered
+//! the two services' Done messages at the inventory.
 //!
-//!   The count is the hops of an accepted order, each at most U + sd:
-//!   Order, Check, Status, [Confirm, Confirmed in v1 and direct], the two
-//!   shipping hops, Reply. So the atomic fix also shortens the worst
-//!   response by 2(U + sd). The FIRE at D equal to the worst response
-//!   shows that a reply read exactly at the deadline counts as late (see
-//!   Properties checked). Both sides were run, and every FIRE was a
-//!   certified timed counterexample (the witness read in full, v2 at U=1
-//!   D=6, has the Order read at 1, Check at 2, Status at 3, the shipping
-//!   message at 5 and the late Reply read at 6, every hop at its bound):
-//!     v1, v2 at R=1: (U,sd,L) = (1,0,0), (1,1,0), (2,0,0), (2,1,0),
-//!         (1,0,1), (2,0,2), (2,0,1), (2,1,1), (3,2,1)
-//!     v1, v2 at R=2: (1,0,0), (2,1,0), (2,0,2); v2 also (2,1,1)
-//!     direct at R=1: (1,0,0), (2,1,1)
-//!   The boundary is independent of L (the timer starts at the
-//!   customer's own Order send and L never raises an upper bound) and of
-//!   R (with fixed assignment no order waits for a busy service). Holds
-//!   keep every completed execution of the same cell without a deadline:
-//!   execs 4032 = 4032 (v1 R=2), 320 = 320 (v2 R=2), 64 = 64 (v1 R=1,
-//!   L=1 U=2 sd=1), 128 = 128 (v2 R=2, L=U=2), 296 = 296 and 152 = 152
-//!   (direct R=1 at (1,0,0) and (2,1,1)); in_time > 0 and late = 0 on
-//!   every hold, blocked > 0 by design. Every deadline hold prints no
-//!   WARNING and one NOTE saying the stock-race evidence checks are
-//!   skipped (S=20 rules out rejections on purpose). Not measured:
-//!   deadlines where orders queue (1 service, --assign any, C > N).
+//! Deadlock. Every cell without a deadline that does not FIRE exits 3, in
+//! both modes. The old version exited 3 in baseline (its Init and Done
+//! messages could be lost as well) and 0 with a NOTE in timed mode. A
+//! blocked execution has no witness printout, so the evidence is a hand
+//! enumeration (every send delivered or dropped, the inventory taking
+//! the two services' messages in either order): for the v2 cell it gives
+//! 96 complete and 3,128 blocked executions, each blocked one with a
+//! dropped send, which is what both modes report. No order waits for a
+//! busy service in this cell, and a waiting receiver takes the earliest
+//! arrival, so nothing expires unread (before the ruling timed mode had
+//! 480 more blocked executions, in which a Check reached the inventory
+//! and expired unread because the inventory took the other service's
+//! Check). Where an order can wait for a busy service, timed mode has
+//! blocked executions that baseline has not: in the one-service cell
+//! 2,212 against 1,980, the 232 more being Orders that were delivered and
+//! expired unread while the service was busy (printed graphs of a copy of
+//! this file built with Config::with_verbose(2) before the ruling, which
+//! leaves this cell's counts unchanged). Hand count, `--customers 1
+//! --rounds 1 --order-services 1`: v2 gives 2 complete and 10 blocked
+//! executions, v1 gives 2 and 14, in both modes: 2 amounts, times one
+//! blocked execution for each of the 5 (v2) or 7 (v1) messages of an
+//! accepted order as the first one lost. The old version gave 20 and 24
+//! blocked in baseline: its harness added 5 per amount (3 ways to lose an
+//! Init, and the 2 Dones).
 //!
-//! Wall time (release build, one core): default v1 timed FIRE 0.4 s,
-//! default v2 timed hold 0.9 s, v1 R=2 deadline hold 27 s.
+//! With a deadline (`--variant V --rounds 1 --stock 20 --max-qty 1
+//! --deadline-ratio D`; S = 20 so that no order is rejected or oversold).
+//! New counts are execs / violating executions, and blocked = 0 in every
+//! new run (see Evidence counters); old counts are execs / blocked /
+//! violating. Baseline was run at D = 6, 7, 8, 9 and 30 and gave the same
+//! counts at each, as it must without a clock:
+//!
+//!   cell        mode      exit old/new  new counts  old counts
+//!   v2 D=6      timed     101 / 101     74 / 72     6 / 285 / 46
+//!   v2 D=7      timed       0 / 101     52 / 50     6 / 239 / 0
+//!   v2 D=30     timed       0 / 101     52 / 50     6 / 239 / 0
+//!   v2 6,7,30   baseline  101 / 101     74 / 72     6 / 228 / 40
+//!   v1 D=8      timed     101 / 101     236 / 230   20 / 693 / 106
+//!   v1 D=9      timed       0 / 101     180 / 174   20 / 587 / 0
+//!   v1 D=30     timed       0 / 101     180 / 174   20 / 587 / 0
+//!   v1 8,9,30   baseline  101 / 101     250 / 244   20 / 576 / 110
+//!
+//! Bounded response is VIOLATED at every deadline, in both modes: one
+//! lost message is enough. Certified witness, v2 timed, D = 30: a shopper
+//! sends its Order at 0; the order is checked, approved and shipped, and
+//! the service's Reply is lost on the way (the send is marked dropped, as
+//! is the other shopper's Reply); nothing can reach the shopper in
+//! [0, 30), its wait runs out at 30 and the assertion fails at 30. The
+//! old version discarded this execution: its validation read waited for
+//! ever for the lost Reply. The same holds for v1 and direct at D = 9 and
+//! 30. At a D no larger than the sum of the hop bounds (6 for v2, 8 for
+//! v1 and direct) the certified witness is instead the late Reply of the
+//! next paragraph.
+//!
+//! What the executions are (hand counts, which the measured counts
+//! confirm; v2 cell first). Each order ends in one of six ways: nothing
+//! lost, or its first, second, ..., fifth send lost. Two orders give 36
+//! loss patterns, and a pattern in which both Checks reach the inventory
+//! is run twice, once for each order in which the inventory can take
+//! them: 36 + 16 = 52 executions, 2 of which (nothing lost, both Replies
+//! read) do not violate. That is the timed count at D = 7 and at D = 30,
+//! and each of its 50 violating executions has a message lost in transit:
+//! a Reply that is sent and delivered arrives within the 6 time units of
+//! a v2 order, so no shopper can miss it at D >= 7. Baseline has 22 more
+//! (74): a shopper takes its timeout although its Reply is on its way, 16
+//! of them with a message of the other order lost as well, which only a
+//! checker without a clock admits. At D = 6, the sum of the six hop
+//! bounds of a v2 order at U = 1, timed mode has all 74: a Reply that
+//! arrives exactly at the deadline may be missed (the certified witness
+//! of that cell is one of them: no send is dropped, both Replies are
+//! sent, and each shopper's wait still ends at 6 without one).
+//!
+//! v1 has the same shape with eight outcomes per order: 2 put no message
+//! of the order at the inventory, 2 put one (its Check) and 4 put two
+//! (Check and Confirm), and two orders interleave there in C(i + j, i)
+//! ways. That gives 180 executions, 174 violating, at D = 9 and at D = 30,
+//! each of the 174 with a message lost in transit. Baseline has 250 (244):
+//! the same 174 and 70 in which a shopper takes its timeout with its Reply
+//! on its way. Timed mode has all 250 at D = 6 and 236 (230) at D = 7 and
+//! at D = 8: the 180 and 56 of the 70. The other 14 have the inventory
+//! take all the messages of an order whose Reply is on its way (and
+//! missed) before the other order's Check, which cannot happen when that
+//! Reply must arrive at or after D = 7 or 8 (its Confirm then arrives
+//! after instant 2, and every Check has arrived by 2). So the clock still
+//! tells a slow answer from an impossible one; it no longer decides the
+//! verdict.
+//!
+//! Also measured: the same FIRE (exit 101, certified) for v2 at U = 2, L
+//! = 1, sd = 1 and D = 30 (`--u 2 --l-ratio 0.5 --sd-ratio 0.5
+//! --deadline-ratio 15`; old: hold), for two rounds (`--variant v2
+//! --stock 20 --deadline-ratio 30`: 3,432 violating executions of 3,528
+//! timed, 5,040 of 5,136 baseline; old: hold in timed mode), and for
+//! `--variant direct` at D = 8, 9 and 30 in timed mode (old: FIRE, hold,
+//! hold; 379, 311 and 311 violating executions of 397, 329 and 329, and
+//! 479 of 497 in baseline at each D).
+//!
+//! sd and queued orders (`--variant v2 --order-services 1 --l-ratio 1
+//! --sd-ratio SD`, timed). At L = U = 1 both first Orders reach the one
+//! service at instant 1, and the one not taken waits while the other
+//! order is served, which takes at least 4 (a Check hop, a Status hop and
+//! the shipping round trip of 2L = 2). Complete executions: 0 at sd in
+//! {0, 1, 2, 3} (every run blocks: a message is lost, or the waiting
+//! Order expires before the service is free; WARNING and DEADLOCK), 64 at
+//! sd in {4, 5, 6, 20}, against 96 in baseline and in timed mode at L = 0.
+//! 64 = 16 choices of amounts x 4 of the 6 orders in which the service
+//! can take the four Orders: the two in which one shopper is served twice
+//! before the other is served once are gone, because the waiting Order
+//! arrived before that shopper's second one and is still readable
+//! (sd >= 4), so the service must take it first.
+//!
+//! WITHDRAWN. Everything this header reported before 2026-10-13 was
+//! measured with the harness and is no longer claimed. (1) The
+//! bounded-response boundaries "timed FIRE iff D <= 8(U + sd)" for v1 and
+//! direct and "iff D <= 6(U + sd)" for v2, with their corollaries (the
+//! atomic fix shortens the worst response by 2(U + sd); the boundary does
+//! not depend on L or R; a hold keeps every completed execution): they
+//! described the executions the validation read kept, those in which
+//! every message of the order is delivered and read. That sum of hop
+//! bounds is still where the counts above change (the Reply that arrives
+//! exactly at the deadline), but loss fires at every D, so it separates no
+//! verdict. (2) "Deadlock freedom: every untimed hold has blocked = 0": it
+//! predates lossy sends (2026-09-30); the old binary itself exits 3 in
+//! baseline on the v2 cell, and reported the same kind of run as a NOTE in
+//! timed mode. (3) The execution counts and wall times of the old tables:
+//! they counted the orderings of the Done messages and the runs lost to a
+//! dropped Init or Done.
 //!
 //! ## Note on Table 1's "Without Kafka" rows
 //!
@@ -409,15 +610,28 @@
 //! with Afra proves that there is no deadlock in this model and
 //! additionally we verify that the number of available items never falls
 //! below zero (see Sect. 4.3)". Our encoding of Listings 2.1 to 2.5
-//! (`--variant direct`) breaks exactly that claim: it FIREs at the
-//! paper's own values (S=5, Q=2) with a certified counterexample. The
-//! Listing 2.2 OrderService is purely reactive, so it can forward a
-//! second customer's checkAvailability before the first order's
+//! (`--variant direct`) breaks the second half of that claim: it FIREs at
+//! the paper's own values (S=5, Q=2, with one product and with the
+//! paper's two; also with 3 customers, one product) with a certified
+//! counterexample in which no message is lost (read in full on the
+//! one-product cell with 2 customers). The Listing 2.2
+//! OrderService is purely reactive, so it can forward a second
+//! customer's checkAvailability before the first order's
 //! confirmBoughtItem, which is exactly the Kafka 2O race. The authors'
 //! Afra model may differ from the printed listings (for example in queue
 //! size bounds; the local OnlineRetailSystem.rebeca has no .property
 //! file), so this should be checked against their model before calling
-//! the paper wrong.
+//! the paper wrong. The first half, "no deadlock", is a statement about
+//! mailboxes that lose nothing. This model's DEADLOCK verdicts come from
+//! lost messages and say nothing against it: on `--variant direct
+//! --rounds 1` (exit 3 in both modes, 72 complete executions) every
+//! blocked execution has a message lost in transit. A hand enumeration
+//! (every send delivered or dropped, the one reactive service taking its
+//! messages in any order) gives 72 complete and 1,244 blocked executions,
+//! each blocked one with a dropped send, which is what both modes report
+//! (before the first-arrival ruling timed mode reported 1,612, the 368
+//! more being executions in which a delivered message expired unread
+//! behind a later arrival).
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
@@ -437,7 +651,8 @@ static REPLIES_IN_TIME: AtomicUsize = AtomicUsize::new(0);
 static LATE_REPLIES: AtomicUsize = AtomicUsize::new(0);
 
 // Orders currently open at some service (read an Order, not yet sent
-// the Reply). Reset at the start of every execution inside the verify
+// the Reply; an order whose service is stuck behind a lost message stays
+// open). Reset at the start of every execution inside the verify
 // closure. Evidence only: the inventory reads it to bump OVERLAP, and
 // no protocol decision ever depends on it.
 static IN_FLIGHT_ORDERS: AtomicUsize = AtomicUsize::new(0);
@@ -457,12 +672,8 @@ const MAX_ORDER_SERVICES: usize = 4;
 /// Everything an order service receives.
 #[derive(Clone, Debug, PartialEq)]
 enum OsMsg {
-    /// Harness: the inventory's thread id.
-    Init { inventory: ThreadId },
     /// Kafka order topic (Listing 4.2 line 14) or placeOrder (Listing 2.1).
     Order { customer: ThreadId, product: usize, qty: i64 },
-    /// Harness: this customer places no more orders.
-    Done,
     /// availabilityStatus (Listings 2.3 / 4.3 / 4.4).
     Status { customer: ThreadId, available: bool, product: usize, qty: i64 },
     /// confirm (v1 and direct only).
@@ -479,15 +690,11 @@ enum InvMsg {
     Check { from: ThreadId, customer: ThreadId, product: usize, qty: i64 },
     /// confirmBoughtItem (v1 and direct only).
     Confirm { from: ThreadId, customer: ThreadId, product: usize, qty: i64 },
-    /// Harness: this service is finished.
-    Done,
 }
 
 /// Everything a customer receives.
 #[derive(Clone, Debug, PartialEq)]
 enum CustMsg {
-    /// Harness: the order services' thread ids.
-    Init { services: Vec<ThreadId> },
     /// Kafka customer topic (1 or -1 in the listing) / delivered(success).
     Reply { success: bool },
 }
@@ -600,34 +807,11 @@ fn shipping_round_trip(b: Bounds) -> (u64, u64) {
 }
 
 // =====================================================================
-// Timeout-validation assumption (verification harness, NOT the
-// protocol; see the doc header). Only used with --deadline-ratio.
+// Customer (Listings 2.1 and 4.2): an ordinary thread. It places R
+// orders, one at a time, and ends; main joins the customers only.
 // =====================================================================
 
-/// Assume this order's Reply was genuinely late: block until it is
-/// readable at or after the current (post-deadline) local time. Timed
-/// infeasible, so the execution blocks and is discarded, when the Reply
-/// provably arrived inside the deadline. The customer has exactly one
-/// open order, so the next message from any service is that Reply.
-fn assume_reply_was_late(main_tid: ThreadId) {
-    match traceforge::recv_tagged_msg_block_timed::<_, CustMsg>(move |s, _tag| s != main_tid) {
-        CustMsg::Reply { .. } => {}
-        // Unreachable: main sends only Init, services send only Reply.
-        m => panic!("customer: unexpected {m:?} in validation read"),
-    }
-}
-
-// =====================================================================
-// Customer (Listings 2.1 and 4.2)
-// =====================================================================
-
-fn customer(index: usize, main_tid: ThreadId, s: Setup, b: Bounds) {
-    let services = match traceforge::recv_tagged_msg_block_timed::<_, CustMsg>(move |snd, _| {
-        snd == main_tid
-    }) {
-        CustMsg::Init { services } => services,
-        m => panic!("customer: expected Init, got {m:?}"),
-    };
+fn customer(index: usize, services: Vec<ThreadId>, s: Setup, b: Bounds) {
     let me = thread::current().id();
     let n = services.len();
 
@@ -644,68 +828,52 @@ fn customer(index: usize, main_tid: ThreadId, s: Setup, b: Bounds) {
 
         // Wait for the answer before browsing again ("a customer is
         // allowed to continue browsing only after finishing processing
-        // of its previous request").
+        // of its previous request"). Only order services write to a
+        // customer, and only the Reply to its one open order.
         match b.deadline {
             None => {
-                match traceforge::recv_tagged_msg_block_timed::<_, CustMsg>(move |snd, _| {
-                    snd != main_tid
-                }) {
-                    CustMsg::Reply { .. } => {}
-                    m => panic!("customer: expected Reply, got {m:?}"),
+                // The listing's wait, which has no timeout. If the Order,
+                // the Reply or any message in between is lost, this
+                // shopper waits for ever and the execution ends blocked
+                // (the deadlock rule, see warn_if_vacuous).
+                let CustMsg::Reply { .. } = traceforge::recv_msg_block_timed::<CustMsg>();
+            }
+            Some(d) => match traceforge::recv_msg_timed::<CustMsg>(WaitTime::Finite(d)) {
+                Some(CustMsg::Reply { .. }) => {
+                    REPLIES_IN_TIME.fetch_add(1, Ordering::Relaxed);
                 }
-            }
-            Some(d) => {
-                match traceforge::recv_tagged_msg_timed::<_, CustMsg>(
-                    move |snd, _| snd != main_tid,
-                    WaitTime::Finite(d),
-                ) {
-                    Some(CustMsg::Reply { .. }) => {
-                        REPLIES_IN_TIME.fetch_add(1, Ordering::Relaxed);
-                    }
-                    Some(m) => panic!("customer: expected Reply, got {m:?}"),
-                    None => {
-                        // Harness assumption (doc header): keep only
-                        // executions where the reply really was late.
-                        assume_reply_was_late(main_tid);
-                        LATE_REPLIES.fetch_add(1, Ordering::Relaxed);
-                        // Bounded response violated.
-                        traceforge::assert(false);
-                        return;
-                    }
+                None => {
+                    // Bounded response is violated here and now: D has
+                    // passed since the Order and no Reply was read. To the
+                    // shopper a lost Reply (or a lost message anywhere on
+                    // the way) is a late Reply; nothing is re-read.
+                    LATE_REPLIES.fetch_add(1, Ordering::Relaxed);
+                    traceforge::assert(false);
+                    return;
                 }
-            }
-        }
-    }
-
-    // Harness: release the service(s) this customer may have used.
-    match s.assign {
-        Assign::Fixed => traceforge::send_msg(services[index % n], OsMsg::Done),
-        Assign::Any => {
-            for sv in &services {
-                traceforge::send_msg(*sv, OsMsg::Done);
-            }
+            },
         }
     }
 }
 
 // =====================================================================
-// Order service, Kafka variants (Listings 4.3 and 4.4)
+// Order service, Kafka variants (Listings 4.3 and 4.4): a daemon. It
+// serves one order at a time, for ever. Its three inner waits (Status,
+// Confirmed, its own ShippingScheduled) are the listing's: they have no
+// timeout, so a service whose awaited message is lost stays in that
+// order for good and answers nobody any more.
 // =====================================================================
 
 fn read_inventory_reply(inv: ThreadId) -> OsMsg {
     traceforge::recv_tagged_msg_block_timed::<_, OsMsg>(move |snd, _| snd == inv)
 }
 
-fn kafka_order_service(main_tid: ThreadId, variant: Variant, expected_done: usize, b: Bounds) {
-    let inv = match traceforge::recv_tagged_msg_block_timed::<_, OsMsg>(move |snd, _| snd == main_tid) {
-        OsMsg::Init { inventory } => inventory,
-        m => panic!("service: expected Init, got {m:?}"),
-    };
+fn kafka_order_service(inv: ThreadId, variant: Variant, b: Bounds) {
     let me = thread::current().id();
-    let mut done = 0;
 
-    while done < expected_done {
-        // getMessage(ORDER_TOPIC): the next order, or a customer's Done.
+    loop {
+        // getMessage(ORDER_TOPIC): the next order. Only customers write
+        // to the order topic.
         match traceforge::recv_tagged_msg_block_timed::<_, OsMsg>(move |snd, _| {
             snd != inv && snd != me
         }) {
@@ -742,30 +910,23 @@ fn kafka_order_service(main_tid: ThreadId, variant: Variant, expected_done: usiz
                 traceforge::send_msg(customer, CustMsg::Reply { success: available });
                 IN_FLIGHT_ORDERS.fetch_sub(1, Ordering::Relaxed);
             }
-            OsMsg::Done => done += 1,
+            // Unreachable: customers send only Orders.
             m => panic!("service: unexpected {m:?}"),
         }
     }
-    traceforge::send_msg(inv, InvMsg::Done);
 }
 
 // =====================================================================
-// Order service, no broker (Listing 2.2): reacts to each message as it
-// arrives and may have several orders open at once.
+// Order service, no broker (Listing 2.2): a daemon. It reacts to each
+// message as it arrives, for ever, and may have several orders open at
+// once.
 // =====================================================================
 
-fn direct_order_service(main_tid: ThreadId, expected_done: usize, b: Bounds) {
-    let inv = match traceforge::recv_tagged_msg_block_timed::<_, OsMsg>(move |snd, _| snd == main_tid) {
-        OsMsg::Init { inventory } => inventory,
-        m => panic!("service: expected Init, got {m:?}"),
-    };
+fn direct_order_service(inv: ThreadId, b: Bounds) {
     let me = thread::current().id();
-    let mut done = 0;
 
-    // A customer sends Done only after the reply to its last order, so
-    // once every Done is read no order of this service is still open.
-    while done < expected_done {
-        match traceforge::recv_tagged_msg_block_timed::<_, OsMsg>(move |snd, _| snd != main_tid) {
+    loop {
+        match traceforge::recv_msg_block_timed::<OsMsg>() {
             OsMsg::Order { customer, product, qty } => {
                 // placeOrder
                 IN_FLIGHT_ORDERS.fetch_add(1, Ordering::Relaxed);
@@ -790,15 +951,12 @@ fn direct_order_service(main_tid: ThreadId, expected_done: usize, b: Bounds) {
                 traceforge::send_msg(customer, CustMsg::Reply { success: true });
                 IN_FLIGHT_ORDERS.fetch_sub(1, Ordering::Relaxed);
             }
-            OsMsg::Done => done += 1,
-            m => panic!("service: unexpected {m:?}"),
         }
     }
-    traceforge::send_msg(inv, InvMsg::Done);
 }
 
 // =====================================================================
-// Inventory (Listings 2.3 and 4.4)
+// Inventory (Listings 2.3 and 4.4): a daemon, it answers for ever.
 // =====================================================================
 
 /// stockLevel[product] -= qty, followed by the SafeStockLevel check.
@@ -817,9 +975,8 @@ fn inventory(s: Setup) {
     // Evidence only: approvals given (Status true) whose Confirm has not
     // been handled yet, per product. Always 0 in v2.
     let mut approved_not_taken = vec![0usize; s.products];
-    let mut done = 0;
 
-    while done < s.order_services {
+    loop {
         match traceforge::recv_msg_block_timed::<InvMsg>() {
             InvMsg::Check { from, customer, product, qty } => {
                 let others_open = IN_FLIGHT_ORDERS.load(Ordering::Relaxed) >= 2;
@@ -852,7 +1009,6 @@ fn inventory(s: Setup) {
                 take_items(&mut stock, product, qty);
                 traceforge::send_msg(from, OsMsg::Confirmed { customer, product, qty });
             }
-            InvMsg::Done => done += 1,
         }
     }
 }
@@ -869,14 +1025,6 @@ fn build_config(mode: Mode, b: Bounds, keep_going: bool) -> Config {
     match mode {
         Mode::Baseline => builder.build(),
         Mode::Timed => builder.with_timed(b.l, b.u, b.sd).build(),
-    }
-}
-
-/// How many customers can send orders (and hence a Done) to service k.
-fn expected_dones(k: usize, s: Setup) -> usize {
-    match s.assign {
-        Assign::Fixed => (0..s.customers).filter(|c| c % s.order_services == k).count(),
-        Assign::Any => s.customers,
     }
 }
 
@@ -902,36 +1050,28 @@ fn run(mode: Mode, s: Setup, b: Bounds, keep_going: bool) -> (Stats, Duration) {
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
         IN_FLIGHT_ORDERS.store(0, Ordering::Relaxed);
-        let main_tid = thread::current().id();
-        let inv = thread::spawn(move || inventory(s));
-        let inv_id = inv.thread().id();
+        // Thread ids travel through the spawn closures: the inventory
+        // first, then the services (they know the inventory), then the
+        // customers (they know the services). The inventory and the
+        // services are reactive daemons that never end; the customers
+        // end after their R orders, and main joins the customers only.
+        let inv = thread::spawn_daemon(move || inventory(s)).thread().id();
         let mut services = Vec::new();
-        for k in 0..s.order_services {
-            let expected = expected_dones(k, s);
-            services.push(thread::spawn(move || match s.variant {
-                Variant::Direct => direct_order_service(main_tid, expected, b),
-                v => kafka_order_service(main_tid, v, expected, b),
-            }));
+        for _ in 0..s.order_services {
+            let service = thread::spawn_daemon(move || match s.variant {
+                Variant::Direct => direct_order_service(inv, b),
+                v => kafka_order_service(inv, v, b),
+            });
+            services.push(service.thread().id());
         }
         let mut customers = Vec::new();
         for c in 0..s.customers {
-            customers.push(thread::spawn(move || customer(c, main_tid, s, b)));
-        }
-        let service_ids: Vec<ThreadId> = services.iter().map(|h| h.thread().id()).collect();
-        // Send every Init before joining anyone.
-        for id in &service_ids {
-            traceforge::send_msg(*id, OsMsg::Init { inventory: inv_id });
-        }
-        for h in &customers {
-            traceforge::send_msg(h.thread().id(), CustMsg::Init { services: service_ids.clone() });
+            let services = services.clone();
+            customers.push(thread::spawn(move || customer(c, services, s, b)));
         }
         for h in customers {
             let _ = h.join();
         }
-        for h in services {
-            let _ = h.join();
-        }
-        let _ = inv.join();
     });
     (stats, start.elapsed())
 }
@@ -973,15 +1113,20 @@ fn orders_can_queue(s: Setup) -> bool {
 
 /// Vacuity guards (see the doc header). None of the WARNING outcomes
 /// counts as a hold of the property it names. Returns true when the run
-/// is a genuine deadlock (untimed, no deadline, blocked > 0, no
-/// violation); main then exits 3 so a deadlock is never read as a hold.
+/// is a deadlock (no deadline, blocked > 0, no violation; the same rule
+/// in both modes); main then exits 3 so a deadlock is never read as a
+/// hold. `mode` is read only by the note about sd, which exists only in
+/// timed mode.
 fn warn_if_vacuous(label: &str, s: Setup, b: Bounds, mode: Mode, execs: usize, blocked: usize, c: Counts) -> bool {
     // Only reachable with --keep-going: without it a violation exits 101.
     let violated = c.oversold > 0 || c.late > 0;
     if violated {
         println!(
             "VIOLATIONS ({label}, --keep-going): oversold={} late={}: this run is a FIRE, not \
-             a hold; blocked also counts the executions stopped at a violation.",
+             a hold. An execution that oversold is filed under blocked (as is, without a \
+             deadline, one in which a shopper waits for ever for a lost message); one in which \
+             a shopper gave up at its deadline is filed under execs. The violating executions \
+             are the failing-task lines printed above.",
             c.oversold, c.late
         );
     }
@@ -1020,8 +1165,8 @@ fn warn_if_vacuous(label: &str, s: Setup, b: Bounds, mode: Mode, execs: usize, b
         if !can_overlap {
             println!(
                 "NOTE ({label}): one Kafka order service handles one order at a time, so orders \
-                 never overlap at the inventory (overlap = 0 by construction); that is why this \
-                 configuration holds."
+                 never overlap at the inventory (overlap = 0 by construction); that is why the \
+                 stock property holds in this configuration."
             );
         }
         if stock_evidence && s.variant == Variant::V2 && s.order_services >= 2 && c.contended_reject == 0 {
@@ -1039,33 +1184,28 @@ fn warn_if_vacuous(label: &str, s: Setup, b: Bounds, mode: Mode, execs: usize, b
     }
     if mode == Mode::Timed && orders_can_queue(s) {
         println!(
-            "NOTE ({label}): orders can wait here for a busy order service, and timed mode keeps \
-             a waiting message readable only sd past its arrival (this model's broker \
-             retention): a small sd silently discards real executions. Compare execs with \
-             --mode baseline and raise --sd-ratio until they agree."
+            "NOTE ({label}): orders can wait here for a busy order service, and in timed mode a \
+             waiting message stays readable only sd past its arrival (this model's broker \
+             retention). An order that waits longer than sd expires unread: it is a lost \
+             message like any other, and its shopper is left waiting. A larger --sd-ratio \
+             keeps queued orders readable for longer."
         );
     }
     if b.deadline.is_none() && blocked > 0 && !violated {
-        match mode {
-            Mode::Baseline => {
-                println!(
-                    "DEADLOCK ({label}): blocked={blocked} with only blocking receives in \
-                     untimed mode means a genuine deadlock; this run is not a hold (exit 3)."
-                );
-                return true;
-            }
-            Mode::Timed => println!(
-                "NOTE ({label}): blocked={blocked} with no deadline: in timed mode these are \
-                 executions that lose a message (a reader took a later arrival first, which \
-                 drops the earlier one, or a queued order outlived its storage lifetime sd), \
-                 not behaviours of the exactly-once broker; compare execs with baseline."
-            ),
-        }
+        println!(
+            "DEADLOCK ({label}): blocked={blocked} with no deadline and no violation: in each of \
+             these executions a shopper waits for ever for a Reply. Under this model's semantics \
+             one lost message is enough for that (every send may be lost; in timed mode a \
+             message that expires unread is lost too), which is what the paper's 'no deadlock' \
+             excludes for mailboxes that lose nothing. This run is not a hold (exit 3)."
+        );
+        return true;
     }
     false
 }
 
-/// Exit code for a genuine untimed deadlock (see the doc header).
+/// Exit code for a deadlock: a shopper left waiting for ever, in either
+/// mode (see the doc header).
 const EXIT_DEADLOCK: i32 = 3;
 
 // =====================================================================
@@ -1107,10 +1247,10 @@ fn print_compare(s: Setup, b: Bounds, baseline: (Stats, Duration), timed: (Stats
     println!("{:<10} {:>10} {:>10} {:>14?}", "baseline", b_stats.execs, b_stats.block, b_dur);
     println!("{:<10} {:>10} {:>10} {:>14?}", "timed", t_stats.execs, t_stats.block, t_dur);
     println!();
-    // Executions EXPLORED is execs + block: a violating execution is aborted
-    // by its assertion and an evicted one blocks, so both are filed under
-    // `block`. Dividing complete executions alone overstates the reduction
-    // (sensor network defaults: 7702x that way, 215x explored).
+    // Executions EXPLORED is execs + block: an execution that oversold is
+    // stopped at its assertion and one whose shopper waits for a lost
+    // message blocks, so both are filed under `block`. Dividing complete
+    // executions alone overstates the reduction.
     let b_explored = b_stats.execs + b_stats.block;
     let t_explored = t_stats.execs + t_stats.block;
     let exec_ratio = b_explored as f64 / t_explored.max(1) as f64;
@@ -1217,8 +1357,10 @@ fn parse_args() -> Args {
                      Defaults: mode=timed variant=v1 N=2 (1 for direct) assign=fixed C=2 R=2 S=5 P=1 Q=2 U=1 \
                      L/U=0 sd/U=0, no deadline.\n\
                      Exit 0 = no violation over the explored state space; exit 101 = stock went \
-                     below zero (or, with a deadline, a reply was late); exit 2 = CLI misuse; \
-                     exit 3 = genuine deadlock (blocked > 0 in an untimed run without a deadline)."
+                     below zero (or, with a deadline, no reply was read in time: late or lost); \
+                     exit 2 = CLI misuse; exit 3 = deadlock (blocked > 0 without a deadline and \
+                     without a violation, in either mode: a shopper waits for ever for a lost \
+                     message)."
                 );
                 std::process::exit(0);
             }

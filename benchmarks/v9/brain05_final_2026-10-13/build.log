@@ -1,0 +1,191 @@
+build start 2026-10-09 13:57:42
+cargo 1.97.1 (c980f4866 2026-06-30)
+rustc 1.97.1 (8bab26f4f 2026-07-14)
+   Compiling libc v0.2.185
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling unicode-ident v1.0.24
+   Compiling cfg-if v1.0.4
+   Compiling crossbeam-utils v0.8.21
+   Compiling pin-project-lite v0.2.17
+   Compiling futures-sink v0.3.32
+   Compiling futures-core v0.3.32
+   Compiling memchr v2.8.0
+   Compiling rustversion v1.0.22
+   Compiling parking_lot_core v0.9.12
+   Compiling futures-task v0.3.32
+   Compiling smallvec v1.15.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling scopeguard v1.2.0
+   Compiling futures-io v0.3.32
+   Compiling rand_core v0.10.1
+   Compiling slab v0.4.12
+   Compiling shlex v1.3.0
+   Compiling serde_core v1.0.228
+   Compiling getrandom v0.4.2
+   Compiling zmij v1.0.21
+   Compiling autocfg v1.5.0
+   Compiling itoa v1.0.18
+   Compiling radium v0.7.0
+   Compiling rayon-core v1.13.0
+   Compiling log v0.4.29
+   Compiling unicode-segmentation v1.13.2
+   Compiling powerfmt v0.2.0
+   Compiling paste v1.0.15
+   Compiling tap v1.0.1
+   Compiling time-core v0.1.8
+   Compiling cpufeatures v0.3.0
+   Compiling serde_json v1.0.149
+   Compiling num-conv v0.2.1
+   Compiling serde v1.0.228
+   Compiling bytes v1.11.1
+   Compiling equivalent v1.0.2
+   Compiling funty v2.0.0
+   Compiling sdd v3.0.10
+   Compiling num_threads v0.1.7
+   Compiling either v1.15.0
+   Compiling hashbrown v0.17.0
+   Compiling dyn-hash v0.2.2
+   Compiling once_cell v1.21.4
+   Compiling dyn-eq v0.1.3
+   Compiling termcolor v1.4.1
+   Compiling merging-iterator v1.3.0
+   Compiling dyn-clone v1.0.20
+   Compiling exitcode v1.1.2
+   Compiling scoped-tls v1.0.1
+   Compiling lazy_static v1.5.0
+   Compiling futures-channel v0.3.32
+   Compiling cc v1.2.60
+   Compiling lock_api v0.4.14
+   Compiling deranged v0.5.8
+   Compiling wyz v0.5.1
+   Compiling chacha20 v0.10.0
+   Compiling rand_pcg v0.10.2
+   Compiling time-macros v0.2.27
+   Compiling num-traits v0.2.19
+   Compiling scc v2.4.0
+   Compiling convert_case v0.6.0
+   Compiling bitvec v1.0.1
+   Compiling indexmap v2.14.0
+   Compiling crossbeam-epoch v0.9.18
+   Compiling syn v2.0.117
+   Compiling crossbeam-deque v0.8.6
+   Compiling generator v0.7.5
+   Compiling num-integer v0.1.46
+   Compiling errno v0.3.14
+   Compiling socket2 v0.6.3
+   Compiling mio v1.2.0
+   Compiling num_cpus v1.17.0
+   Compiling time v0.3.47
+   Compiling signal-hook-registry v1.4.8
+   Compiling rand v0.10.1
+   Compiling parking_lot v0.12.5
+   Compiling rayon v1.12.0
+   Compiling simplelog v0.12.2
+   Compiling futures-macro v0.3.32
+   Compiling serde_derive v1.0.228
+   Compiling tokio-macros v2.7.0
+   Compiling traceforge-macros v0.1.0 (/local/sramezani/v9/src/traceforge-macros)
+   Compiling serial_test_derive v3.4.0
+   Compiling tokio v1.52.1
+   Compiling futures-util v0.3.32
+   Compiling futures-executor v0.3.32
+   Compiling futures v0.3.32
+   Compiling serial_test v3.4.0
+   Compiling traceforge v0.2.1 (/local/sramezani/v9/src/traceforge)
+warning: field `u` is never read
+  --> traceforge/visualizers/three_pc_visualize.rs:61:17
+   |
+61 | struct Bounds { u: u64, w: u64, delta: u64 }
+   |        ------   ^
+   |        |
+   |        field in this struct
+   |
+   = note: `Bounds` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `compare_n5_r1` is never used
+   --> traceforge/integration_examples/raft_leader_election_r1_compare.rs:368:4
+    |
+368 | fn compare_n5_r1() {
+    |    ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `log_consistency_n5_baseline` is never used
+   --> traceforge/integration_examples/comm_closed_leader_election.rs:349:4
+    |
+349 | fn log_consistency_n5_baseline() {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `log_consistency_n5_timed` is never used
+   --> traceforge/integration_examples/comm_closed_leader_election.rs:358:4
+    |
+358 | fn log_consistency_n5_timed() {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `election_safety_n5_baseline_r1` is never used
+   --> traceforge/integration_examples/raft_leader_election.rs:338:4
+    |
+338 | fn election_safety_n5_baseline_r1() {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `election_safety_n5_timed_r1` is never used
+   --> traceforge/integration_examples/raft_leader_election.rs:344:4
+    |
+344 | fn election_safety_n5_timed_r1() {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: type `PMsg` is more private than the item `AtomicityMsg::PMsg::0`
+   --> traceforge/examples/three_pc_timed.rs:149:11
+    |
+149 | #[monitor(PMsg, CMsg)]
+    |           ^^^^ field `AtomicityMsg::PMsg::0` is reachable at visibility `pub`
+    |
+note: but type `PMsg` is only usable at visibility `pub(crate)`
+   --> traceforge/examples/three_pc_timed.rs:85:1
+    |
+ 85 | enum PMsg {
+    | ^^^^^^^^^
+    = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `CMsg` is more private than the item `AtomicityMsg::CMsg::0`
+   --> traceforge/examples/three_pc_timed.rs:149:17
+    |
+149 | #[monitor(PMsg, CMsg)]
+    |                 ^^^^ field `AtomicityMsg::CMsg::0` is reachable at visibility `pub`
+    |
+note: but type `CMsg` is only usable at visibility `pub(crate)`
+   --> traceforge/examples/three_pc_timed.rs:93:1
+    |
+ 93 | enum CMsg {
+    | ^^^^^^^^^
+
+warning: fields `observe_nothing` and `veto_only` are never read
+   --> traceforge/examples/three_pc_timed.rs:161:5
+    |
+151 | struct Atomicity {
+    |        --------- fields in this struct
+...
+161 |     observe_nothing: bool,
+    |     ^^^^^^^^^^^^^^^
+...
+167 |     veto_only: bool,
+    |     ^^^^^^^^^
+    |
+    = note: `Atomicity` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `traceforge` (example "three_pc_visualize") generated 1 warning
+warning: `traceforge` (example "raft_leader_election_r1_compare") generated 1 warning
+warning: `traceforge` (example "raft_leader_election_tests") generated 2 warnings
+warning: `traceforge` (example "comm_closed_leader_election_tests") generated 2 warnings
+warning: `traceforge` (example "three_pc_timed") generated 3 warnings
+    Finished `release` profile [optimized] target(s) in 15.75s
+cargo exit code: 0
+build end 2026-10-09 13:57:58
+BUILD-DONE

@@ -140,7 +140,6 @@ static COMPLETED_TXNS: AtomicUsize = AtomicUsize::new(0);
 
 const PARTITION: u32 = 0;
 const TAG_CONN_REQ: u32 = 1;
-const TAG_CONN_CLOSE: u32 = 2;
 const TAG_RESP_BASE: u32 = 1000;
 
 fn resp_tag(corr: u32) -> u32 {
@@ -177,13 +176,11 @@ struct Envelope {
 #[derive(Clone, Debug, PartialEq)]
 enum ConnMsg {
     Req(Envelope),
-    Close,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 enum StorageMsg {
     Req(Envelope),
-    Done { total: u32 },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -230,7 +227,6 @@ struct Client {
     conns: Vec<ThreadId>,
     conn: usize,
     corr: u32,
-    sent: u32,
 }
 
 impl Client {
@@ -238,7 +234,6 @@ impl Client {
     fn send(&mut self, req: Req) -> u32 {
         let corr = self.corr;
         self.corr += 1;
-        self.sent += 1;
         let env = Envelope { corr, reply_to: self.me, req };
         traceforge::send_tagged_msg_timed(
             self.conns[self.conn],
@@ -272,7 +267,7 @@ impl Client {
 }
 
 fn producer(p: Params, storage: ThreadId, conns: Vec<ThreadId>) {
-    let mut c = Client { me: thread::current().id(), storage, conns, conn: 0, corr: 0, sent: 0 };
+    let mut c = Client { me: thread::current().id(), storage, conns, conn: 0, corr: 0 };
     let mut retries_left = p.retries;
 
     'run: {
@@ -346,10 +341,6 @@ fn producer(p: Params, storage: ThreadId, conns: Vec<ThreadId>) {
         }
     }
 
-    traceforge::send_msg(c.storage, StorageMsg::Done { total: c.sent });
-    for conn in c.conns.clone() {
-        traceforge::send_tagged_msg_timed(conn, TAG_CONN_CLOSE, ConnMsg::Close, 0, 0);
-    }
 }
 
 // =====================================================================
@@ -357,10 +348,10 @@ fn producer(p: Params, storage: ThreadId, conns: Vec<ThreadId>) {
 // =====================================================================
 
 fn connection(storage: ThreadId) {
+    // A reactive daemon: it relays until the run ends.
     loop {
         match traceforge::recv_msg_block_timed::<ConnMsg>() {
             ConnMsg::Req(env) => traceforge::send_msg(storage, StorageMsg::Req(env)),
-            ConnMsg::Close => break,
         }
     }
 }
@@ -662,13 +653,10 @@ impl Db {
 fn storage(p: Params) {
     let fix = p.fix;
     let mut db = Db { check_stray: p.check_stray, check_dirty: p.check_dirty, ..Db::default() };
-    let mut processed: u32 = 0;
-    let mut total: Option<u32> = None;
-    while total != Some(processed) {
+    // A reactive daemon: the run ends when no client can move.
+    loop {
         match traceforge::recv_msg_block_timed::<StorageMsg>() {
-            StorageMsg::Done { total: t } => total = Some(t),
             StorageMsg::Req(env) => {
-                processed += 1;
                 let resp = db.handle(&env.req, fix);
                 db.check_visibility();
                 traceforge::send_tagged_msg(env.reply_to, resp_tag(env.corr), resp);
@@ -713,18 +701,16 @@ fn run(mode: Mode, p: Params, keep_going: bool, verbose: usize) -> (Stats, Durat
     let cfg = build_config(mode, p, keep_going, verbose);
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
-        let storage_h = thread::spawn(move || storage(p));
-        let storage_tid = storage_h.thread().id();
-        let conns: Vec<_> = (0..=p.retries)
-            .map(|_| thread::spawn(move || connection(storage_tid)))
+        // The storage and the connections are reactive daemons (nothing
+        // releases them); only the producer is joined. Until 2026-10-14 the
+        // producer sent the storage a Done { total } and every connection a
+        // Close, lossy sends outside the protocol.
+        let storage_tid = thread::spawn_daemon(move || storage(p)).thread().id();
+        let conn_ids: Vec<ThreadId> = (0..=p.retries)
+            .map(|_| thread::spawn_daemon(move || connection(storage_tid)).thread().id())
             .collect();
-        let conn_ids: Vec<ThreadId> = conns.iter().map(|h| h.thread().id()).collect();
         let producer_h = thread::spawn(move || producer(p, storage_tid, conn_ids));
         let _ = producer_h.join();
-        for h in conns {
-            let _ = h.join();
-        }
-        let _ = storage_h.join();
     });
     (stats, start.elapsed())
 }

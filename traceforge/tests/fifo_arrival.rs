@@ -367,9 +367,12 @@ fn lossy_drop_exempts_fifo_coupling() {
 // Two different senders to one channel with inverted windows. Under
 // LocalOrder sb is per-sender program order, so sends of different
 // senders are never sb-related: no arrival coupling, and overtaking
-// across senders stays allowed. Cross-sender messages also impose no
-// skip obligations on each other and are not evicted by each other
-// (dodge and eviction are sb-based too).
+// across senders stays allowed. Cross-sender messages impose no skip
+// obligations on each other and are not evicted by each other (dodge
+// and eviction are sb-based too). What changed on 2026-10-13 (Sahar's
+// first-arrival ruling) is the one thing they do owe each other: a
+// waiting receive takes the message that arrived first, so it cannot
+// read the later one while the earlier is readable during its wait.
 //
 // Config (0, 0, 0). Thread A: send x [5, 5] (a_x = 5). Thread B:
 // send y [0, 0] (a_y = 0). Receiver: r1 = recv(Finite(10)); r2 =
@@ -383,28 +386,33 @@ fn lossy_drop_exempts_fifo_coupling() {
 //   (y, TO): t_r1 = 0, so r2 waits [0, 10] and x is readable at 5,
 //            inside it. Under (C6') the timeout has no timeline.
 //                                                        IMPOSSIBLE
-//   (x, TO): t_r1 = 5; passing over the readable y is allowed
-//            (cross-sender, no order to honor) and y is NOT evicted,
-//            but r2 = y would need t_r2 = 0 >= t_r1 = 5, so only the
-//            timeout continues. It survives (C6') because y is dead
-//            before that wait begins: a_y + sd = 0 < 5.    FEASIBLE
+//   (x, TO): r1 waits from 0 and y is readable at 0 (a_y = 0, sd = 0),
+//            so r1 takes y, the first arrival: reading x at 5 would
+//            pass over a message that was readable during the wait.
+//            Until 2026-10-13 this branch was FEASIBLE (passing over
+//            a cross-sender message was allowed, y was not evicted,
+//            and r2 timed out because y was dead by 5); the
+//            first-arrival rule removes it.              IMPOSSIBLE
 //   (x, y):  t_r2 = a_y = 0 < t_r1 = 5.                  IMPOSSIBLE
 //   (TO, x) and (TO, y): r1's timeout moves the clock to 10; both
 //            readable instants (0 and 5) are past.       IMPOSSIBLE
 //   (TO, TO): r1's timeout would have to miss both x and y, but each
 //            is readable inside [0, 10].                 IMPOSSIBLE
 //
-// Expected: (2, 0), changed from (4, 0) by (C6') on 2026-09-21: the
-// two dropped worlds are timeouts taken while a message was readable
-// during the wait. What this test pins is unaffected: a wrongly
-// channel-global coupling would force a_x <= a_y, 5 <= 0, and
-// collapse this to (0, 0), and losing the cross-sender overtaking
-// would drop (y, x) too, leaving (1, 0). The surviving pair still
-// separates all three.
+// Expected with both delivered: (1, 0). It was (4, 0) before (C6') on
+// 2026-09-21 (the two dropped worlds are timeouts taken while a
+// message was readable during the wait), (2, 0) after it, and (1, 0)
+// with the first-arrival rule, which removes (x, TO). What this test
+// pins is unaffected: a wrongly channel-global coupling would force
+// a_x <= a_y, 5 <= 0, and collapse this to (0, 0), and so would
+// losing the cross-sender overtaking (it drops (y, x), the only world
+// left). Either mistake is still told from the correct model; since
+// 2026-10-13 they are no longer told from each other here (before,
+// the second left (1, 0)).
 //
 // Every send lossy adds: only x delivered (x, TO); only y delivered
-// (y, TO); none delivered (TO, TO): 1 each. Expected: (5, 0). The
-// both-delivered world above still separates the three models.
+// (y, TO); none delivered (TO, TO): 1 each. Expected: (4, 0), was
+// (5, 0) before the first-arrival rule.
 // ---------------------------------------------------------------------
 
 #[test]
@@ -425,7 +433,7 @@ fn cross_sender_sends_not_coupled_under_local_order() {
             });
         },
     );
-    assert_eq!((stats.execs, stats.block), (5, 0));
+    assert_eq!((stats.execs, stats.block), (4, 0));
 }
 
 // ---------------------------------------------------------------------

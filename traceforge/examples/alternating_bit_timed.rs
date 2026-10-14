@@ -78,13 +78,12 @@
 //!
 //! ## How the protocol maps onto TraceForge
 //!
-//! Two protocol threads (sender, receiver) plus main, which spawns
-//! both, sends each an `Init` naming both ThreadIds, and joins them (an
-//! Init may be dropped like every send; that thread then blocks). The
-//! `Init` reads are untimed blocking receives filtered on main's id (the
-//! swim_timed.rs bootstrap idiom): an untimed receive is transparent
-//! for timing, so both protocol threads start their clocks together and
-//! no frame can reach the receiver before it listens.
+//! Two protocol threads (sender, receiver) plus main, which spawns the
+//! receiver (a daemon reactor) and then the sender, which captures the
+//! receiver's id, and joins the sender. There is no bootstrap message:
+//! the receiver learns the sender's address from the `from` of each
+//! frame (as 3PC's participants learn the coordinator from Prepare).
+//! Both threads start at time 0, their own `Begin` events.
 //!
 //! Sender, for payload i in 0..K with bit = i % 2:
 //!
@@ -149,9 +148,10 @@
 //!   a timed checker to decide, are explicit only in the later simplex
 //!   form (the DT-Spin PAR model and the TAPAAL/UPPAAL AlternatingBit
 //!   net).
-//! * Any send may be dropped, with no budget, including the harness
-//!   messages Init and Done. Detected corruption (DT-Spin's MSGerr and ACKerr branches) is folded
-//!   into loss; DT-Spin's "resend at once on a corrupt ack" path is not
+//! * Any send may be dropped, with no budget, including the Done that
+//!   carries the sender's belief to the receiver (the one message of
+//!   property P2). Detected corruption (DT-Spin's MSGerr and ACKerr
+//!   branches) is folded into loss; DT-Spin's "resend at once on a corrupt ack" path is not
 //!   modelled.
 //! * No channel processes: transit is folded into the sends and both
 //!   directions share [L, U]. TraceForge channels are unbounded queues,
@@ -400,11 +400,15 @@ const DEFAULT_PROC_RATIO: f64 = 0.0;
 enum SMsg {
     /// A data frame: the alternating bit plus the payload (DT-Spin's
     /// `out!mt,sn`). Identical in both variants.
-    Frame { bit: u8, payload: u32 },
-    /// Verification harness, not the protocol: ends the reactive
-    /// receiver and enables the end-of-run gap check (P2). May be dropped
-    /// like every send; the receiver then blocks (a blocked execution).
-    Done { completed: bool },
+    /// `from` is the sender's own address, the reply address of the Ack
+    /// (as in 3PC's Prepare { coord }).
+    Frame { bit: u8, payload: u32, from: ThreadId },
+    /// The sender believes every message was acknowledged. It is the one
+    /// message of property P2 (a two-process property, read after every
+    /// frame still in flight on the FIFO channel): the receiver then checks
+    /// that it delivered everything. May be dropped like every send. A
+    /// sender that gives up sends nothing.
+    Done,
 }
 
 /// Receiver to sender.
@@ -414,14 +418,6 @@ enum RMsg {
     /// ghost data (the payload of the acknowledged frame), read only by
     /// the CONFUSED_ACKS counter, never by a protocol decision.
     Ack { bit: Option<u8>, answers: u32 },
-}
-
-/// Bootstrap message from main, a separate type so the init-wait
-/// (filtered on main's id) matches only Init.
-#[derive(Clone, Debug, PartialEq)]
-struct Init {
-    sender: ThreadId,
-    receiver: ThreadId,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -521,14 +517,13 @@ impl Bounds {
 // Sender
 // =====================================================================
 
-fn sender(p: Params, main_tid: ThreadId) {
-    let Init { receiver, .. } =
-        traceforge::recv_tagged_msg_block_timed::<_, Init>(move |s, _tag| s == main_tid);
+fn sender(p: Params, receiver: ThreadId) {
+    let me = thread::current().id();
 
     for i in 0..p.messages {
         let bit = (i % 2) as u8;
         let mut retransmissions: u32 = 0;
-        traceforge::send_lossy_msg(receiver, SMsg::Frame { bit, payload: i });
+        traceforge::send_lossy_msg(receiver, SMsg::Frame { bit, payload: i, from: me });
 
         loop {
             // Read ANY acknowledgement from the receiver (see the doc
@@ -559,12 +554,11 @@ fn sender(p: Params, main_tid: ThreadId) {
                     if retransmissions == p.retries {
                         // Bounded-model scaffolding: give up on message i.
                         GAVE_UP.fetch_add(1, Ordering::Relaxed);
-                        traceforge::send_msg(receiver, SMsg::Done { completed: false });
                         return;
                     }
                     retransmissions += 1;
                     TIMEOUTS.fetch_add(1, Ordering::Relaxed);
-                    traceforge::send_lossy_msg(receiver, SMsg::Frame { bit, payload: i });
+                    traceforge::send_lossy_msg(receiver, SMsg::Frame { bit, payload: i, from: me });
                 }
             }
         }
@@ -572,17 +566,14 @@ fn sender(p: Params, main_tid: ThreadId) {
 
     // The sender believes all K messages were acknowledged.
     COMPLETED.fetch_add(1, Ordering::Relaxed);
-    traceforge::send_msg(receiver, SMsg::Done { completed: true });
+    traceforge::send_msg(receiver, SMsg::Done);
 }
 
 // =====================================================================
 // Receiver: purely reactive (blocking receives only, no timers)
 // =====================================================================
 
-fn receiver(p: Params, main_tid: ThreadId) {
-    let Init { sender, .. } =
-        traceforge::recv_tagged_msg_block_timed::<_, Init>(move |s, _tag| s == main_tid);
-
+fn receiver(p: Params) {
     let mut expected_bit: u8 = 0;
     let mut next: u32 = 0;
     let mut delivered: u32 = 0;
@@ -592,8 +583,8 @@ fn receiver(p: Params, main_tid: ThreadId) {
     };
 
     loop {
-        match traceforge::recv_tagged_msg_block_timed::<_, SMsg>(move |s, _tag| s == sender) {
-            SMsg::Frame { bit, payload } if bit == expected_bit => {
+        match traceforge::recv_msg_block_timed::<SMsg>() {
+            SMsg::Frame { bit, payload, from: sender } if bit == expected_bit => {
                 // New frame: hand it to the user.
                 if payload != next {
                     P1_FAILS.fetch_add(1, Ordering::Relaxed);
@@ -611,23 +602,21 @@ fn receiver(p: Params, main_tid: ThreadId) {
                 expected_bit ^= 1;
                 traceforge::send_lossy_msg(sender, RMsg::Ack { bit: ack_bit(bit), answers: payload });
             }
-            SMsg::Frame { bit, payload } => {
+            SMsg::Frame { bit, payload, from: sender } => {
                 // Extra copy of a frame already delivered: acknowledge
                 // again (the earlier Ack may have been lost), do not
                 // deliver.
                 DUPLICATES.fetch_add(1, Ordering::Relaxed);
                 traceforge::send_lossy_msg(sender, RMsg::Ack { bit: ack_bit(bit), answers: payload });
             }
-            SMsg::Done { completed } => {
-                if completed {
-                    END_CHECKS.fetch_add(1, Ordering::Relaxed);
-                    if delivered != p.messages {
-                        P2_FAILS.fetch_add(1, Ordering::Relaxed);
-                    }
-                    // P2: a sender that believes every message was
-                    // acknowledged leaves no silent gap at the tail.
-                    traceforge::assert(delivered == p.messages);
+            SMsg::Done => {
+                END_CHECKS.fetch_add(1, Ordering::Relaxed);
+                if delivered != p.messages {
+                    P2_FAILS.fetch_add(1, Ordering::Relaxed);
                 }
+                // P2: a sender that believes every message was
+                // acknowledged leaves no silent gap at the tail.
+                traceforge::assert(delivered == p.messages);
                 return;
             }
         }
@@ -689,14 +678,11 @@ fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
     reset_counts();
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
-        let main_tid = thread::current().id();
-        let r = thread::spawn(move || receiver(p, main_tid));
-        let s = thread::spawn(move || sender(p, main_tid));
-        let init = Init { sender: s.thread().id(), receiver: r.thread().id() };
-        // Send both Inits before joining anyone.
-        traceforge::send_msg(r.thread().id(), init.clone());
-        traceforge::send_msg(s.thread().id(), init);
-        let _ = r.join();
+        // No bootstrap message: the receiver is a daemon reactor, spawned
+        // first; the sender is spawned last and captures its id. The
+        // receiver learns the sender's address from the frames.
+        let r = thread::spawn_daemon(move || receiver(p)).thread().id();
+        let s = thread::spawn(move || sender(p, r));
         let _ = s.join();
     });
     (stats, start.elapsed())

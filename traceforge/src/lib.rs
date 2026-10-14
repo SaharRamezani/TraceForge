@@ -88,6 +88,13 @@ pub struct Stats {
     pub execs: usize,
     /// Number of blocked executions explored
     pub block: usize,
+    /// Executions that ended at a failed `traceforge::assert` (keep-going
+    /// mode; in a timed run only those whose graph admits a timeline,
+    /// i.e. the certified violations). A SUBSET of `block`:
+    /// `block - violating` is the executions blocked for any other
+    /// reason, and `execs` holds only complete executions without a
+    /// violation.
+    pub violating: usize,
     /// Endings explored to completion and then judged to admit no
     /// timeline (counted as neither exec nor block). A timed exploration
     /// checks every step against the full timed constraint system, so
@@ -109,6 +116,7 @@ impl Stats {
     pub(crate) fn add(&mut self, rhs: &Stats) {
         self.execs += rhs.execs;
         self.block += rhs.block;
+        self.violating += rhs.violating;
         self.timeline_impossible += rhs.timeline_impossible;
         self.pruned += rhs.pruned;
         self.coverage.merge(&rhs.coverage);
@@ -555,6 +563,14 @@ impl ConfigBuilder {
     /// [`ConfigBuilder::with_all_sends_lossy`] for the untimed side of a
     /// comparison) and rejects [`ConfigBuilder::with_lossy`].
     ///
+    /// Reception discipline: a receive takes the message that arrived
+    /// first among those pending at it (a tie leaves both orders to the
+    /// exploration). A message that is readable at some instant of the
+    /// wait is therefore never left to expire unread by a receive that
+    /// reads a later arrival, whichever sender it came from; only a
+    /// message that was already discarded (its `sd` ran out) when the
+    /// wait began is missed. Mailbox delivery keeps its own order.
+    ///
     /// Requires `l <= u`.
     pub fn with_timed(mut self, l: u64, u: u64, sd: u64) -> Self {
         self.0.timed = Some(TimedConfig::new(l, u, sd));
@@ -834,8 +850,8 @@ where
     // the examples do not all print (set TF_PRINT_STATS=1).
     if std::env::var_os("TF_PRINT_STATS").is_some() {
         eprintln!(
-            "TFSTATS execs={} blocked={} timeline_impossible={} pruned={}",
-            stats.execs, stats.block, stats.timeline_impossible, stats.pruned
+            "TFSTATS execs={} blocked={} timeline_impossible={} pruned={} violating={}",
+            stats.execs, stats.block, stats.timeline_impossible, stats.pruned, stats.violating
         );
     }
     stats
@@ -2424,6 +2440,12 @@ pub fn assert(cond: bool) {
                 }
             }
         });
+        // Park the thread at its violation, as `assume_impl` does for a
+        // failed assumption: the Block stays the thread's last label.
+        // Without this the thread ran on, and one that returned at once
+        // got an END label behind the block, so check_blocked filed the
+        // violating execution under `execs`.
+        switch();
     }
 }
 

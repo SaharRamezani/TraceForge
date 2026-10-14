@@ -50,6 +50,17 @@
 //! Scope notes:
 //! * (C6b) is half-open on the deadline: a message arriving exactly at
 //!   `t_p + W` may lose the race to the timer (both worlds exist).
+//! * First arrival (2026-10-13, Sahar's ruling): a receive that reads
+//!   `s` takes the message that arrived first among those pending at
+//!   it. Every other matching pending `b` arrives no earlier than `s`
+//!   (`a_s <= a_b`; a tie leaves both orders) or was discarded before
+//!   the wait began (`a_b + sd < t_p`); see `push_first_arrival_cases`.
+//!   It is the read-side twin of (C6b) and lives in every system that
+//!   judges a read: the committed read, the offer, wake-up and revisit
+//!   probes (`first_arrival_groups`). Same-channel messages ordered
+//!   before `s` keep the stricter GC skip rule; TotalOrder (Mailbox)
+//!   keeps its seal semantics; inbox reads keep their own exclusion
+//!   dodges.
 //! * Arrivals are EXPLICIT variables (2026-08-28): every non-dropped
 //!   send s carries `a_s` in `[t_s + L, t_s + U]`, a message has ONE
 //!   arrival consistent across every constraint that mentions it, and
@@ -966,6 +977,26 @@ impl<'g> TimedDcs<'g> {
                                 s,
                                 floating,
                             );
+                            // First arrival: no pending message that
+                            // arrived earlier may be left behind (the
+                            // reception discipline across channels).
+                            if strict_timeouts
+                                && rlab.comm() != crate::loc::CommunicationModel::TotalOrder
+                            {
+                                push_first_arrival_cases(
+                                    &mut case_sets,
+                                    &vars,
+                                    g,
+                                    cfg,
+                                    &|x| view.contains(x),
+                                    p,
+                                    pos,
+                                    rlab.recv_loc(),
+                                    rlab.as_event_label(),
+                                    s,
+                                    floating,
+                                );
+                            }
                         }
                         None => match wait {
                             // Timeout: exact clock advance by W.
@@ -1237,7 +1268,7 @@ impl<'g> TimedDcs<'g> {
                 ref mut nogoods,
                 ..
             } = *self;
-            CaseSearcher::new(core, case_sets, None, &[], nogoods, None).run()
+            CaseSearcher::new(core, case_sets, None, &[], &[], nogoods, None).run()
         };
         match found {
             Some(choice) => {
@@ -1330,7 +1361,7 @@ impl<'g> TimedDcs<'g> {
                 ref mut nogoods,
                 ..
             } = *self;
-            CaseSearcher::new(core, case_sets, None, extra, nogoods, seed_local).run()
+            CaseSearcher::new(core, case_sets, None, &[], extra, nogoods, seed_local).run()
         };
         match found {
             Some(choice) => {
@@ -1445,7 +1476,7 @@ impl<'g> TimedDcs<'g> {
                 ref mut nogoods,
                 ..
             } = *self;
-            CaseSearcher::new(core, case_sets, Some(extra_set), extra, nogoods, None).run()
+            CaseSearcher::new(core, case_sets, Some(extra_set), &[], extra, nogoods, None).run()
         };
         found.is_some()
     }
@@ -1457,6 +1488,96 @@ impl<'g> TimedDcs<'g> {
             edges.extend_from_slice(&self.chosen_edges);
             self.leaf = Some(DcsCore::new(self.n, edges));
         }
+    }
+
+    /// First-arrival groups (see `push_first_arrival_cases`) for a
+    /// hypothetical read of `cand` by the floating receive, or blocked
+    /// receive, at `pos`: one two-option group per other matching
+    /// message pending at it. Empty for inbox-shaped reads (outside the
+    /// fragment, they carry their own exclusion dodges) and for
+    /// TotalOrder (Mailbox keeps seal semantics).
+    fn first_arrival_groups(&self, pos: Event, p: u32, cand: Event) -> Vec<Vec<Vec<Edge>>> {
+        use crate::event_label::BlockType;
+        let (loc, anchor, comm) = match self.g.label(pos) {
+            LabelEnum::RecvMsg(r) => (r.recv_loc(), r.as_event_label(), r.comm()),
+            LabelEnum::Block(b) => match b.btype() {
+                BlockType::Value(loc, _, _, comm, false) => (loc, b.as_event_label(), *comm),
+                _ => return Vec::new(),
+            },
+            _ => return Vec::new(),
+        };
+        if comm == crate::loc::CommunicationModel::TotalOrder {
+            return Vec::new();
+        }
+        let mut groups = Vec::new();
+        push_first_arrival_cases(
+            &mut groups,
+            &self.vars,
+            self.g,
+            self.cfg,
+            &|x| self.vars.ev.contains_key(&x),
+            p,
+            pos,
+            loc,
+            anchor,
+            cand,
+            Some(pos),
+        );
+        groups
+    }
+
+    /// Exact feasibility of base + committed groups + `extra` + one
+    /// option of EACH transient group in `groups` (probe-local, any
+    /// number of them, unlike the single transient group of
+    /// `probe_exact_with_set`). Greedy fast path against the leaf, then
+    /// the exact conflict-driven search with the groups appended behind
+    /// the committed ones (their no-goods stay local to the call).
+    fn probe_exact_with_groups(&mut self, extra: &[Edge], groups: &[Vec<Vec<Edge>>]) -> bool {
+        if !self.feasible {
+            return false;
+        }
+        if groups.is_empty() {
+            return self.probe_exact(extra);
+        }
+        self.ensure_leaf();
+        {
+            // A greedy assignment that the leaf accepts proves
+            // feasibility; a failure proves nothing and falls through.
+            let leaf = self.leaf.as_mut().expect("ensure_leaf");
+            let mut acc: Vec<Edge> = extra.to_vec();
+            let mut ok = leaf.probe(&acc);
+            if ok {
+                for grp in groups {
+                    let mut placed = false;
+                    for opt in grp {
+                        let keep = acc.len();
+                        acc.extend_from_slice(opt);
+                        if leaf.probe(&acc) {
+                            placed = true;
+                            break;
+                        }
+                        acc.truncate(keep);
+                    }
+                    if !placed {
+                        ok = false;
+                        break;
+                    }
+                }
+                if ok {
+                    return true;
+                }
+            }
+        }
+        let found = {
+            let Self {
+                ref mut core,
+                ref case_sets,
+                ref mut nogoods,
+                ..
+            } = *self;
+            CaseSearcher::new(core, case_sets, None, groups, extra, nogoods, None).run()
+        };
+        found.is_some()
     }
 
     /// Exact feasibility of "the floating receive reads from `cand`".
@@ -1495,6 +1616,10 @@ impl<'g> TimedDcs<'g> {
                 let sd = i128::from(self.cfg.sd_for(recv.thread));
                 extra.push((e, av, 0)); // a_send <= t_recv
                 extra.push((av, e, sd)); // t_recv <= a_send + sd
+                let groups = self.first_arrival_groups(recv, p, cand);
+                if !groups.is_empty() {
+                    return self.probe_exact_with_groups(&extra, &groups);
+                }
             }
         }
         self.probe_exact(&extra)
@@ -1552,7 +1677,14 @@ impl<'g> TimedDcs<'g> {
     /// Exact feasibility of waking the blocked receive at `block_pos`
     /// by reading `send`: same window as a blocking read (no wait cap).
     pub(crate) fn probe_block_unblock(&mut self, block_pos: Event, send: Event) -> bool {
-        self.probe_unblock_subset(block_pos, &[send])
+        let (extra, p) = match self.unblock_edges(block_pos, &[send]) {
+            Ok(x) => x,
+            Err(verdict) => return verdict,
+        };
+        // The wake of a plain blocked receive reads ONE message: the
+        // first-arrival discipline applies exactly as at an offer.
+        let groups = self.first_arrival_groups(block_pos, p, send);
+        self.probe_exact_with_groups(&extra, &groups)
     }
 
     /// Dead-front unsealing probe (2026-08-28): can the timed read at
@@ -1652,6 +1784,14 @@ impl<'g> TimedDcs<'g> {
             };
             groups.push(vec![vec![(bav, e, -1)], vec![(p, bav, -(sd + 1))]]);
         }
+        // The fronts above are same-channel; messages of the other
+        // channels pending at the read must not have arrived earlier
+        // than `cand` (first-arrival discipline).
+        let arrival = self.first_arrival_groups(pos, p, cand);
+        if !arrival.is_empty() {
+            groups.extend(arrival);
+            return self.probe_exact_with_groups(&extra, &groups);
+        }
         if groups.is_empty() {
             // No dodgeable front carried an arrival variable.
             return self.probe_exact(&extra);
@@ -1666,16 +1806,26 @@ impl<'g> TimedDcs<'g> {
     /// (terminal-read equivalence, see [`Self::probe_inbox_rfs`]); no
     /// wait cap applies (only infinite-wait reads block).
     pub(crate) fn probe_unblock_subset(&mut self, block_pos: Event, sends: &[Event]) -> bool {
+        match self.unblock_edges(block_pos, sends) {
+            Ok((extra, _p)) => self.probe_exact(&extra),
+            Err(verdict) => verdict,
+        }
+    }
+
+    /// Window edges of "the blocked receive at `block_pos` reads all of
+    /// `sends` at one instant", with the predecessor variable; `Err`
+    /// carries the verdict of the defensive early exits.
+    fn unblock_edges(&self, block_pos: Event, sends: &[Event]) -> Result<(Vec<Edge>, u32), bool> {
         let Some(&e) = self.vars.ev.get(&block_pos) else {
             debug_assert!(false, "block {block_pos} not in scope");
-            return true;
+            return Err(true);
         };
         if block_pos.index == 0 {
-            return true; // defensive, mirrors is_waiting_on_written
+            return Err(true); // defensive, mirrors is_waiting_on_written
         }
         let pred = Event::new(block_pos.thread, block_pos.index - 1);
         let Some(&p) = self.vars.ev.get(&pred) else {
-            return self.feasible;
+            return Err(self.feasible);
         };
         let sd = i128::from(self.cfg.sd_for(block_pos.thread));
         let mut extra: Vec<Edge> = Vec::with_capacity(1 + 2 * sends.len());
@@ -1684,12 +1834,12 @@ impl<'g> TimedDcs<'g> {
             let Some(&av) = self.vars.arr.get(&send) else {
                 // Invariant breach tripwire: keep (never tighter).
                 debug_assert!(false, "send {send} not in scope");
-                return true;
+                return Err(true);
             };
             extra.push((e, av, 0)); // a_send <= t_read
             extra.push((av, e, sd)); // t_read <= a_send + sd
         }
-        self.probe_exact(&extra)
+        Ok((extra, p))
     }
 
     /// Inbox-shaped sibling of [`Self::probe_unblock_subset`]: the
@@ -2543,11 +2693,115 @@ fn push_timeout_cases(
     anchor: &crate::event_label::EventLabel,
     floating: Option<Event>,
 ) {
+    push_pending_cases(
+        case_sets,
+        vars,
+        g,
+        cfg,
+        &|x| view.contains(x),
+        e,
+        p,
+        pos,
+        loc,
+        anchor,
+        floating,
+        None,
+    );
+}
+
+/// First-arrival reception discipline (2026-10-13, Sahar's ruling:
+/// "whichever arrived first must be read and we do not wait to see the
+/// other one"). A receive that reads `source` takes the message that
+/// ARRIVED FIRST among those pending at it: every other matching
+/// message `b` pending at the receive either arrives no earlier than
+/// `source` (`a_source <= a_b`; a tie leaves both orders to the
+/// exploration) or was already discarded when the wait began
+/// (`a_b + sd < t_p`). A message that is readable at some instant of
+/// the wait is therefore never passed over, whichever channel it came
+/// on; reading a later arrival of another sender while an earlier one
+/// expires unread is not a behaviour of the semantics. Same-channel
+/// messages ordered before `source` are the business of
+/// `push_recv_skip_cases` (the GC skip rule, which is stricter: the
+/// front must be dead before the wait or arrive after the read), and
+/// those ordered after it arrive after it by FIFO coupling, so only
+/// the messages `sb`-unordered with `source` get a group here.
+///
+/// The groups are the (C6b) groups with `a_source` in the place of the
+/// deadline `t_e`, and every guard of `push_pending_cases` applies
+/// unchanged. Emitted into the committed system for a committed read
+/// and into every read probe for the hypothetical read of the floating
+/// receive, so that offers, wake-ups, revisits and the completion
+/// judgement agree.
+#[allow(clippy::too_many_arguments)]
+fn push_first_arrival_cases(
+    case_sets: &mut Vec<Vec<Vec<Edge>>>,
+    vars: &ScopeVars,
+    g: &ExecutionGraph,
+    cfg: &TimedConfig,
+    in_view: &dyn Fn(Event) -> bool,
+    p: u32,
+    pos: Event,
+    loc: &crate::loc::RecvLoc,
+    anchor: &crate::event_label::EventLabel,
+    source: Event,
+    floating: Option<Event>,
+) {
+    let Some(&a_source) = vars.arr.get(&source) else {
+        return; // source outside the scope or dropped: nothing to order
+    };
+    push_pending_cases(
+        case_sets,
+        vars,
+        g,
+        cfg,
+        in_view,
+        a_source,
+        p,
+        pos,
+        loc,
+        anchor,
+        floating,
+        Some(source),
+    );
+}
+
+/// One two-option group per message pending at the receive (or blocked
+/// receive) at `pos`: `a_b >= x[ge]` or `a_b + sd < t_p`. With `ge` the
+/// deadline variable this is (C6b); with `ge` the arrival variable of
+/// the read message (`source = Some(read)`) it is the first-arrival
+/// discipline of `push_first_arrival_cases`.
+#[allow(clippy::too_many_arguments)]
+fn push_pending_cases(
+    case_sets: &mut Vec<Vec<Vec<Edge>>>,
+    vars: &ScopeVars,
+    g: &ExecutionGraph,
+    cfg: &TimedConfig,
+    in_view: &dyn Fn(Event) -> bool,
+    ge: u32,
+    p: u32,
+    pos: Event,
+    loc: &crate::loc::RecvLoc,
+    anchor: &crate::event_label::EventLabel,
+    floating: Option<Event>,
+    source: Option<Event>,
+) {
     let sd = i128::from(cfg.sd_for(pos.thread));
+    let source_lab = source.and_then(|s| g.send_label(s));
     for b in g.matching_stores(loc) {
         let bpos = b.pos();
-        if !view.contains(bpos) || b.is_cancelled_wrt(anchor) {
+        if !in_view(bpos) || b.is_cancelled_wrt(anchor) {
             continue;
+        }
+        // First-arrival groups: the read message itself, and the
+        // messages ordered with it by the delivery model, are not
+        // pending-and-unordered with respect to it.
+        if let Some(src) = source {
+            if bpos == src {
+                continue;
+            }
+            if source_lab.is_some_and(|sl| sl.sb().contains(bpos)) || b.sb().contains(src) {
+                continue;
+            }
         }
         // Pend(r) guard (i): consumed by a receive porf-before the
         // timeout (one of ours before the wait began, or a causally
@@ -2563,14 +2817,14 @@ fn push_timeout_cases(
         // floating event's reads are hypothetical, as in
         // `push_recv_skip_cases`.
         if b.reader().is_some_and(|r| {
-            Some(r) != floating && view.contains(r) && g.in_porf(r, pos)
+            Some(r) != floating && in_view(r) && g.in_porf(r, pos)
         }) {
             continue;
         }
         if b
             .monitor_readers()
             .iter()
-            .any(|&mr| mr.thread == pos.thread && view.contains(mr))
+            .any(|&mr| mr.thread == pos.thread && in_view(mr))
         {
             continue;
         }
@@ -2608,7 +2862,7 @@ fn push_timeout_cases(
             continue; // dropped (lossy) or out of scope: no arrival
         };
         case_sets.push(vec![
-            vec![(av, e, 0)],         // a_b >= t_e
+            vec![(av, ge, 0)],        // a_b >= x[ge]  (t_e, or a_source)
             vec![(p, av, -(sd + 1))], // a_b + sd < t_p
         ]);
     }
@@ -3106,6 +3360,10 @@ struct CaseSearcher<'a> {
     marks: Vec<usize>,
     saved_pi: Vec<Vec<Time>>,
     sets: &'a [Vec<Vec<Edge>>],
+    /// Probe-local groups searched after the committed ones (any
+    /// number; like `transient` their literals never become persistent
+    /// no-goods).
+    groups: &'a [Vec<Vec<Edge>>],
     transient: Option<&'a [Vec<Edge>]>,
     extra: &'a [Edge],
     choice: Vec<usize>,
@@ -3137,11 +3395,12 @@ impl<'a> CaseSearcher<'a> {
         core: &'a mut DcsCore,
         sets: &'a [Vec<Vec<Edge>>],
         transient: Option<&'a [Vec<Edge>]>,
+        groups: &'a [Vec<Vec<Edge>>],
         extra: &'a [Edge],
         persistent: &'a mut Vec<Vec<(u32, u32)>>,
         seed_local: Option<Vec<(u32, u32)>>,
     ) -> Self {
-        let total = sets.len() + usize::from(transient.is_some());
+        let total = sets.len() + groups.len() + usize::from(transient.is_some());
         let xcore = core.clone();
         Self {
             core,
@@ -3149,6 +3408,7 @@ impl<'a> CaseSearcher<'a> {
             marks: vec![0; total],
             saved_pi: vec![Vec::new(); total],
             sets,
+            groups,
             transient,
             extra,
             choice: vec![0; total],
@@ -3162,12 +3422,14 @@ impl<'a> CaseSearcher<'a> {
     }
 
     fn total(&self) -> usize {
-        self.sets.len() + usize::from(self.transient.is_some())
+        self.sets.len() + self.groups.len() + usize::from(self.transient.is_some())
     }
 
     fn group(&self, d: usize) -> &'a [Vec<Edge>] {
         if d < self.sets.len() {
             &self.sets[d]
+        } else if d < self.sets.len() + self.groups.len() {
+            &self.groups[d - self.sets.len()]
         } else {
             self.transient.expect("depth beyond committed groups")
         }
@@ -3439,7 +3701,7 @@ mod tests {
         extra: &[Edge],
     ) -> Option<Vec<usize>> {
         let mut nogoods = Vec::new();
-        CaseSearcher::new(c, sets, transient, extra, &mut nogoods, None).run()
+        CaseSearcher::new(c, sets, transient, &[], extra, &mut nogoods, None).run()
     }
 
     /// A choice satisfies iff base + its case edges + extra probe ok.

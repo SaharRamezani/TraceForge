@@ -67,7 +67,7 @@
 //!     no question from the primary in between, a sign that the primary no
 //!     longer reaches the landmark.
 //!
-//! What can go wrong.
+//! What can go wrong, as the papers found it.
 //!   * DCN1's two switches break at nearly the same moment. DCN1 is cut off
 //!     but still running, and it needs two more rounds to notice that
 //!     neither landmark answers and to step down. The backup's shortcut
@@ -76,20 +76,34 @@
 //!     while the landmark stays reachable. Without the lease the backup asks
 //!     the landmark, gets an answer, and takes over from a perfectly healthy
 //!     primary.
-//!   * Two switch failures some time apart can still look like one failure
-//!     to the backup. The authors worked out how far apart they must be
-//!     (about one round, or two rounds for the code as first written) for
-//!     their own version of the controller code. This example lets you
-//!     slide the second failure along the clock and find the exact gap for
-//!     the version it checks, which differs in one detail that matters
-//!     here: when the backup hears about a new landmark, it does not
-//!     restart that network's "rounds without news" count. The gaps found
-//!     here are therefore not the authors' numbers.
-//!   * The lease lasts exactly as long as the primary needs to give up. If
-//!     both of DCN1's cables are cut while the "I am alive" notes are also
-//!     being wiped out, the backup can earn its three answers at the very
-//!     moment DCN1 steps down, and for that moment both are in charge (a
-//!     scenario the papers did not check; see the verdicts below).
+//!
+//! What this example checks. It plays out no chosen failure: no switch is
+//! broken at a set moment and no attacker is switched on. The checker's own
+//! rules are that every message may be lost on its way, at any moment and
+//! without limit, that a message which has arrived can be read only for a
+//! short storage time (0 here), and that a waiting receive reads the
+//! message that arrived first, never passing it over for a later one
+//! (messages that arrive at the same instant are read in either order). A
+//! controller's own timer is a message too, so a clock can stop. A broken
+//! switch, a cut cable or an attacker is one particular pattern of lost
+//! messages, so the papers' scenarios are among the runs the checker tries,
+//! together with every other pattern. The question is: is there ANY pattern
+//! of lost messages after which both controllers are in charge at the same
+//! moment?
+//!
+//! What the checker finds, in short. Yes, in every variant, as soon as the
+//! run is long enough for the backup to decide. With the shortcut (the code
+//! as first written) or without it, three rounds are enough: the backup
+//! hears no "I am alive" note for two rounds, because the notes are lost on
+//! the way or were never sent (the primary missed an answer of the landmark
+//! and, in the code as first written, sends no note in that round); it takes
+//! over, and the primary, which has not stepped down, is still in charge.
+//! With the lease the backup needs three answers of the landmark in a row
+//! with no question of the primary in between; with five rounds that
+//! happens too. The findings this file reported until 2026-10-13 (which
+//! spacings of two switch failures are safe, the lease's zero-margin tie)
+//! came from failures played out by script on links that lost nothing else.
+//! They are withdrawn (see Results).
 //!
 //! Sources. B. Johansson, M. Ragberger, A. V. Papadopoulos, T. Nolte,
 //! "Consistency Before Availability: Network Reference Point based Failure
@@ -106,68 +120,90 @@
 //!
 //! ## How the protocol maps onto TraceForge
 //!
-//! Four threads. `main` is a monitor (harness only, see below). DCN1 and
-//! DCN2 run the node code of NRPFD.rebeca / LeasingNRPFD.rebeca. SW is the
-//! DCN1-side switch pair A1 + B1: the initial NRP (A1), the second NRP
-//! candidate (B1), forwarding, fault state and, for the leasing variant,
-//! the per-switch lease memory (`primary`, `which`, `prevWhich`). The relay
-//! switches A2, A3, B2, B3 hold no state except "failed" and never fail
-//! here, so they fold into transit: a DCN1<->SW leg is one hop [L, U] and a
+//! Three threads, all daemons: reactive actors that never return, each a
+//! loop over ONE blocking timed receive that dispatches on the message,
+//! like a Rebeca message server. DCN1 and DCN2 run the node code of
+//! NRPFD.rebeca / LeasingNRPFD.rebeca. SW is the DCN1-side switch pair
+//! A1 + B1: the initial NRP (A1), the second NRP candidate (B1), forwarding
+//! and, for the leasing variant, the per-switch lease memory (`primary`,
+//! `which`, `prevWhich`). The relay switches A2, A3, B2, B3 hold no state,
+//! so they fold into transit: a DCN1<->SW leg is one hop [L, U] and a
 //! SW<->DCN2 leg is three hops [3L, 3U] (A1 -> A2 -> A3 -> DCN2). A
 //! heartbeat therefore travels 4 hops, the Rebeca chain exactly at
 //! L = U = 1 (Rebeca's networkDelay = 1).
 //!
+//! Wiring without messages. `main` spawns SW and DCN1 and returns: it joins
+//! nobody, sends nothing and reads nothing. DCN1's thread first spawns
+//! DCN2, because each of the two needs the other's id, and then runs the
+//! DCN1 code. SW knows no thread id: a Ping carries the id to answer, a
+//! Heartbeat and a NewNrp carry the id of their destination. Every
+//! thread's clock starts at 0, so all three start in the same phase, as in
+//! the Rebeca models.
+//!
 //! Timers are self-messages, exactly like Rebeca's `self.runMe()
 //! after(heartbeat_period)` and `ping_timed_out() after(ping_timeout)`:
 //! `send_msg_timed(me, Tick, H, H)` and `send_msg_timed(me, PingTimeout, P,
-//! P)`. Every actor (rebec) is a reactive loop over ONE blocking timed
-//! receive and dispatches on the message, like a Rebeca message server.
-//! Self-sends are made in firing order (the ping timeout before the next
-//! tick) because arrivals on one channel keep send order. With sd = 0 every
-//! message is handled exactly at its arrival instant and same-instant
-//! arrivals from different senders are explored in both orders (Rebeca's
-//! arbitrary same-time handler order, the "+1" of the GulFest model
-//! comment).
+//! P)`. Self-sends are made in firing order (the ping timeout before the
+//! next tick) because arrivals on one channel keep send order. With sd = 0
+//! a message is handled at its arrival instant (unless it was lost on the
+//! way), and same-instant arrivals from different senders are explored in
+//! both orders (Rebeca's arbitrary same-time handler order, the "+1" of the
+//! GulFest model comment).
 //!
-//! Failures. SW self-sends one environment notice per failure (and per
-//! attack edge) at t = 0 with exact transit to its instant, and judges
-//! every message at the instant it reads it. `--fault switch` is Table 1
-//! case 7: a failed switch drops everything that reaches it, including the
-//! backup's pings to it. `--fault link` cuts DCN1's uplink on that network
-//! instead: DCN1's traffic on it is dropped, but the switch (and the NRP)
-//! stays alive for DCN2. `--attack-from-ratio` / `--attack-until-ratio` is
-//! case 8: SW drops heartbeats on both networks in that window.
+//! Loss is the only fault, and nothing is scripted on top of it. Every send
+//! may be dropped, with no budget (`with_timed`; `with_all_sends_lossy` in
+//! baseline mode). A receive reads the message that arrived first: it never
+//! passes over an arrived message to read a later one, and two messages that
+//! arrive at the same instant are read in either order. (Until 2026-10-13 a
+//! waiting receive could read a later arrival of another sender and let an
+//! earlier one expire unread; that is not a behaviour of the semantics any
+//! more.) Handlers take no time and an actor does nothing but wait and
+//! handle, so a message that is not dropped is read at its arrival instant
+//! (with sd > 0, within sd of it) until the run ends: the only way a message
+//! is never read is that its send is dropped. This holds for pings,
+//! answers, heartbeats and new_NRP, and for the two timers as well, which
+//! are lossy self-sends: a DCN whose Tick is dropped stops for good and
+//! keeps its role (each tick arms the next), one whose PingTimeout is
+//! dropped skips that round's decision. Those stopped clocks are among the
+//! explored executions.
 //!
-//! Dual-primary detection without a clock read. Each DCN reports every
-//! role change to `main` with zero transit, at the instant it happens.
-//! `main`'s storage lifetime is forced to 0 (`with_node_sd(main_thread_id(),
-//! 0)`, a Config setting, timed mode only), so it reads every report at
-//! exactly its instant, same-instant reports in both orders. A dual flag is
-//! set when both DCNs are PRIMARY, and the assertion is checked only at the
-//! END of the run, after both DCNs have finished (see the eviction guard).
-//!
-//! The run is bounded: each DCN handles R ticks (rounds 0..R-1), then an
-//! EndOfRun self-message at R*H; messages read after that are ignored.
-//! Because a stepped-down DCN1 never returns, a hold in which DCN1 stepped
-//! down in EVERY completed execution (stepdowns = completed) covers every
-//! instant at which both could be primary; the binary warns otherwise.
+//! The run is bounded by a count, not by a message: each DCN handles R
+//! ticks (rounds 0..R-1) and arms nothing after the last one. When no
+//! message is left to read every actor sits in its receive and the
+//! execution is complete (daemons need not terminate). The bound cannot
+//! cause a FIRE. DCN2 decides for the last time at its last ping timer, at
+//! most at t2 + (R - 1)H + P (t2 its first tick). A longer run could show
+//! DCN1 in another role at t1 + R*H + P at the earliest: only a ping timer
+//! makes DCN1 step down, and that is the ping timer of the first round
+//! this run does not have. Since t2 - t1 = phase < H, the first instant is
+//! before the second, and whatever DCN1 would send in the missing rounds
+//! may be lost in the longer run too: every violating execution here is a
+//! prefix of a violating execution of every longer run. With sd > 0 a
+//! timer may be read up to sd late and the condition becomes
+//! phase + (R + 1)sd < H, which the CLI enforces. A hold, on the other
+//! hand, speaks for R rounds and nothing beyond.
 //!
 //! ## Deviations from the paper (deliberate)
 //!
-//!   * Six switch actors become one SW thread (A1 + B1) plus transit. Only
-//!     A1 and B1 can fail, so the switch-position term iN of GulFest Eq. 1
-//!     (a failure at the second or third switch) is not modelled; the
-//!     separation study below is for failures at DCN1's own switches
-//!     (i = j = 1).
-//!   * The heartbeats of one instant (one per network) travel as ONE
-//!     message; SW judges each network separately (A1 for A, B1 for B) and
-//!     forwards what survived. For failures at the same instant SW explores
-//!     both notice orders (`nondet`), so either network alone can lose a
-//!     heartbeat that arrives at that instant. Lost: at L < U, a pair whose
-//!     two copies would arrive on opposite sides of a failure instant (only
-//!     when 0 < |sep| <= U - L) or of a DCN2 tick (only when a tick instant
-//!     falls inside the pair's arrival window, e.g. with phase offsets).
-//!     This halves the exploration cost.
+//!   * Six switch actors become one SW thread (A1 + B1) plus transit, and no
+//!     switch fails by script (the papers' `switchFail() after(t)`): a
+//!     message lost on a leg stands for a loss at any hop of that leg.
+//!     Because A1 and B1 are one thread, everything one DCN sends towards
+//!     either switch shares one channel, and so does everything SW sends
+//!     to one DCN, and a channel delivers in send order. At L = U (the
+//!     default, Rebeca's fixed delay) send order is arrival order anyway;
+//!     at L < U this removes the timelines in which a message on one
+//!     network overtakes an earlier message on the other.
+//!   * Heartbeats travel as in the source, one message per network:
+//!     `Heartbeat { net }` for network A and then for network B, DCN1 -> SW,
+//!     each forwarded SW -> DCN2, and DCN2 resets the count of that network
+//!     only. Either copy can be lost on either leg by itself, so silence on
+//!     one network alone is reachable. (Until 2026-10-13 the two travelled
+//!     as ONE message with a per-network mask, which made sense only while
+//!     SW dropped per network by script; kept, it would have turned every
+//!     lost heartbeat into a loss on both networks.) By the channel rule
+//!     above, network A's copy is never read after network B's copy of the
+//!     same instant; their two handlers commute.
 //!   * Per-hop fixed delays become intervals, and Rebeca's fixed ping send
 //!     offsets (`after(5)` for the primary, `after(15)` for the leasing
 //!     backup) and the zero-delay `new_NRP` are replaced by ordinary hops.
@@ -176,11 +212,11 @@
 //!   * Startup (WAITING -> PRIMARY/BACKUP, the first new_NRP) is skipped:
 //!     DCN1 starts PRIMARY with NRP A1 agreed, DCN2 BACKUP, both ticking at
 //!     t = 0 unless `--phase-ratio` offsets one of them. Rebeca's first
-//!     PRIMARY round starts at H, so its failure instant 2H + P (2500) is
-//!     H + P here (the default), and its dual window [4000, 4500) is
-//!     [3H, 3H + P) here. As in the leasing file's `init` guard, a
-//!     stepped-down (WAITING) DCN1 never returns; in NRPFD.rebeca it would
-//!     re-promote at its next runMe.
+//!     PRIMARY round starts at H, so a Rebeca instant is one H earlier here
+//!     (the dual window [4000, 4500) of MARS Figure 8, with H = 1000 and
+//!     P = 500, is [3H, 3H + P) here). As in the leasing file's `init`
+//!     guard, a stepped-down (WAITING) DCN1 never returns; in NRPFD.rebeca
+//!     it would re-promote at its next runMe.
 //!   * `--promote-rule` selects which node the backup runs.
 //!     `takeover` (default, ETFA Algorithm 3 and the GulFest
 //!     `become_primary_on_ping_response` flag) promotes on an answered ping
@@ -190,8 +226,10 @@
 //!     (`if (ping_pending) ping_pending = false; else { mode = PRIMARY; }`)
 //!     and LeasingNRPFD.rebeca does the same behind the lease check
 //!     (`if (which > 1) { mode = PRIMARY; }`), in both cases including the
-//!     one-network ping. `any` is therefore strictly more eager to promote;
-//!     see the `--promote-rule any` verdicts below.
+//!     one-network ping. `any` is therefore strictly more eager to promote.
+//!     No cell of this header separates the two rules: the 2026-09-18
+//!     comparison of the two needed a scripted link cut and is withdrawn
+//!     (see Results).
 //!     NRPFD.rebeca's `NRP_network = -1` artifact is dropped under both.
 //!   * The node is the MARS 2024 node (NRPFD.rebeca / LeasingNRPFD.rebeca),
 //!     NOT the node of the GulFest timing-analysis file, which differs in
@@ -203,88 +241,71 @@
 //!     itself, goes FAILED when a takeover ping is not answered, and asks
 //!     the primary for a new NRP (`request_new_NRP`, `nrp_timeout`) when a
 //!     one-network ping is not answered; a primary with no candidate left
-//!     goes FAILED. The reset alone changes the separation verdicts: with a
-//!     temporary patch of this file that adds only the reset (not a flag of
-//!     this binary; run 2026-09-16, R = 5), (tA, sep) = (11, 40), (12, 39),
-//!     (16, 35), (21, 30) and (21, 20) turned from FIRE into holds with
-//!     stepdowns = completed, while (21, 10) and (31, -20) still FIRE. In
-//!     the (11, 40) witness the new_NRP of the NRP-change round reaches
-//!     DCN2 at 34; with the reset, network B's count at the tick at 60 is
-//!     2, not 3, so the counts differ and the shortcut does not fire. The
-//!     separation windows below are therefore for the MARS node and are
-//!     not comparable with GulFest's Eq. 5 / Eq. 6.
-//!   * A promoted DCN2 is passive: it reports the promotion and (leasing)
-//!     sends `new_NRPBack` so the NRP records the new primary, but it sends
-//!     no pings or heartbeats afterwards. DCN1 never re-promotes and a
-//!     primary ignores heartbeats and lease bits, so this cannot change
-//!     whether both are primary at some instant.
+//!     goes FAILED. None of these differences is measured here: the
+//!     comparison reported until 2026-10-13 (the reset alone turning five
+//!     scripted two-failure cells from FIRE into holds) needed the scripted
+//!     failures and is withdrawn with them.
+//!   * A promoted DCN2 is passive: it sends the probe and (leasing)
+//!     `new_NRPBack` so the NRP records the new primary, but it sends no
+//!     pings or heartbeats afterwards. DCN1 never re-promotes and a primary
+//!     ignores heartbeats and lease bits, so this cannot change whether
+//!     both are primary at some instant.
 //!   * `nrp_timeout`, `request_new_NRP`, FAILED mode, node crashes, the
 //!     Backups-Known presence check, operator acknowledgments and the
 //!     heartbeat payload are not modelled (dead code in the MARS files, or
 //!     present only in the ETFA specification / GulFest node).
-//!   * The attacker of case 8 sits in the network (SW drops heartbeats in a
-//!     time window) rather than inside the primary: same observable effect,
-//!     primary code identical across scenarios.
-//!   * `--fault link` is new. Under switch failure the NRP itself dies, no
-//!     backup ping is ever answered and the lease is never consulted; a
-//!     link cut (the partition of MARS Figure 3) is what exercises it.
+//!   * No failure is an actor. The papers' switch failures at chosen
+//!     instants and the attacker of Table 1 case 8 are not modelled as
+//!     such; the semantics' loss is the only fault. It contains each of
+//!     them as one loss pattern (a dead switch: everything through it is
+//!     lost from some instant on; the attacker: the heartbeats are lost and
+//!     the pings are not) and cannot single one out. It also contains what
+//!     the papers do not consider: a timer that is lost, that is, a
+//!     controller whose clock has stopped while it still holds its role
+//!     (not a crash: the papers' failed node gives the role up).
 //!   * Afra honours `@Priority` (switches before nodes at the same instant);
 //!     TraceForge explores every same-instant order, so a tie that Afra's
-//!     priorities would hide is reported here. The ties reported below are
-//!     between handlers of the two nodes (equal priority in Afra), between
-//!     a failure and a message at a switch (the ordering GulFest's "+1"
-//!     accounts for), or between a heartbeat and a tick at DCN2.
+//!     priorities would hide is explored here: for instance DCN1's ping
+//!     timer against the probe, or a heartbeat against a tick at DCN2.
 //!   * With `--sd-ratio` > 0 a handler may run up to sd after its message
-//!     arrives (handler latency). Two effects follow. Timers drift from
-//!     round to round. And SW's failure and attack notices, being
-//!     self-messages too, can take effect up to sd after their instant, so
-//!     a message that reaches a switch just after its failure instant may
-//!     still be forwarded (see the sd = U verdicts): `--fail-a-ratio`,
-//!     `--sep-ratio` and the attack instants are then earliest instants,
-//!     not exact ones. Rebeca has no such latency; the default sd = 0
-//!     reproduces its timing.
+//!     arrives (handler latency). Timers then drift from round to round,
+//!     and DCN1 may read the probe up to sd after the promotion, which can
+//!     hide a violation but cannot create one (see Property checked). The
+//!     CLI then requires phase + (R + 1)sd < H (see the bound above).
+//!     Rebeca has no such latency; the default sd = 0 reproduces its
+//!     timing.
 //!
-//! ## Timeout-validation assumptions (verification harness, NOT the protocol)
+//! ## No harness (since 2026-10-13)
 //!
-//! This model has no finite-wait receive at all: every timer is a
-//! self-message, so there is no timeout branch that could fire trivially,
-//! and swim_timed.rs's assume_* validation reads are not needed. The
-//! corresponding harness hazard here is EVICTION: a blocking timed receive
-//! may take a later message from one sender while an earlier, readable
-//! message from another sender expires unread. A lost heartbeat or reply is
-//! a fake silence and would produce a false dual primary; Rebeca's message
-//! bags never lose messages. The guard, which is scaffolding and not
-//! protocol:
-//!
-//!   * every message carries a per-(sender, receiver) sequence number and
-//!     every receive does `assume!(seq == expected)`, so an execution that
-//!     skipped a message blocks at the next message on that channel;
-//!   * every channel ends with a Done message and every actor drains to it
-//!     (DCN -> SW Done, SW -> DCN Done, DCN -> main Done), and SW also
-//!     drains its own failure notices, so a skipped LAST message is caught
-//!     too;
-//!   * the dual-primary assertion runs only after both DCN Dones, so no
-//!     report escapes before a gap is detected.
-//!
-//! Reading the counters. `execs` and `blocked` come from the checker,
-//! `completed` and the rest from this harness. An execution that violates
-//! NoDualPrimary is counted in `blocked`, NOT in `execs`, because the
-//! assertion aborts it; the harness counters are bumped just before the
-//! assertion, so `completed = execs + violations` and
-//! `blocked = evicted + violations`. Quote `execs + blocked` as the number
-//! of executions explored, and beware that on a cell where every complete
-//! execution violates, `execs` is 0 and the "0 complete executions" warning
-//! below fires even though the run did verify something.
-//!
-//! Costs: runs report blocked > 0 by design (hundreds to thousands of
-//! discarded evicting executions per cell). Measured growth with R: roughly
-//! quadratic in the no-failure self test (nrp, blocked 38, 90, 164, 263,
-//! 390, 740 at R = 2, 3, 4, 5, 6, 8), faster in the attacked leasing cell
-//! of case 8 (blocked 220, 569, 1271, 2253 at R = 3, 4, 5, 6). The outcome
-//! counters are summed at `main` from the Done summaries, so they count
-//! only completed, eviction-free executions. Self test: with no failure and
-//! no attack every variant holds (below); a leaking guard would show up
-//! there as a false dual primary.
+//! Until 2026-10-13 this file wrapped the protocol in a verification
+//! harness and played its failures out by script:
+//!   * every message carried a per-channel sequence number and every
+//!     receive did `assume!(seq == expected)`; every channel ended with a
+//!     Done message that every actor drained to. Together they discarded
+//!     each execution in which a message was lost or expired unread;
+//!   * `main` was a monitor: the DCNs reported every role change to it with
+//!     zero transit, its storage lifetime was forced to 0, and it asserted
+//!     NoDualPrimary only at the end of the run, after the Done of both
+//!     DCNs, that is, behind messages that can be lost;
+//!   * an Init message told SW the thread ids, and an EndOfRun self-message
+//!     ended each DCN;
+//!   * the failures were scripted on top of the semantics: SW sent itself
+//!     one notice per failure instant and attack edge (`--fault
+//!     switch|link`, `--fail-a-ratio`, `--sep-ratio`, `--attack-from-ratio`,
+//!     `--attack-until-ratio`) and dropped by its own rule what reached it
+//!     afterwards.
+//! The guard dates from the time when a message could vanish only by
+//! sd = 0 eviction, which Rebeca's message bags do not have. Once every
+//! send became lossy (2026-09-30) it also threw away every run with a lost
+//! message: reliable links re-created by filtering, with the scripted
+//! failures as the only faults left. Under the model's semantics a lost
+//! message is an execution like any other, and a dual primary it leads to
+//! is a dual primary. So all of the above is gone: no `assume!`,
+//! no sequence number, no drain, no Done, no Init, no EndOfRun, no monitor,
+//! no report and no scripted failure. Nothing is filtered and nothing is
+//! judged at the end of the run. What is left besides the protocol is one
+//! zero-transit probe (next section) and the outcome counters, which are
+//! observation only and are raised where their event happens.
 //!
 //! ## Property checked
 //!
@@ -294,24 +315,50 @@
 //! which both DCN1 and DCN2 are PRIMARY. Availability (someone eventually
 //! in charge) is not asserted, as in the papers.
 //!
+//! How it is observed: one probe, asserted where it fails. The property
+//! relates two processes at one instant and no thread can read a clock, so
+//! at the instant DCN2 becomes PRIMARY (`promote`) it sends DCN1 one
+//! message, `Promoted`, with transit exactly 0, and DCN1 asserts on its own
+//! state when it reads it: `traceforge::assert(role != Role::Primary)`.
+//! This is exact for this model. DCN1 starts PRIMARY, can only go PRIMARY
+//! -> WAITING and never comes back; DCN2 can only go BACKUP -> PRIMARY and
+//! stays there. So both are PRIMARY at some instant iff DCN1 is still
+//! PRIMARY at the instant DCN2 promotes, and that is what DCN1 sees when it
+//! reads the probe at that instant (sd = 0). If DCN1 steps down at that
+//! very instant, both orders of its ping timer and the probe are explored,
+//! like Rebeca's arbitrary order of same-time handlers. The probe is a
+//! message: it can be lost (the execution in which it arrives is explored
+//! too), and with sd > 0 it is read up to sd after the promotion and only
+//! after every message that arrived before it, so a step-down that arrived
+//! before the promotion but is handled after it goes unseen. A violation
+//! can therefore be missed, never invented: a DCN1 that is PRIMARY when it
+//! reads the probe has been PRIMARY all along. The probe is the only
+//! message that is not protocol, and nothing else is judged: no collector,
+//! no report, no end-of-run check.
+//!
+//! Reading the output. `execs` counts complete executions; `blocked` those
+//! that ended at the failed assertion (with --keep-going; nothing else
+//! blocks, because every actor is a daemon); `impossible` endings that
+//! admit no timeline. The other fields are event counts over all explored
+//! endings, raised by program code where the event happens (`dual` just
+//! before the assertion), so with `impossible` > 0 a non-zero `dual` is an
+//! upper bound and the binary says so. The verdict is the engine's: a run
+//! WITHOUT --keep-going that exits 101, in timed mode after printing the
+//! execution graph and a certified witness timeline. A hold with no
+//! promotion, no takeover ping and no shortcut is a run too short for the
+//! backup to decide, and a leasing hold with lease_chances = 0 is one in
+//! which the lease could never have granted the role; the binary warns in
+//! both cases.
+//!
 //! ## CLI parameters (ratios are over U, like swim_timed)
 //!
-//!   --mode baseline|timed        default timed (baseline FIREs even with
-//!                                no failure: nrp/noopt at R = 3, leasing
-//!                                at R = 5; see Expected verdicts)
+//!   --mode baseline|timed        default timed; the program is the same in
+//!                                both, baseline has no clock (every transit
+//!                                window is ignored)
 //!   --variant nrp|noopt|leasing  nrp = NRPFD.rebeca (simultaneous-timeout
 //!                                shortcut); noopt = shortcut removed, no
 //!                                lease (MARS 4.1 first step); leasing =
 //!                                LeasingNRPFD.rebeca (default nrp)
-//!   --fault switch|link|none     what fails at the failure instants
-//!                                (default switch)
-//!   --fail-a-ratio F             network-A failure instant (default H + P,
-//!                                Table 1 case 7, see Deviations)
-//!   --sep-ratio D                network-B failure at tA + D, D may be
-//!                                negative (default 0); an instant past the
-//!                                run horizon R*H means "never fails"
-//!   --attack-from-ratio T        heartbeats dropped on both networks from T
-//!   --attack-until-ratio T       ... until T (default: forever)
 //!   --hb-on-nrp-change off|on    off = no heartbeat in the NRP-change
 //!                                round (NRPFD.rebeca, and GulFest's first
 //!                                implementation); on = heartbeats in that
@@ -325,8 +372,8 @@
 //!   --u U                        transit upper bound per hop (default 1)
 //!   --l-ratio LR                 L = round(LR * U) (default 1.0: L = U,
 //!                                Rebeca's fixed networkDelay)
-//!   --sd-ratio SR                sd = round(SR * U) (default 0.0); forced
-//!                                to 0 at the monitor
+//!   --sd-ratio SR                sd = round(SR * U) (default 0.0); needs
+//!                                phase + (R + 1)sd < H
 //!   --h-ratio HR                 H = round(HR * U) (default 20, GulFest)
 //!   --pt-ratio PR                P = round(PR * U) (default 10, GulFest);
 //!                                1 <= P < H required
@@ -335,161 +382,141 @@
 //!                                MARS node verbatim, see Deviations)
 //!   --keep-going                 explore everything after a violation
 //!
-//! CLI misuse exits 2, distinct from a property violation's 101, so
-//! exit-code-based sweep harnesses cannot mistake a typo for a FIRE.
+//! The failure flags (`--fault`, `--fail-a-ratio`, `--sep-ratio`,
+//! `--attack-from-ratio`, `--attack-until-ratio`) went with the scripted
+//! failures; passing one is now CLI misuse. CLI misuse exits 2, distinct
+//! from a property violation's 101, so exit-code-based sweep harnesses
+//! cannot mistake a typo for a FIRE.
 //!
-//! ## Expected verdicts (all from runs performed 2026-09-16)
+//! ## Results (re-measured 2026-10-13 after the first-arrival ruling; nothing is predicted)
 //!
-//! Defaults unless stated: H = 20U, P = 10U, max = 2, sd = 0, L = U = 1,
-//! phase 0; times below are absolute, (tA, sep) pairs are ratios.
+//! Defaults: H = 20, P = 10, max = 2, sd = 0, L = U = 1, phase 0,
+//! promote-rule takeover. "old" is the harness version (commit 0cbe2c7)
+//! run with `--fault none`, its own no-failure self test; "new" is this
+//! file, on the engine in which a receive reads the message that arrived
+//! first. One worker, 300 s limit unless stated (900 s for leasing at R = 5
+//! and for baseline leasing at R = 3). A "new" verdict is from a run
+//! WITHOUT --keep-going (FIRE = exit 101, in timed mode with a certified
+//! witness; HOLD = exit 0); the counts are execs / blocked / dual of the
+//! same cell WITH --keep-going (impossible was 0 in every run). The
+//! command of a row is
 //!
-//! Self test, `--fault none`, R = 4: nrp, noopt and leasing all hold
-//! (1 execution each; blocked 164, 302, 300). Nothing happens, and the
-//! binary warns that the backup never had to decide.
+//!     nrp_failure_detector_timed --mode M --variant V --rounds R [--keep-going]
 //!
-//! Baseline (untimed) FIREs with no failure at all: nrp and noopt at R = 3,
-//! leasing at R = 5 (at R = 3 leasing holds over 45205 executions only
-//! because too few NRP answers fit in the run: lease_chances 0, the binary
-//! warns), and noopt with the default switch failure at R = 4. Without
-//! time, three backup ticks can always pass before a heartbeat is
-//! delivered. Baseline leasing at the default R = 4 (`--mode baseline
-//! --fault none --variant leasing`) did not finish within 120 s: no data.
+//!   mode      variant  R  old (execs / blocked / dual)   new
+//!   timed     nrp      2  hold  1 / 2,754 / 0            hold  957 / 0 / 0, run too short
+//!   timed     nrp      3  hold  1 / 15,678 / 0           FIRE  24,642 / 1,078 / 1,078
+//!   timed     nrp      4  hold  1 / 51,806 / 0           FIRE  (counts: no result in 300 s)
+//!   timed     noopt    3  hold  1 / 37,215 / 0           FIRE  35,943 / 2,436 / 2,436
+//!   timed     leasing  3  hold  1 / 35,367 / 0           hold  35,751 / 0 / 0, lease never armed
+//!   timed     leasing  5  not run                        FIRE  (witness after 425 s)
+//!   baseline  nrp      2  hold  630 / 13,136 / 0         hold  3,353 / 0 / 0, run too short
+//!   baseline  nrp      3  FIRE  4,325 / 282,101 / 4,233  FIRE  560,331 / 55,431 / 55,431
+//!   baseline  noopt    3  no result in 300 s             FIRE  (counts: no result in 300 s)
+//!   baseline  leasing  3  hold  45,205 / 1,591,556 / 0   hold  1,862,846 / 0 / 0, lease never armed
+//!   baseline  leasing  5  not run                        FIRE  (witness after 675 s)
 //!
-//! Table 1, case 7 (default cell, `--fault switch`, tA = tB = 30, R = 4):
-//!   nrp FIRE. Witness: round 1's heartbeat dropped at 31, pings to A1 (41)
-//!     and B1 (61) dropped, DCN2's shortcut promotion at 60, DCN1 steps
-//!     down at 70 (MARS Figure 8: 4000 and 4500).
-//!   noopt hold (2 executions, takeover_pings 2, stepdowns 2).
-//!   leasing hold, lease-vacuous: backup_replies 0 because the NRP is dead
-//!     (the binary warns). The same holds with the attacker added
-//!     (`--attack-from-ratio 0 --rounds 5`: hold, backup_replies 0, warned),
-//!     the closest cell to the LOCAL LeasingNRPFD.rebeca configuration
-//!     (attacker built in, switches A1, A2, B1 and B2 fail at 2500; the
-//!     A2/B2 failures cannot be expressed here), whose "satisfied" would
-//!     therefore not exercise the lease. That caveat is about the local
-//!     file only: the model published in MARS Appendix C has every failtime
-//!     0 (attacker only, "Afra created 15891 states ... the assertion is
-//!     satisfied"), which is the case 8 leasing cell below.
-//! Table 1, case 8 (`--fault none --attack-from-ratio 0`, R = 4):
-//!   nrp FIRE (shortcut at 40, DCN1 healthy), noopt FIRE (takeover ping
-//!   answered at 46, promotion at 50, DCN1 healthy). Leasing holds, but
-//!   at R = 4 the lease could never have granted the role: it needs at
-//!   least 3 NRP answers to the backup (the first one always resets, the
-//!   ping before it at the NRP being the primary's), and only 2 takeover
-//!   pings fit (takeover_pings 2, backup_replies 2, lease_resets 2,
-//!   lease_chances 0; the binary warns; R = 3 likewise). Non-vacuous from
-//!   R = 5: R = 5 hold (takeover_pings 3, backup_replies 3, lease_resets 3,
-//!   lease_chances 1 = completed), R = 6 hold (4, 4, 4, lease_chances 1).
-//!   Every answer is a lease reset: a primary ping reaches A1 before each
-//!   backup ping. This is the published Leasing NRP FD scenario.
+//! (The old verdicts are read off its --keep-going counts. "run too short":
+//! the backup's counts first pass the limit at its third tick, so at R = 2
+//! it never decides, and the binary warns. "lease never armed": in no
+//! execution did the backup read the three NRP answers the lease needs, so
+//! the hold says nothing about the lease, and the binary warns. In the new
+//! version noopt and leasing at R = 2 give the same counts as nrp at R = 2,
+//! 957 timed and 3,353 baseline. The first-arrival rule is a rule of the
+//! clock, so the baseline counts are not affected by it.)
 //!
-//! Link cut (`--fault link --fail-a-ratio 10 --rounds 5`): nrp FIRE; noopt
-//! FIRE at a same-instant tie (answered takeover ping, promotion at 50 at
-//! the instant DCN1 steps down); leasing hold, non-vacuous: promotions 2
-//! (at 90, after DCN1 stepped down at 50), backup_replies 6, lease_resets
-//! 2, lease_chances 2 = completed. Leasing also holds with the cut at 1
-//! (R = 5) and 21 (R = 6) (6 executions each, promotions 6, lease_chances
-//! 6) and at phase -2 (8 executions, promotions 8, lease_chances 8), all
-//! promotions after the step-down.
+//! What changed, and why. In the old version exactly one execution reached
+//! the judgement in each timed cell, the one in which nothing is lost and
+//! nothing expires; every other execution was discarded by the sequence
+//! guard or blocked in a drain. With `--fault none` that execution has no
+//! fault at all, so the old self test held by construction. Now every
+//! execution is judged, and every message that is not dropped is read,
+//! the earliest arrival first:
 //!
-//! THE MARS NODE IS MORE EXPOSED THAN THE ETFA NODE (`--promote-rule`,
-//! runs of 2026-09-18). A 252-cell grid over variant x fault x tA x sep x
-//! attack x R was run under both rules: 236 cells agree, and all 16 that
-//! differ are a LINK CUT one round apart (`--fault link --sep-ratio 20`) in
-//! the nrp and noopt variants, where `takeover` holds and `any` FIREs.
-//! Mechanism (witness, `--fault link --fail-a-ratio 10 --sep-ratio 20`):
-//! network A's cut at 10 costs DCN1 its round-1 ping, so at 30 it moves the
-//! NRP to B1 -- and that `new_NRP` is dropped at the same instant by B's own
-//! cut, so DCN2 still believes the NRP is A1. A1 is alive (a link cut stops
-//! only DCN1's traffic), so DCN2's ONE-NETWORK ping to it is answered, and
-//! the MARS node promotes on any answered ping. The dual primary is not a
-//! same-instant tie: at `--phase-ratio -4 --rounds 5` DCN2 is PRIMARY at 50
-//! and DCN1 does not step down until 54, a strict window [50, 54).
-//! Boundary at the Rebeca-faithful L = U = 1, H = 20, P = 10, R = 6,
-//! tA in {10, 30}: `any` FIREs iff 0 <= sep <= H + 1 (21), `takeover` only
-//! for sep in {0, 1}. The H term was confirmed at H = 30 (edge 31). The
-//! ETFA guard therefore shrinks the vulnerable separation by a whole round.
-//! The window needs the backup's ping answer to beat its ping timer: at
-//! U = 2 the round trip is 2 * FAR_HOPS * U = 12, so P = 10 kills the
-//! scenario outright and P = 14 restores it (FIRE at sep 20..23 and beyond,
-//! no closed form measured in U and P).
-//! Leasing holds on EVERY cell of that region under both rules, so the
-//! paper's leasing fix already covers this class.
+//!   * nrp, R = 3, certified witness (exit 101): three sends are dropped.
+//!     DCN1 pings A1 at 0 and SW's answer is dropped, so at 10 DCN1 moves
+//!     to B1 and, as in the code as first written, sends no heartbeat that
+//!     round. It pings B1 at 20, reads the answer at 22 and at 30 sends both
+//!     heartbeats, which SW drops on the forward. DCN2 reads the new_NRP at
+//!     14 and no heartbeat: both its counts are 3 = max + 1 at its third
+//!     tick at 40, the shortcut promotes it, and its probe finds DCN1 still
+//!     PRIMARY at 40. DCN1 has read every timer due before the probe.
+//!   * noopt, R = 3, certified witness: four sends are dropped, the three
+//!     above and the answer to DCN1's ping to B1 at 40 (sent at 41). DCN2
+//!     sends its takeover ping at 40 (to B1: it read the new_NRP), reads the
+//!     answer at 46 and promotes at its ping timer at 50. DCN1's own ping
+//!     timer, which finds no answer and would step it down, arrives at 50 as
+//!     well; the probe is read first (both orders are explored) and finds
+//!     DCN1 still PRIMARY. This witness hangs on that tie; most violating
+//!     executions do not (if the answer of 41 is delivered, DCN1 is still
+//!     PRIMARY at 50 in either order).
+//!   * A stopped clock is not needed. In both witnesses DCN1 reads every
+//!     timer due before the probe, and the run in which nothing is lost but
+//!     the four heartbeat copies of rounds 0 and 1 is a violating execution
+//!     too: DCN1 is answered by A1 in every round and sends its heartbeats
+//!     in every round, DCN2 hears nothing by its third tick, and the probe
+//!     finds a perfectly healthy primary. A re-implementation of this
+//!     program in Python (not in the repository), which reproduces every
+//!     timed execs / blocked count reported here exactly, tags every
+//!     violating execution at the probe. At R = 3, for nrp, 512 of the
+//!     1,078 are executions in which DCN1 had read every timer due before
+//!     the promotion, 128 of them with DCN1 answered by A1 in every round
+//!     and its heartbeats sent in every round; for noopt, 1,740 and 456 of
+//!     2,436 (and only 168 of the 2,436 hang on a same-instant order like
+//!     the one above). In those 128 and 456 the primary is perfectly
+//!     healthy and the backup takes over only because two rounds of
+//!     heartbeats never reached it.
+//!   * leasing, R = 5, certified witness, found after 425 s: DCN1 loses
+//!     A1's first answer and moves to B1 at 10 (DCN2 reads the new_NRP at
+//!     14), is answered by B1 in rounds 1 and 2 and sends its heartbeats at
+//!     30 and 50, of which DCN2 reads only network A's at 34 (SW drops the
+//!     other three on the forward). DCN1's ping of round 3 (at 60) is
+//!     dropped and so is its ping timer of that round, so it does not step
+//!     down at 70; its ping of round 4 (at 80) is dropped too. DCN2 pings
+//!     B1 at 40, 60 and 80: the first answer resets its count (B1's
+//!     previous question was the primary's), the next two pass, and it
+//!     promotes at 90 with DCN1 still PRIMARY (DCN1's ping timer of round 4
+//!     arrives at 90 as well, and the probe is read first). With
+//!     `--max-missed 0` the same variant FIREs at R = 3 (a witness after
+//!     about 25 s in timed mode, under 1 s in baseline).
+//!   * The lease. At R = 3 it holds in both modes, but the hold is empty:
+//!     the backup never reads the three NRP answers the lease needs
+//!     (lease_chances = 0, the binary warns). The backup first pings the
+//!     landmark at its tick max, so its third answer comes at tick max + 2
+//!     and R = max + 3 = 5 is the shortest run in which the lease can grant
+//!     the role at all; there it FIREs in both modes (with `--max-missed 0`
+//!     that is R = 3, and it FIREs). So with every message lossy the lease
+//!     does not exclude a dual primary: the witness above is one.
+//!   * The run length matters, the timing does not: at R = 2 every variant
+//!     holds in both modes because the backup cannot decide yet (also with
+//!     `--promote-rule any`, `--hb-on-nrp-change on`, `--l-ratio 0`,
+//!     `--phase-ratio 5`, `--phase-ratio -5`, `--sd-ratio 1`: 957
+//!     executions each, 4,845 with hb-on-nrp-change, all warned), and at
+//!     R = 3 each of those six settings FIREs (timed, nrp). From the round
+//!     at which the backup can take over (R = 3 for nrp and noopt, R = 5
+//!     for leasing), both modes FIRE.
 //!
-//! THE LEASE IS NOT ENOUGH (new scenario): leasing, `--fault link
-//! --attack-from-ratio 0 --fail-a-ratio 50 --rounds 5` FIREs. Witness:
-//! DCN1's last answered ping at 41; the backup's takeover pings reach A1
-//! at 43 (lease reset: the ping before was the primary's), 63 and 83 (no
-//! primary ping in between); the backup promotes at 90, the very instant
-//! DCN1 (pings at 61 and 81 lost) steps down. The lease grants the role
-//! after two rounds without a primary ping, exactly the primary's own
-//! give-up time, with no margin. With DCN1's timers lagging DCN2's by
-//! delta = -phase: FIRE iff 0 <= delta <= 3U - L. L = U = 1: phase -3 hold
-//! (stepdowns 2 = completed, lease_chances 2), -2 FIRE, -1 FIRE with a
-//! strict dual window [90, 91), 0 FIRE (tie), +1 hold (promotions 2, after
-//! the step-down). L = 0, U = 1: phase -3 FIRE, -4 hold (stepdowns 4 =
-//! completed). Cut instant (phase 0): 40 hold (DCN1's last answered ping
-//! then precedes the backup's first; promotions 2, after the step-down),
-//! 41, 42 and 50 FIRE, 70 FIRE (R = 6).
+//! Cost. The exploration is far larger than the old one, which stopped
+//! every lossy execution at its first gap: nrp at R = 3 takes 48 s timed
+//! and 141 s baseline, noopt 68 s timed, leasing 49 s timed and 350 s
+//! baseline (hence its 900 s limit); at the default R = 4 the first FIRE
+//! comes after 0.1 s (nrp, timed) but the whole space does not finish in
+//! 300 s. (Wall clock with two explorations side by side on a shared
+//! machine; the same cell varied by a factor of up to 1.7 between runs.)
 //!
-//! Separation between the two failures (`--variant nrp --fault switch`,
-//! tB = tA + sep, J = U - L), for the MARS node only (see Deviations: not
-//! comparable with GulFest's Eq. 5 / Eq. 6). Over all failure phases:
-//!   hb-on-nrp-change off: dual primary reachable iff
-//!     -(H + J) <= sep <= 2H + J;
-//!   hb-on-nrp-change on: iff -(H + J) <= sep <= P + J.
-//! Evidence at L = U = 1 (sweeps run every tA in one period):
-//!   off: sep 40 FIREs at tA = 11 only (tA = 0..20, R = 5), sep 41 holds
-//!     at all 21 phases; sep -20 FIREs at tA = 31 only, sep -21 holds at
-//!     all tA = 21..40 (R = 4) and at tA = 41 (R = 5; at R = 4 that cell
-//!     warns that DCN1 did not step down in every execution). Witness at
-//!     (11, 40): SW forwards round 0's heartbeat at 11 just before A's
-//!     failure notice of the same instant, the NRP-change round 1 sends no
-//!     heartbeat (the new_NRP reaches DCN2 at 34 and resets nothing), B's
-//!     round-2 heartbeat is lost at 51, shortcut at 60 with both counts at
-//!     3, DCN1 down at 70. The FIRE set is not monotone in sep (R = 5): at
-//!     tA = 21, sep 10 FIRE, 11 and 19 hold, 20 and 30 FIRE, 31 hold; at
-//!     tA = 16, 0 and 24 hold, 25 and 35 FIRE, 36 hold; sep 30 FIREs
-//!     exactly at tA in {0, 1, 11..20}.
-//!   on: sep 10 FIREs at tA = 1 only and sep 11 holds at all phases (R = 4);
-//!     sep 20, 30 and 40 hold at all 21 phases (R = 5); sep -20 FIREs at
-//!     tA = 31 only, -21 holds at all phases (R = 4, tA = 41 at R = 5).
-//! Jitter. L = 0, U = 1: off (10, 41) FIRE, sep 42 holds at all tA 0..20
-//!   (R = 5), (9, 42) hold, (31, -21) FIRE, sep -22 holds at all tA 22..41
-//!   (R = 4, tA = 40 and 41 at R = 5); on (20, 11) FIRE, sep 12 holds at
-//!   all tA 0..20, (31, -21) FIRE, sep -22 holds at all tA 22..41 (R = 4,
-//!   tA = 40 and 41 at R = 5). U = 2, L = 1: off (10.5, 40.5) FIRE,
-//!   (10.5, 41) hold, (31, -20.5) FIRE, (31, -21) hold; on (20.5, 10.5)
-//!   FIRE, (20.5, 11) hold. U = 2, L = 2 reproduces the U = 1 verdicts and execution counts
-//!   at the same ratios ((11, 40) FIRE, (11, 40.5) hold, (31, -20) FIRE,
-//!   (31, -20.5) hold; on (21, 10) FIRE, (21, 10.5) hold).
-//! GulFest. These windows say nothing about min_interval = 23 in the local
-//!   GulFest file: its node resets the missed count on new_NRP, and with
-//!   that reset added the A-first FIREs tried at sep 20 to 40 become holds
-//!   (see Deviations). By the authors' own statement, their first
-//!   implementation (the one the local GulFest file still contains: no
-//!   heartbeat in the NRP-change round) satisfies Eq. 6 (|tB - tA| >=
-//!   2H + 2N, 44 at H = 20, N = 1) and a slightly modified implementation
-//!   satisfies Eq. 5 (|tB - tA| >= H + 2N), from which 23 = H + 2N + 1 was
-//!   derived.
-//! With sd = U, off FIREs at (11, 41) and (11, 43) (R = 5), beyond the
-//!   sd = 0 bound 2H + J = 40. The (11, 43) witness shows both sd effects
-//!   of Deviations: SW reads DCN1's round-0 heartbeat at 12 before the
-//!   network-A failure notice that arrived at 11 and forwards it on both
-//!   networks (the failure took effect 1 late), and DCN1's timers lag (its
-//!   round-2 heartbeat, sent at 53, meets B's failure at 54 and is lost);
-//!   shortcut at 60, DCN1 down at 73. No closed form measured.
-//!
-//! Case 7 with DCN2's ticks offset (0 <= phase < H): FIRE iff phase <= P
-//! (dual window [3H + phase, 3H + P]) or phase >= P + 4L (round 0's
-//! heartbeat can then reach DCN2 at its first tick, so DCN2 counts one
-//! round early). L = U = 1: 10 FIRE, 11 and 13 hold, 14 FIRE. U = 2, L = 1:
-//! ratio 10 FIRE, 10.5, 11 and 11.5 hold, 12 FIRE. L = 0: 10 and 11 FIRE.
-//!
-//! Every timed FIRE prints a certified witness timeline; the witnesses
-//! quoted above were read and show the mechanism described, with every
-//! message read at its arrival instant (sd = 0) and no sequence gap. Cells
-//! take 0.1 s to 35 s.
+//! WITHDRAWN. Everything this header reported before 2026-10-13 described
+//! scripted failures on links that lost nothing else, and is no longer
+//! claimed: the self-test holds at R = 4, the reproduction of MARS Table 1
+//! cases 7 and 8 and of the leasing fix, the comparison of the two promote
+//! rules, the separation windows of two switch failures (and their
+//! comparison with the GulFest equations), the link-cut cells and the
+//! lease's zero-margin tie. Under the model's semantics a switch failure, a
+//! cut cable or an attacker is one loss pattern among all those explored,
+//! and the property is violated without any of them. Also withdrawn are the
+//! witnesses of the first re-measurement of 2026-10-13, in which a message
+//! arrived while its receiver waited and was never read: a waiting receive
+//! now reads the message that arrived first, and every number of the new
+//! column was measured again.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
@@ -497,9 +524,11 @@ use std::time::{Duration, Instant};
 use traceforge::thread::{self, ThreadId};
 use traceforge::{Config, Stats};
 
-// Outcome counters, summed at `main` from the Done summaries of completed
-// (eviction-free) executions only. Reset before each verify, read after.
-static COMPLETED: AtomicUsize = AtomicUsize::new(0);
+// Outcome counters (observation only; the verdict is the assertion in DCN1's
+// Promoted handler). Each is raised by program code at the site where its
+// event happens, on every ending the search enumerates, so they are event
+// counts over all explored executions (revisited prefixes may re-count).
+// Reset before each verify, read after.
 static DUAL_PRIMARY: AtomicUsize = AtomicUsize::new(0);
 static STEPDOWNS: AtomicUsize = AtomicUsize::new(0);
 static PROMOTIONS: AtomicUsize = AtomicUsize::new(0);
@@ -507,11 +536,10 @@ static SHORTCUT_PROMOTIONS: AtomicUsize = AtomicUsize::new(0);
 static TAKEOVER_PINGS: AtomicUsize = AtomicUsize::new(0);
 static BACKUP_REPLIES: AtomicUsize = AtomicUsize::new(0);
 static LEASE_RESETS: AtomicUsize = AtomicUsize::new(0);
-// Executions in which the backup got at least LEASE_MIN_ANSWERS NRP answers,
-// so the lease could have granted it the role at all.
+// Raised once in an execution, when the backup reads its LEASE_MIN_ANSWERS-th
+// NRP answer: from then on the lease could have granted it the role at all.
 static LEASE_CHANCES: AtomicUsize = AtomicUsize::new(0);
 static NRP_CHANGES: AtomicUsize = AtomicUsize::new(0);
-static SW_DROPS: AtomicUsize = AtomicUsize::new(0);
 
 const DEFAULT_ROUNDS: u32 = 4;
 const DEFAULT_MAX_MISSED: u32 = 2;
@@ -530,12 +558,10 @@ const LEASE_MIN_ANSWERS: u32 = 3;
 /// Hops between SW (A1/B1) and DCN2 (A1 -> A2 -> A3 -> DCN2).
 const FAR_HOPS: u64 = 3;
 
-// Actor indices (also the `from` field of every message).
-const MAIN: usize = 0;
+// Actor indices (the `from` field of every message).
 const DCN1: usize = 1;
 const DCN2: usize = 2;
 const SW: usize = 3;
-const ACTORS: usize = 4;
 
 // Networks.
 const NET_A: usize = 0;
@@ -573,25 +599,6 @@ impl Variant {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Fault {
-    None,
-    /// Table 1 case 7: the switch dies (drops everything, NRP included).
-    Switch,
-    /// DCN1's uplink on that network is cut; the switch stays alive.
-    Link,
-}
-
-impl Fault {
-    fn name(self) -> &'static str {
-        match self {
-            Fault::None => "none",
-            Fault::Switch => "switch",
-            Fault::Link => "link",
-        }
-    }
-}
-
 /// When a backup that got its ping answered takes over.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PromoteRule {
@@ -622,82 +629,41 @@ enum Role {
     Waiting,
 }
 
-/// Environment events SW sends to itself at t = 0, each timed to its
-/// instant.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Env {
-    Down(usize),
-    AttackOn,
-    AttackOff,
-}
-
-/// Outcome tallies of one actor, shipped in Done messages.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-struct Summary {
-    stepdowns: u32,
-    promotions: u32,
-    shortcut: u32,
-    takeover_pings: u32,
-    backup_replies: u32,
-    lease_resets: u32,
-    nrp_changes: u32,
-    sw_drops: u32,
-}
-
-impl Summary {
-    fn add(&mut self, o: Summary) {
-        self.stepdowns += o.stepdowns;
-        self.promotions += o.promotions;
-        self.shortcut += o.shortcut;
-        self.takeover_pings += o.takeover_pings;
-        self.backup_replies += o.backup_replies;
-        self.lease_resets += o.lease_resets;
-        self.nrp_changes += o.nrp_changes;
-        self.sw_drops += o.sw_drops;
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 enum Body {
-    /// main -> SW: the DCN thread ids.
-    Init { dcn1: ThreadId, dcn2: ThreadId },
     /// Self timer: Rebeca runMe().
     Tick { k: u32 },
     /// Self timer: Rebeca ping_timed_out().
     PingTimeout,
-    /// Self timer: end of the bounded run (harness).
-    EndOfRun,
-    /// Self timer at SW: failure / attack instant.
-    Env(Env),
-    /// DCN -> SW: pingNRP to the NRP on network `net`.
-    Ping { net: usize },
+    /// DCN -> SW: pingNRP to the NRP on network `net`; the answer goes to
+    /// `reply_to`.
+    Ping { net: usize, reply_to: ThreadId },
     /// SW -> DCN: pingNRP_response(which, prevWhich).
     PingReply { w: bool, pw: bool },
-    /// DCN1 -> SW -> DCN2: the heartBeats of one instant; `mask[n]` says
-    /// whether network n's heartbeat is (still) on its way.
-    Heartbeat { mask: [bool; 2] },
-    /// DCN1 -> SW -> DCN2: new_NRP over network `net`.
-    NewNrp { net: usize },
+    /// DCN1 -> SW -> DCN2 (`to`): heartBeat on network `net`, one message
+    /// per network as in the Rebeca models.
+    Heartbeat { net: usize, to: ThreadId },
+    /// DCN1 -> SW -> DCN2 (`to`): new_NRP over network `net`.
+    NewNrp { net: usize, to: ThreadId },
     /// DCN2 -> SW (leasing): new_NRPBack, the NRP records the new primary.
     NewNrpBack { net: usize },
-    /// DCN -> main: role change at this instant (harness).
-    RoleChange { role: Role },
-    /// End-of-run drain marker carrying the sender's tallies (harness).
-    Done { summary: Summary },
+    /// DCN2 -> DCN1, zero transit, sent at the instant DCN2 becomes PRIMARY:
+    /// the NoDualPrimary probe (the only message that is not protocol, see
+    /// Property checked).
+    Promoted,
 }
 
-/// Every message: sender, per-(sender, receiver) sequence number, body.
+/// Every message: sender (DCN1, DCN2 or SW; the NRP's lease memory compares
+/// senders) and body.
 #[derive(Clone, Debug, PartialEq)]
 struct Msg {
     from: usize,
-    seq: u32,
     body: Body,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct Params {
     variant: Variant,
-    fault: Fault,
     promote_rule: PromoteRule,
     hb_on_nrp_change: bool,
     rounds: u32,
@@ -707,10 +673,6 @@ struct Params {
     sd: u64,
     h: u64,
     p: u64,
-    fail_a: Option<u64>,
-    fail_b: Option<u64>,
-    attack_from: Option<u64>,
-    attack_until: Option<u64>,
     /// DCN2's tick offset; negative offsets DCN1 instead.
     phase: i64,
 }
@@ -721,10 +683,6 @@ impl Params {
             DCN1 => (-self.phase).max(0) as u64,
             _ => self.phase.max(0) as u64,
         }
-    }
-    /// Last instant any DCN handles a message that matters (its EndOfRun).
-    fn horizon(&self) -> u64 {
-        self.rounds as u64 * self.h + self.phase.unsigned_abs()
     }
 }
 
@@ -741,63 +699,39 @@ enum Leg {
     Near,
     /// Three hops: SW <-> DCN2.
     Far,
-    /// Exact delay: timers and reports.
+    /// Exact delay: timers and the probe.
     Exact(u64),
 }
 
-// =====================================================================
-// Channels with the eviction guard (verification harness, see header)
-// =====================================================================
-
-struct Chan {
-    me: usize,
-    ids: [Option<ThreadId>; ACTORS],
-    out: [u32; ACTORS],
-    inn: [u32; ACTORS],
+/// Send `body` from actor `from` to `to` with the transit of `leg`. The
+/// transit override has no effect in baseline mode (same program both modes).
+/// Like every send, it may be lost.
+fn send(p: &Params, from: usize, to: ThreadId, leg: Leg, body: Body) {
+    let (lo, hi) = match leg {
+        Leg::Near => (p.l, p.u),
+        Leg::Far => (FAR_HOPS * p.l, FAR_HOPS * p.u),
+        Leg::Exact(d) => (d, d),
+    };
+    traceforge::send_msg_timed(to, Msg { from, body }, lo, hi);
 }
 
-impl Chan {
-    fn new(me: usize, ids: [Option<ThreadId>; ACTORS]) -> Self {
-        Self { me, ids, out: [0; ACTORS], inn: [0; ACTORS] }
-    }
-
-    /// Send `body` to actor `to` with the transit of `leg`. The transit
-    /// override has no effect in baseline mode (same program both modes).
-    fn send(&mut self, p: &Params, to: usize, leg: Leg, body: Body) {
-        let (lo, hi) = match leg {
-            Leg::Near => (p.l, p.u),
-            Leg::Far => (FAR_HOPS * p.l, FAR_HOPS * p.u),
-            Leg::Exact(d) => (d, d),
-        };
-        let m = Msg { from: self.me, seq: self.out[to], body };
-        self.out[to] += 1;
-        let tid = self.ids[to].expect("send to an unknown actor");
-        traceforge::send_msg_timed(tid, m, lo, hi);
-    }
-
-    /// The single reactive receive of every actor. Harness: an execution
-    /// in which an earlier message on this channel was evicted unread
-    /// blocks here (the seq gap), instead of acting on a fake silence.
-    fn recv(&mut self) -> (usize, Body) {
-        let m: Msg = traceforge::recv_msg_block_timed();
-        let from = m.from;
-        traceforge::assume!(m.seq == self.inn[from]);
-        self.inn[from] += 1;
-        (from, m.body)
-    }
+/// The single reactive receive of every actor (a Rebeca message server):
+/// the next message, whoever sent it, the one that arrived first. A lost
+/// message is never read, exactly like a message that was never sent.
+fn recv() -> (usize, Body) {
+    let m: Msg = traceforge::recv_msg_block_timed();
+    (m.from, m.body)
 }
 
 // =====================================================================
 // Controller node (DCN1 starts PRIMARY, DCN2 starts BACKUP)
 // =====================================================================
 
-fn dcn(node: usize, p: Params, main_tid: ThreadId, sw_tid: ThreadId) {
+/// One controller, a daemon: one blocking receive loop for ever. `sw` is the
+/// switch pair, `peer` the other controller (DCN1 sends its heartbeats to
+/// DCN2, DCN2 sends its Promoted probe to DCN1).
+fn dcn(node: usize, p: Params, sw: ThreadId, peer: ThreadId) {
     let me = thread::current().id();
-    let mut ids = [None; ACTORS];
-    ids[MAIN] = Some(main_tid);
-    ids[SW] = Some(sw_tid);
-    ids[node] = Some(me);
-    let mut ch = Chan::new(node, ids);
     // DCN2's traffic to the switches crosses A3/A2 (or B3/B2) first.
     let net_leg = if node == DCN1 { Leg::Near } else { Leg::Far };
 
@@ -810,32 +744,24 @@ fn dcn(node: usize, p: Params, main_tid: ThreadId, sw_tid: ThreadId) {
     let mut takeover_ping = false;
     // Leasing: consecutive NRP answers with no primary ping in between.
     let mut which: u32 = 0;
-    let mut ended = false;
-    let mut sum = Summary::default();
+    // Observation only (LEASE_CHANCES): NRP answers this backup has read.
+    let mut nrp_answers: u32 = 0;
     let max = p.max_missed;
+    // pingNRP: the packet names the thread to answer.
+    let ping = |net: usize| Body::Ping { net, reply_to: me };
 
-    ch.send(&p, node, Leg::Exact(p.first_tick(node)), Body::Tick { k: 0 });
+    send(&p, node, me, Leg::Exact(p.first_tick(node)), Body::Tick { k: 0 });
 
     loop {
-        let (from, body) = ch.recv();
-        if ended {
-            // Past the horizon: drain until SW's Done, act on nothing.
-            if let Body::Done { summary } = body {
-                debug_assert_eq!(from, SW);
-                sum.add(summary);
-                ch.send(&p, MAIN, Leg::Exact(0), Body::Done { summary: sum });
-                return;
-            }
-            continue;
-        }
+        let (from, body) = recv();
         match body {
             Body::Tick { k } => {
                 match role {
                     Role::Primary if node == DCN1 => {
                         // runMe, PRIMARY: ping the NRP, arm ping_timed_out.
                         ping_pending = true;
-                        ch.send(&p, SW, net_leg, Body::Ping { net: nrp_net });
-                        ch.send(&p, node, Leg::Exact(p.p), Body::PingTimeout);
+                        send(&p, node, sw, net_leg, ping(nrp_net));
+                        send(&p, node, me, Leg::Exact(p.p), Body::PingTimeout);
                     }
                     // A promoted DCN2 is passive (see Deviations).
                     Role::Primary => {}
@@ -852,15 +778,15 @@ fn dcn(node: usize, p: Params, main_tid: ThreadId, sw_tid: ThreadId) {
                             {
                                 // Simultaneous timeout on both networks:
                                 // take over without asking the NRP.
-                                sum.shortcut += 1;
-                                promote(&mut ch, &p, &mut role, &mut missed, &mut sum, nrp_net);
+                                SHORTCUT_PROMOTIONS.fetch_add(1, Ordering::Relaxed);
+                                promote(&p, node, sw, peer, &mut role, &mut missed, nrp_net);
                             } else {
                                 clamp(&mut missed, max);
                                 ping_pending = true;
                                 takeover_ping = true;
-                                sum.takeover_pings += 1;
-                                ch.send(&p, SW, net_leg, Body::Ping { net: nrp_net });
-                                ch.send(&p, node, Leg::Exact(p.p), Body::PingTimeout);
+                                TAKEOVER_PINGS.fetch_add(1, Ordering::Relaxed);
+                                send(&p, node, sw, net_leg, ping(nrp_net));
+                                send(&p, node, me, Leg::Exact(p.p), Body::PingTimeout);
                             }
                         } else if over_a || over_b {
                             // One network silent: check the NRP only if it
@@ -868,19 +794,19 @@ fn dcn(node: usize, p: Params, main_tid: ThreadId, sw_tid: ThreadId) {
                             if (nrp_net == NET_A && over_a) || (nrp_net == NET_B && over_b) {
                                 ping_pending = true;
                                 takeover_ping = false;
-                                ch.send(&p, SW, net_leg, Body::Ping { net: nrp_net });
-                                ch.send(&p, node, Leg::Exact(p.p), Body::PingTimeout);
+                                send(&p, node, sw, net_leg, ping(nrp_net));
+                                send(&p, node, me, Leg::Exact(p.p), Body::PingTimeout);
                             }
                             clamp(&mut missed, max);
                         }
                     }
                     Role::Waiting => {}
                 }
-                // Next runMe (sent after the ping timer: firing order).
+                // Next runMe (sent after the ping timer: firing order). The
+                // run is bounded by this count: after its last round a DCN
+                // arms nothing and only reacts to what is still in flight.
                 if k + 1 < p.rounds {
-                    ch.send(&p, node, Leg::Exact(p.h), Body::Tick { k: k + 1 });
-                } else {
-                    ch.send(&p, node, Leg::Exact(p.h), Body::EndOfRun);
+                    send(&p, node, me, Leg::Exact(p.h), Body::Tick { k: k + 1 });
                 }
             }
             Body::PingTimeout => match role {
@@ -890,18 +816,19 @@ fn dcn(node: usize, p: Params, main_tid: ThreadId, sw_tid: ThreadId) {
                         // give up when none is left.
                         nrp_net += 1;
                         if nrp_net < 2 {
-                            sum.nrp_changes += 1;
-                            ch.send(&p, SW, Leg::Near, Body::NewNrp { net: nrp_net });
+                            NRP_CHANGES.fetch_add(1, Ordering::Relaxed);
+                            send(&p, node, sw, Leg::Near, Body::NewNrp { net: nrp_net, to: peer });
                             if p.hb_on_nrp_change {
-                                ch.send(&p, SW, Leg::Near, Body::Heartbeat { mask: [true, true] });
+                                heartbeats(&p, sw, peer);
                             }
                         } else {
+                            // Step down (Rebeca WAITING), silently: DCN1
+                            // never becomes PRIMARY again in this model.
                             role = Role::Waiting;
-                            sum.stepdowns += 1;
-                            ch.send(&p, MAIN, Leg::Exact(0), Body::RoleChange { role });
+                            STEPDOWNS.fetch_add(1, Ordering::Relaxed);
                         }
                     } else {
-                        ch.send(&p, SW, Leg::Near, Body::Heartbeat { mask: [true, true] });
+                        heartbeats(&p, sw, peer);
                     }
                 }
                 Role::Backup => {
@@ -910,7 +837,7 @@ fn dcn(node: usize, p: Params, main_tid: ThreadId, sw_tid: ThreadId) {
                     } else if (p.promote_rule == PromoteRule::Any || takeover_ping)
                         && (!p.variant.lease() || which > 1)
                     {
-                        promote(&mut ch, &p, &mut role, &mut missed, &mut sum, nrp_net);
+                        promote(&p, node, sw, peer, &mut role, &mut missed, nrp_net);
                     }
                     takeover_ping = false;
                 }
@@ -919,13 +846,17 @@ fn dcn(node: usize, p: Params, main_tid: ThreadId, sw_tid: ThreadId) {
             Body::PingReply { w, pw } => match role {
                 Role::Primary => ping_pending = false,
                 Role::Backup => {
-                    sum.backup_replies += 1;
+                    BACKUP_REPLIES.fetch_add(1, Ordering::Relaxed);
+                    nrp_answers += 1;
+                    if nrp_answers == LEASE_MIN_ANSWERS {
+                        LEASE_CHANCES.fetch_add(1, Ordering::Relaxed);
+                    }
                     if p.variant.lease() {
                         if !w && !pw {
                             which += 1;
                         } else {
                             which = 0;
-                            sum.lease_resets += 1;
+                            LEASE_RESETS.fetch_add(1, Ordering::Relaxed);
                         }
                         if which > 1 {
                             ping_pending = false;
@@ -936,26 +867,36 @@ fn dcn(node: usize, p: Params, main_tid: ThreadId, sw_tid: ThreadId) {
                 }
                 Role::Waiting => {}
             },
-            Body::Heartbeat { mask } => {
+            Body::Heartbeat { net, .. } => {
                 if role == Role::Backup {
-                    for net in [NET_A, NET_B] {
-                        if mask[net] {
-                            missed[net] = 0;
-                        }
-                    }
+                    missed[net] = 0;
                 }
             }
-            Body::NewNrp { net } => {
+            Body::NewNrp { net, .. } => {
                 // NRPFD.rebeca: adopt the new NRP only. GulFest's node also
                 // resets missed[net] here (see Deviations).
                 nrp_net = net;
             }
-            Body::EndOfRun => {
-                ended = true;
-                ch.send(&p, SW, net_leg, Body::Done { summary: Summary::default() });
+            Body::Promoted => {
+                // NoDualPrimary (see Property checked). DCN2 sent this at
+                // the instant it became PRIMARY; DCN1 judges its own role
+                // now. DCN1 never becomes PRIMARY again once it has stepped
+                // down, so PRIMARY here means PRIMARY at that instant too.
+                if role == Role::Primary {
+                    DUAL_PRIMARY.fetch_add(1, Ordering::Relaxed);
+                }
+                traceforge::assert(role != Role::Primary);
             }
             m => panic!("DCN{node}: unexpected {m:?} from actor {from}"),
         }
+    }
+}
+
+/// DCN1's heartBeat(0) and heartBeat(1) of one instant: one message per
+/// network, network A first (NRPFD.rebeca's order), each forwarded by SW.
+fn heartbeats(p: &Params, sw: ThreadId, dcn2: ThreadId) {
+    for net in [NET_A, NET_B] {
+        send(p, DCN1, sw, Leg::Near, Body::Heartbeat { net, to: dcn2 });
     }
 }
 
@@ -966,19 +907,22 @@ fn clamp(missed: &mut [u32; 2], max: u32) {
 }
 
 fn promote(
-    ch: &mut Chan,
     p: &Params,
+    node: usize,
+    sw: ThreadId,
+    peer: ThreadId,
     role: &mut Role,
     missed: &mut [u32; 2],
-    sum: &mut Summary,
     nrp_net: usize,
 ) {
     *role = Role::Primary;
     *missed = [0, 0];
-    sum.promotions += 1;
-    ch.send(p, MAIN, Leg::Exact(0), Body::RoleChange { role: Role::Primary });
+    PROMOTIONS.fetch_add(1, Ordering::Relaxed);
+    // The NoDualPrimary probe, zero transit: DCN1 asserts on its own role
+    // when it reads it (see Property checked).
+    send(p, node, peer, Leg::Exact(0), Body::Promoted);
     if p.variant.lease() {
-        ch.send(p, SW, Leg::Far, Body::NewNrpBack { net: nrp_net });
+        send(p, node, sw, Leg::Far, Body::NewNrpBack { net: nrp_net });
     }
 }
 
@@ -986,125 +930,35 @@ fn promote(
 // SW: switches A1 (initial NRP) and B1 (second candidate)
 // =====================================================================
 
-fn switch(p: Params, main_tid: ThreadId) {
-    // Setup handshake (blocking read at t = 0, sender-filtered).
-    let init: Msg = traceforge::recv_tagged_msg_block_timed(move |s, _tag| s == main_tid);
-    let (dcn1, dcn2) = match init.body {
-        Body::Init { dcn1, dcn2 } => (dcn1, dcn2),
-        m => panic!("SW: expected Init, got {m:?}"),
-    };
-    let me = thread::current().id();
-    let mut ch = Chan::new(SW, [Some(main_tid), Some(dcn1), Some(dcn2), Some(me)]);
-    ch.inn[MAIN] = 1;
-
-    // Environment notices, sent in firing order; instants past the
-    // horizon never happen within the run and are not scheduled.
-    let mut notices: Vec<(u64, Env)> = Vec::new();
-    if let (Some(ta), Some(tb)) = (p.fail_a, p.fail_b) {
-        // Same-instant failures: explore both notice orders, so a
-        // heartbeat read between them can lose either network (the two
-        // per-network heartbeats travel as one message, see Deviations).
-        let b_first = ta == tb && traceforge::nondet();
-        if b_first {
-            notices.push((tb, Env::Down(NET_B)));
-            notices.push((ta, Env::Down(NET_A)));
-        } else {
-            notices.push((ta, Env::Down(NET_A)));
-            notices.push((tb, Env::Down(NET_B)));
-        }
-    }
-    if let Some(t) = p.attack_from {
-        notices.push((t, Env::AttackOn));
-        if let Some(t2) = p.attack_until {
-            notices.push((t2, Env::AttackOff));
-        }
-    }
-    notices.retain(|(t, _)| *t <= p.horizon());
-    notices.sort_by_key(|(t, _)| *t);
-    let mut notices_left = notices.len();
-    for (t, e) in notices {
-        ch.send(&p, SW, Leg::Exact(t), Body::Env(e));
-    }
-
-    let mut down = [false; 2];
-    let mut attack = false;
+/// The switch pair, a daemon: one blocking receive loop for ever. It knows no
+/// thread id: every packet carries the address it needs.
+fn switch(p: Params) {
     // Lease memory per NRP switch (LeasingNRPFD.rebeca Switch statevars).
     let mut primary: [Option<usize>; 2] = [Some(DCN1), None];
     let mut which = [true; 2];
-    let mut dones = [false; ACTORS];
-    let mut sum = Summary::default();
 
     loop {
-        let (from, body) = ch.recv();
-        // Is a message of `from` on network `net` dropped at this instant?
-        let blocked = |from: usize, net: usize, down: &[bool; 2]| match (p.fault, from) {
-            (Fault::None, _) => false,
-            (Fault::Switch, _) => down[net],
-            (Fault::Link, DCN1) => down[net],
-            (Fault::Link, _) => false,
-        };
+        let (from, body) = recv();
         let leg_to = |node: usize| if node == DCN1 { Leg::Near } else { Leg::Far };
         match body {
-            Body::Env(e) => {
-                notices_left -= 1;
-                match e {
-                    Env::Down(net) => down[net] = true,
-                    Env::AttackOn => attack = true,
-                    Env::AttackOff => attack = false,
-                }
+            Body::Ping { net, reply_to } => {
+                // pingNRP at the NRP: prevWhich = which;
+                // which = (sender == primary); reply both.
+                let pw = which[net];
+                let w = primary[net] == Some(from);
+                which[net] = w;
+                send(&p, SW, reply_to, leg_to(from), Body::PingReply { w, pw });
             }
-            Body::Ping { net } => {
-                if blocked(from, net, &down) {
-                    sum.sw_drops += 1;
-                } else {
-                    // pingNRP at the NRP: prevWhich = which;
-                    // which = (sender == primary); reply both.
-                    let pw = which[net];
-                    let w = primary[net] == Some(from);
-                    which[net] = w;
-                    ch.send(&p, from, leg_to(from), Body::PingReply { w, pw });
-                }
+            Body::Heartbeat { net, to } => {
+                // heartBeat: pass it on along the chain to DCN2.
+                send(&p, SW, to, Leg::Far, Body::Heartbeat { net, to });
             }
-            Body::Heartbeat { mask: sent } => {
-                // Judge each network's heartbeat separately (A1 for A,
-                // B1 for B), then forward what survived as one message.
-                let mut mask = [false; 2];
-                for net in [NET_A, NET_B] {
-                    if !sent[net] {
-                        continue;
-                    }
-                    if blocked(from, net, &down) || attack {
-                        sum.sw_drops += 1;
-                    } else {
-                        mask[net] = true;
-                    }
-                }
-                if mask[NET_A] || mask[NET_B] {
-                    ch.send(&p, DCN2, Leg::Far, Body::Heartbeat { mask });
-                }
+            Body::NewNrp { net, to } => {
+                primary[net] = Some(from);
+                send(&p, SW, to, Leg::Far, Body::NewNrp { net, to });
             }
-            Body::NewNrp { net } => {
-                if blocked(from, net, &down) {
-                    sum.sw_drops += 1;
-                } else {
-                    primary[net] = Some(from);
-                    ch.send(&p, DCN2, Leg::Far, Body::NewNrp { net });
-                }
-            }
-            Body::NewNrpBack { net } => {
-                if blocked(from, net, &down) {
-                    sum.sw_drops += 1;
-                } else {
-                    primary[net] = Some(from);
-                }
-            }
-            Body::Done { .. } => dones[from] = true,
+            Body::NewNrpBack { net } => primary[net] = Some(from),
             m => panic!("SW: unexpected {m:?} from actor {from}"),
-        }
-        if dones[DCN1] && dones[DCN2] && notices_left == 0 {
-            ch.send(&p, DCN1, Leg::Near, Body::Done { summary: Summary::default() });
-            ch.send(&p, DCN2, Leg::Far, Body::Done { summary: sum });
-            return;
         }
     }
 }
@@ -1120,17 +974,12 @@ fn build_config(mode: Mode, p: &Params, keep_going: bool) -> Config {
     }
     match mode {
         Mode::Baseline => builder.build(),
-        // The monitor reads every role report at exactly its instant.
-        Mode::Timed => builder
-            .with_timed(p.l, p.u, p.sd)
-            .with_node_sd(thread::main_thread_id(), 0)
-            .build(),
+        Mode::Timed => builder.with_timed(p.l, p.u, p.sd).build(),
     }
 }
 
 fn reset_counts() {
     for c in [
-        &COMPLETED,
         &DUAL_PRIMARY,
         &STEPDOWNS,
         &PROMOTIONS,
@@ -1140,7 +989,6 @@ fn reset_counts() {
         &LEASE_RESETS,
         &LEASE_CHANCES,
         &NRP_CHANGES,
-        &SW_DROPS,
     ] {
         c.store(0, Ordering::Relaxed);
     }
@@ -1151,58 +999,17 @@ fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
     reset_counts();
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
-        let main_tid = thread::current().id();
-        let sw_h = thread::spawn(move || switch(p, main_tid));
-        let sw_tid = sw_h.thread().id();
-        let d1 = thread::spawn(move || dcn(DCN1, p, main_tid, sw_tid));
-        let d2 = thread::spawn(move || dcn(DCN2, p, main_tid, sw_tid));
-        let (d1_tid, d2_tid) = (d1.thread().id(), d2.thread().id());
-        let mut ch = Chan::new(MAIN, [Some(main_tid), Some(d1_tid), Some(d2_tid), Some(sw_tid)]);
-        ch.send(&p, SW, Leg::Exact(0), Body::Init { dcn1: d1_tid, dcn2: d2_tid });
-
-        // Monitor (harness): replay role changes in time order.
-        let mut roles = [Role::Backup; ACTORS];
-        roles[DCN1] = Role::Primary;
-        let mut dual = false;
-        let mut dones = [false; ACTORS];
-        let mut total = Summary::default();
-        while !(dones[DCN1] && dones[DCN2]) {
-            let (from, body) = ch.recv();
-            match body {
-                Body::RoleChange { role } => {
-                    roles[from] = role;
-                    if roles[DCN1] == Role::Primary && roles[DCN2] == Role::Primary {
-                        dual = true;
-                    }
-                }
-                Body::Done { summary } => {
-                    dones[from] = true;
-                    total.add(summary);
-                }
-                m => panic!("main: unexpected {m:?} from actor {from}"),
-            }
-        }
-        let _ = sw_h.join();
-        let _ = d1.join();
-        let _ = d2.join();
-
-        COMPLETED.fetch_add(1, Ordering::Relaxed);
-        STEPDOWNS.fetch_add(total.stepdowns as usize, Ordering::Relaxed);
-        PROMOTIONS.fetch_add(total.promotions as usize, Ordering::Relaxed);
-        SHORTCUT_PROMOTIONS.fetch_add(total.shortcut as usize, Ordering::Relaxed);
-        TAKEOVER_PINGS.fetch_add(total.takeover_pings as usize, Ordering::Relaxed);
-        BACKUP_REPLIES.fetch_add(total.backup_replies as usize, Ordering::Relaxed);
-        LEASE_RESETS.fetch_add(total.lease_resets as usize, Ordering::Relaxed);
-        if total.backup_replies >= LEASE_MIN_ANSWERS {
-            LEASE_CHANCES.fetch_add(1, Ordering::Relaxed);
-        }
-        NRP_CHANGES.fetch_add(total.nrp_changes as usize, Ordering::Relaxed);
-        SW_DROPS.fetch_add(total.sw_drops as usize, Ordering::Relaxed);
-        if dual {
-            DUAL_PRIMARY.fetch_add(1, Ordering::Relaxed);
-        }
-        // NoDualPrimary, judged only now that every channel is drained.
-        traceforge::assert(!dual);
+        // Three daemons and nothing else: `main` spawns and returns, joins
+        // nobody and sends nothing. The run ends when no actor can move
+        // (the DCNs arm no timer after their R-th round).
+        let sw = thread::spawn_daemon(move || switch(p)).thread().id();
+        thread::spawn_daemon(move || {
+            // DCN1 spawns DCN2: each needs the other's id (heartbeats go to
+            // DCN2, the probe to DCN1) and no message may carry them.
+            let dcn1 = thread::current().id();
+            let dcn2 = thread::spawn_daemon(move || dcn(DCN2, p, sw, dcn1)).thread().id();
+            dcn(DCN1, p, sw, dcn2)
+        });
     });
     (stats, start.elapsed())
 }
@@ -1213,7 +1020,6 @@ fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
 
 #[derive(Clone, Copy, Debug)]
 struct Counts {
-    completed: usize,
     dual: usize,
     stepdowns: usize,
     promotions: usize,
@@ -1223,12 +1029,10 @@ struct Counts {
     lease_resets: usize,
     lease_chances: usize,
     nrp_changes: usize,
-    sw_drops: usize,
 }
 
 fn read_counts() -> Counts {
     Counts {
-        completed: COMPLETED.load(Ordering::Relaxed),
         dual: DUAL_PRIMARY.load(Ordering::Relaxed),
         stepdowns: STEPDOWNS.load(Ordering::Relaxed),
         promotions: PROMOTIONS.load(Ordering::Relaxed),
@@ -1238,29 +1042,18 @@ fn read_counts() -> Counts {
         lease_resets: LEASE_RESETS.load(Ordering::Relaxed),
         lease_chances: LEASE_CHANCES.load(Ordering::Relaxed),
         nrp_changes: NRP_CHANGES.load(Ordering::Relaxed),
-        sw_drops: SW_DROPS.load(Ordering::Relaxed),
     }
-}
-
-fn opt(t: Option<u64>) -> String {
-    t.map_or_else(|| String::from("-"), |v| v.to_string())
 }
 
 fn print_one(label: &str, p: &Params, stats: &Stats, dur: Duration, c: Counts) {
     println!(
-        "{label:<8} variant={v} fault={f} promote={pmr} tA={ta} tB={tb} attack=[{af},{au}) \
-         hb_on_change={hb} \
+        "{label:<8} variant={v} promote={pmr} hb_on_change={hb} \
          R={r} max={mx} L={l} U={u} sd={sd} H={h} P={pt} phase={ph}  execs={execs} \
-         blocked={block} completed={comp} dual={dual} stepdowns={sdn} promotions={pr} \
+         blocked={block} impossible={imp} dual={dual} stepdowns={sdn} promotions={pr} \
          shortcut={sc} takeover_pings={tp} backup_replies={br} lease_resets={lr} \
-         lease_chances={lc} nrp_changes={nc} sw_drops={sw} violations={dual} time={dur:?}",
+         lease_chances={lc} nrp_changes={nc} violations={dual} time={dur:?}",
         v = p.variant.name(),
-        f = p.fault.name(),
         pmr = p.promote_rule.name(),
-        ta = opt(p.fail_a),
-        tb = opt(p.fail_b),
-        af = opt(p.attack_from),
-        au = opt(p.attack_until),
         hb = if p.hb_on_nrp_change { "on" } else { "off" },
         r = p.rounds,
         mx = p.max_missed,
@@ -1272,7 +1065,7 @@ fn print_one(label: &str, p: &Params, stats: &Stats, dur: Duration, c: Counts) {
         ph = p.phase,
         execs = stats.execs,
         block = stats.block,
-        comp = c.completed,
+        imp = stats.timeline_impossible,
         dual = c.dual,
         sdn = c.stepdowns,
         pr = c.promotions,
@@ -1282,48 +1075,50 @@ fn print_one(label: &str, p: &Params, stats: &Stats, dur: Duration, c: Counts) {
         lr = c.lease_resets,
         lc = c.lease_chances,
         nc = c.nrp_changes,
-        sw = c.sw_drops,
         dur = dur,
     );
+    // The counters are raised by PROGRAM code, so they also see endings that
+    // the engine later judges to admit no timeline (those run to completion
+    // first). A count of zero is sound; a count above zero is an upper
+    // bound. The verdict is the engine's: exit 101 with a certified witness,
+    // without --keep-going.
+    if stats.timeline_impossible > 0 && c.dual > 0 {
+        println!(
+            "NOTE: {} of the {} endings explored admit no timeline and were counted above too; \
+             violations={} is an upper bound. Re-run without --keep-going (exit 101 = the engine \
+             certified a counterexample) before quoting it.",
+            stats.timeline_impossible,
+            stats.execs + stats.block + stats.timeline_impossible,
+            c.dual
+        );
+    }
 }
 
-/// Vacuity guards: an exit-0 run only counts as a hold if the scenario
-/// actually bit and the backup actually reached a takeover decision.
+/// Vacuity guards: an exit-0 run only counts as a hold if the backup
+/// actually reached a takeover decision and, for the leasing variant, if
+/// the lease could have granted the role at all.
 fn warn_if_vacuous(label: &str, p: &Params, stats: &Stats, c: Counts) {
-    // A violating execution is aborted by the assertion, so the checker
-    // files it under `block`, not `execs`. On a cell where EVERY complete
-    // execution violates, `execs` is therefore 0 while the run found real
-    // counterexamples: that is a FIRE, not "no data".
-    if stats.execs == 0 && c.dual == 0 {
+    if c.dual > 0 {
+        return;
+    }
+    // A violating execution ends at its assertion and is filed under
+    // `block`; nothing else blocks here (every actor is a daemon). No
+    // complete execution and no violation is an empty run, not a hold.
+    if stats.execs == 0 {
         println!(
-            "WARNING ({label}): 0 complete executions (blocked={}) and no violation: every \
-             execution blocked, this run verified nothing; treat it as no data, not as a hold.",
+            "WARNING ({label}): 0 complete executions (blocked={}) and no violation: this run \
+             verified nothing; treat it as no data, not as a hold.",
             stats.block
         );
         return;
     }
-    if c.dual > 0 {
-        return;
-    }
-    // Once DCN1 has stepped down it never returns, so a run in which it
-    // stepped down in EVERY completed execution has covered every instant
-    // at which both could be primary.
-    let isolating = p.fault != Fault::None
-        && [p.fail_a, p.fail_b].iter().all(|t| t.is_some_and(|t| t <= p.horizon()));
-    if isolating && c.stepdowns < c.completed {
+    if c.promotions == 0 && c.takeover_pings == 0 && c.shortcut == 0 {
         println!(
-            "WARNING ({label}): DCN1 stepped down in only {} of {} completed executions: \
-             the run ended before the failures fully isolated it; increase --rounds \
-             before reading this as a hold.",
-            c.stepdowns, c.completed
-        );
-    }
-    let dcn1_gone_everywhere = isolating && c.stepdowns == c.completed;
-    if !dcn1_gone_everywhere && c.promotions == 0 && c.takeover_pings == 0 {
-        println!(
-            "WARNING ({label}): the backup never reached a takeover decision (no takeover \
-             ping, no promotion): this hold says nothing about dual primaries; increase \
-             --rounds or change the scenario."
+            "WARNING ({label}): the backup never reached a takeover decision (no promotion, no \
+             takeover ping, no shortcut): the run is too short for the backup to decide (its \
+             counts first pass the limit at its tick number max + 1 = {}), so this hold says \
+             nothing about dual primaries; increase --rounds.",
+            p.max_missed + 1
         );
     }
     if p.variant.lease() {
@@ -1333,13 +1128,12 @@ fn warn_if_vacuous(label: &str, p: &Params, stats: &Stats, c: Counts) {
                  consulted: this hold says nothing about the lease (only that the shortcut is \
                  gone)."
             );
-        } else if c.lease_chances < c.completed {
+        } else if c.lease_chances == 0 {
             println!(
-                "WARNING ({label}): the backup got the {LEASE_MIN_ANSWERS} NRP answers the lease \
-                 needs before it can grant the role in only {} of {} completed executions; in \
-                 the others the lease could never have promoted it, so this hold is no evidence \
-                 for the lease there; increase --rounds.",
-                c.lease_chances, c.completed
+                "WARNING ({label}): in no execution did the backup read the {LEASE_MIN_ANSWERS} \
+                 NRP answers the lease needs before it can grant the role, so the lease could \
+                 never have promoted it: this hold is no evidence for the lease; increase \
+                 --rounds."
             );
         }
     }
@@ -1352,11 +1146,6 @@ fn warn_if_vacuous(label: &str, p: &Params, stats: &Stats, c: Counts) {
 struct Args {
     mode: String,
     variant: Variant,
-    fault: Fault,
-    fail_a_ratio: Option<f64>,
-    sep_ratio: f64,
-    attack_from_ratio: Option<f64>,
-    attack_until_ratio: Option<f64>,
     hb_on_nrp_change: bool,
     phase_ratio: f64,
     rounds: u32,
@@ -1390,11 +1179,6 @@ fn parse_args() -> Args {
     let mut a = Args {
         mode: String::from("timed"),
         variant: Variant::Nrp,
-        fault: Fault::Switch,
-        fail_a_ratio: None,
-        sep_ratio: 0.0,
-        attack_from_ratio: None,
-        attack_until_ratio: None,
         hb_on_nrp_change: false,
         phase_ratio: 0.0,
         rounds: DEFAULT_ROUNDS,
@@ -1421,30 +1205,6 @@ fn parse_args() -> Args {
                         "invalid --variant: {other} (expected nrp|noopt|leasing)"
                     )),
                 }
-            }
-            "--fault" => {
-                a.fault = match next_val(&mut args, "--fault").as_str() {
-                    "switch" => Fault::Switch,
-                    "link" => Fault::Link,
-                    "none" => Fault::None,
-                    other => {
-                        cli_bail(&format!("invalid --fault: {other} (expected switch|link|none)"))
-                    }
-                }
-            }
-            "--fail-a-ratio" => {
-                a.fail_a_ratio = Some(parse_num(next_val(&mut args, "--fail-a-ratio"), "--fail-a-ratio"))
-            }
-            "--sep-ratio" => a.sep_ratio = parse_num(next_val(&mut args, "--sep-ratio"), "--sep-ratio"),
-            "--attack-from-ratio" => {
-                a.attack_from_ratio =
-                    Some(parse_num(next_val(&mut args, "--attack-from-ratio"), "--attack-from-ratio"))
-            }
-            "--attack-until-ratio" => {
-                a.attack_until_ratio = Some(parse_num(
-                    next_val(&mut args, "--attack-until-ratio"),
-                    "--attack-until-ratio",
-                ))
             }
             "--hb-on-nrp-change" => {
                 a.hb_on_nrp_change =
@@ -1475,14 +1235,13 @@ fn parse_args() -> Args {
             "--help" | "-h" => {
                 eprintln!(
                     "Usage: nrp_failure_detector_timed [--mode baseline|timed] \
-                     [--variant nrp|noopt|leasing] [--fault switch|link|none] [--fail-a-ratio F] \
-                     [--sep-ratio D] [--attack-from-ratio T] [--attack-until-ratio T] \
-                     [--hb-on-nrp-change off|on] [--phase-ratio F] [--rounds R] [--max-missed M] \
+                     [--variant nrp|noopt|leasing] [--hb-on-nrp-change off|on] \
+                     [--phase-ratio F] [--rounds R] [--max-missed M] \
                      [--u U] [--l-ratio LR] [--sd-ratio SR] [--h-ratio HR] [--pt-ratio PR] \
                      [--promote-rule any|takeover] [--keep-going]\n\
-                     Defaults: timed, nrp, switch fault at tA = H + P, sep 0, no attack, \
-                     hb-on-nrp-change off, phase 0, R=4, max=2, U=1, L/U=1, sd/U=0, H/U=20, P/U=10, \
-                     promote-rule takeover.\n\
+                     Defaults: timed, nrp, hb-on-nrp-change off, phase 0, R={DEFAULT_ROUNDS}, \
+                     max=2, U=1, L/U=1, sd/U=0, H/U=20, P/U=10, promote-rule takeover.\n\
+                     No failure is scripted: every send may be lost, and that is the only fault.\n\
                      Exit 0 = no dual primary over the explored executions; exit 101 = dual \
                      primary (NoDualPrimary violated); exit 2 = CLI misuse."
                 );
@@ -1530,38 +1289,22 @@ fn params_from(a: &Args) -> Params {
     if phase.unsigned_abs() >= h {
         cli_bail("need |phase| < H (check --phase-ratio)");
     }
-    let (fail_a, fail_b) = if a.fault == Fault::None {
-        (None, None)
-    } else {
-        let ta = match a.fail_a_ratio {
-            Some(r) => nonneg(r, "the network-A failure instant"),
-            None => h + pt,
-        };
-        if ta > i64::MAX as u64 {
-            cli_bail("the network-A failure instant is too large (check --fail-a-ratio)");
-        }
-        let sep = scale(a.sep_ratio, "the failure separation") as i64;
-        let tb = (ta as i64)
-            .checked_add(sep)
-            .unwrap_or_else(|| cli_bail("tA + sep overflows (check --sep-ratio)"));
-        if tb < 0 {
-            cli_bail("the network-B failure instant tA + sep must be >= 0 (check --sep-ratio)");
-        }
-        (Some(ta), Some(tb as u64))
-    };
-    let attack_from = a.attack_from_ratio.map(|r| nonneg(r, "attack start"));
-    let attack_until = a.attack_until_ratio.map(|r| nonneg(r, "attack end"));
-    if attack_until.is_some() && attack_from.is_none() {
-        cli_bail("--attack-until-ratio needs --attack-from-ratio");
-    }
-    if let (Some(f), Some(t)) = (attack_from, attack_until) {
-        if t <= f {
-            cli_bail("the attack must end after it starts");
-        }
+    // The bound of the run (R ticks per DCN) must not be able to cause a
+    // FIRE. DCN2 decides for the last time at its last ping timer, at most
+    // at t2 + (R - 1)H + P + (R + 1)sd (t2 its first tick, each timer read
+    // up to sd late); a longer run could show DCN1 stepping down at
+    // t1 + R*H + P at the earliest (the ping timer of the first round this
+    // run does not have). The first must precede the second; t2 - t1 = phase.
+    // Always true at sd = 0, where |phase| < H is enough.
+    let drift = (a.rounds as u64 + 1).saturating_mul(sd);
+    if phase as i128 + drift as i128 >= h as i128 {
+        cli_bail(
+            "need phase + (R + 1) * sd < H, or DCN2 could decide after the instant at which a \
+             longer run lets DCN1 step down (check --sd-ratio, --rounds, --phase-ratio)",
+        );
     }
     let p = Params {
         variant: a.variant,
-        fault: a.fault,
         promote_rule: a.promote_rule,
         hb_on_nrp_change: a.hb_on_nrp_change,
         rounds: a.rounds,
@@ -1571,10 +1314,6 @@ fn params_from(a: &Args) -> Params {
         sd,
         h,
         p: pt,
-        fail_a,
-        fail_b,
-        attack_from,
-        attack_until,
         phase,
     };
     if 2 * FAR_HOPS * u >= pt {
