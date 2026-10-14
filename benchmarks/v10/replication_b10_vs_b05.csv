@@ -1,0 +1,107 @@
+paper_row,cell,side,brain05_s,brain10_s,ratio,counts_identical
+Alternating bit,ABP-file abp K=4 R=2 W=3U,baseline,365.2,361.9,0.991,True
+Alternating bit,ABP-file abp K=4 R=2 W=3U,timed,2.42,2.38,0.983,True
+BRP,BRP F=1 n=2 MAX=3 TD=1 T1=3 TR=21 SYNC=21 k=2 (p2),baseline,153.67,154.52,1.006,True
+BRP,BRP F=1 n=2 MAX=3 TD=1 T1=3 TR=21 SYNC=21 k=2 (p2),timed,2.95,2.93,0.993,True
+BRP,BRP F=1 n=2 MAX=3 TD=1 T1=3 TR=20 SYNC=20 k=2 (p2),baseline,152.7,154.55,1.012,True
+BRP,BRP F=1 n=2 MAX=3 TD=1 T1=3 TR=20 SYNC=20 k=2 (p2),timed,2.99,2.96,0.99,True
+BRP,BRP F=1 n=2 MAX=3 TD=1 T1=3 TR=21 SYNC=20 k=2 (p2),baseline,154.68,154.89,1.001,True
+BRP,BRP F=1 n=2 MAX=3 TD=1 T1=3 TR=21 SYNC=20 k=2 (p2),timed,2.98,2.92,0.98,True
+BRP,BRP F=1 n=2 MAX=3 TD=1 T1=3 TR=21 SYNC=19 k=2 (p2),baseline,153.93,154.88,1.006,True
+BRP,BRP F=1 n=2 MAX=3 TD=1 T1=3 TR=21 SYNC=19 k=2 (p2),timed,2.94,2.93,0.997,True
+YARN,YARN K=2 QS=3 DD=8 U=0 H=8 miss,baseline,513.74,514.89,1.002,True
+YARN,YARN K=2 QS=3 DD=8 U=0 H=8 miss,timed,4.23,4.21,0.995,True
+YARN,YARN K=2 QS=3 DD=7 U=0 H=8 miss,baseline,505.24,506.3,1.002,True
+YARN,YARN K=2 QS=3 DD=7 U=0 H=8 miss,timed,3.99,3.94,0.987,True
+Sensor network,Sensor --sensors 1 --rounds 2,baseline,490.26,481.28,0.982,True
+Sensor network,Sensor --sensors 1 --rounds 2,timed,5.23,5.16,0.987,True
+Alternating bit,ABP-file abp K=2 R=4 W=3U,baseline,80.47,81.17,1.009,True
+Alternating bit,ABP-file abp K=2 R=4 W=3U,timed,0.78,0.78,1.0,True
+BRP,BRP F=1 n=2 MAX=3 TD=1 T1=3 TR=21 SYNC=21 k=2 (p4),baseline,848.09,847.4,0.999,True
+BRP,BRP F=1 n=2 MAX=3 TD=1 T1=3 TR=21 SYNC=21 k=2 (p4),timed,5.44,5.37,0.987,True
+Kafka/nisshi (P1 only),nisshi T=8 R=2 L=1 U=5 sd=0 W=1 B=0,baseline,89.34,89.78,1.005,True
+Kafka/nisshi (P1 only),nisshi T=8 R=2 L=1 U=5 sd=0 W=1 B=0,timed,7.01,6.95,0.991,True
+Sensor network,Sensor --period-ratio 6,baseline,224.95,224.52,0.998,True
+Sensor network,Sensor --period-ratio 6,timed,10.57,10.6,1.003,True
+NRP,NRP nrp R=3 --u 2 --l-ratio 0.5,baseline,46.31,48.15,1.04,True
+NRP,NRP nrp R=3 --u 2 --l-ratio 0.5,timed,16.55,17.46,1.055,True
+BRP,BRP F=2 n=2 MAX=1 TD=1 T1=3 TR=9 SYNC=7 k=2 (p2),baseline,926.49,923.62,0.997,True
+BRP,BRP F=2 n=2 MAX=1 TD=1 T1=3 TR=9 SYNC=7 k=2 (p2),timed,30.98,31.32,1.011,True
+NRP,NRP nrp R=3,baseline,47.55,47.95,1.008,True
+NRP,NRP nrp R=3,timed,17.12,17.34,1.013,True
+Spanning tree,STP lost-hellos R=10 Fd=15 L/U=1 sd/U=0,baseline,26.28,26.32,1.002,True
+Spanning tree,STP lost-hellos R=10 Fd=15 L/U=1 sd/U=0,timed,48.03,47.88,0.997,True
+Kafka/nisshi (P1 only),nisshi T=16 R=2 L=1 U=5 sd=0 W=1 B=0,baseline,2678.09,2584.89,0.965,True
+Kafka/nisshi (P1 only),nisshi T=16 R=2 L=1 U=5 sd=0 W=1 B=0,timed,33.08,33.14,1.002,True
+PAR,PAR dK=3 dL=3 dR=1 To=8 K=6 R=1,baseline,669.12,662.03,0.989,True
+PAR,PAR dK=3 dL=3 dR=1 To=8 K=6 R=1,timed,34.36,34.45,1.003,True
+PAR,PAR dK=3 dL=3 dR=1 To=9 K=6 R=1,baseline,665.78,660.85,0.993,True
+PAR,PAR dK=3 dL=3 dR=1 To=9 K=6 R=1,timed,35.01,34.47,0.985,True
+PAR,PAR dK=30 dL=30 dR=10 To=71 K=5 R=1,baseline,45.32,45.58,1.006,True
+PAR,PAR dK=30 dL=30 dR=10 To=71 K=5 R=1,timed,5.26,5.35,1.017,True
+Chandra-Toueg,CT delta=2 phi=2 to=7 H=14,baseline,9.36,9.47,1.012,True
+Chandra-Toueg,CT delta=2 phi=2 to=7 H=14,timed,42.75,42.82,1.002,True
+Online shop,Shop v2 C=2 N=2 R=3 S=20 D=6,baseline,9.38,9.47,1.01,True
+Online shop,Shop v2 C=2 N=2 R=3 S=20 D=6,timed,39.15,38.96,0.995,True
+Lease lock,Lease C=2 R=3 L=0 U=2 sd=1 TTL=10 PAUSE=3,baseline,4.12,4.12,1.0,True
+Lease lock,Lease C=2 R=3 L=0 U=2 sd=1 TTL=10 PAUSE=3,timed,20.87,21.1,1.011,True
+SWIM,SWIM N=8 R=1 L=0 U=2 sd=1 Wp=2 Ws=6,baseline,15.81,15.79,0.999,True
+SWIM,SWIM N=8 R=1 L=0 U=2 sd=1 Wp=2 Ws=6,timed,39.19,38.96,0.994,True
+BRP,BRP F=1 n=2 MAX=2 TD=1 T1=3 TR=15 SYNC=15 k=2 (p2),baseline,6.11,6.22,1.018,True
+BRP,BRP F=1 n=2 MAX=2 TD=1 T1=3 TR=15 SYNC=15 k=2 (p2),timed,0.52,0.53,1.019,True
+Lease lock (with fencing),Lease + fencing C=2 R=3 L=0 U=2 sd=1 TTL=10 PAUSE=4,baseline,12.13,12.04,0.993,True
+Lease lock (with fencing),Lease + fencing C=2 R=3 L=0 U=2 sd=1 TTL=10 PAUSE=4,timed,21.11,21.93,1.039,True
+Chandra-Toueg,CT delta=2 phi=2 to=7 H=16,baseline,87.6,89.75,1.025,True
+Chandra-Toueg,CT delta=2 phi=2 to=7 H=16,timed,349.79,352.7,1.008,True
+Lease lock,Lease C=2 R=4 L=0 U=2 sd=1 TTL=10 PAUSE=3,baseline,90.26,90.38,1.001,True
+Lease lock,Lease C=2 R=4 L=0 U=2 sd=1 TTL=10 PAUSE=3,timed,571.2,567.24,0.993,True
+Chandra-Toueg,CT delta=2 phi=4 to=13 H=16,baseline,104.5,104.59,1.001,True
+Chandra-Toueg,CT delta=2 phi=4 to=13 H=16,timed,644.22,633.53,0.983,True
+Alternating bit,ABP-file abp K=4 R=2 W=2U,baseline,361.92,363.07,1.003,True
+Alternating bit,ABP-file abp K=4 R=2 W=2U,timed,115.38,115.25,0.999,True
+Kafka/nisshi (P1 only),nisshi T=64 R=1 L=1 U=5 sd=0 W=1 B=0,baseline,1967.4,1941.66,0.987,True
+Kafka/nisshi (P1 only),nisshi T=64 R=1 L=1 U=5 sd=0 W=1 B=0,timed,135.39,136.96,1.012,True
+BRP,BRP F=1 n=5 MAX=1 TD=1 T1=3 TR=9 SYNC=9 k=2 (p2),timed,151.16,153.93,1.018,True
+Online shop,Shop v2 C=2 N=2 R=4 S=20 D=7,baseline,154.43,155.41,1.006,True
+Online shop,Shop v2 C=2 N=2 R=4 S=20 D=7,timed,593.65,583.79,0.983,True
+Alternating bit,ABP-file abp K=6 R=2 W=3U,timed,189.17,191.66,1.013,True
+SWIM,SWIM N=3 R=5 L=0 U=2 sd=1 Wp=2 Ws=6,baseline,195.12,196.0,1.005,True
+SWIM,SWIM N=3 R=5 L=0 U=2 sd=1 Wp=2 Ws=6,timed,741.8,736.94,0.993,True
+Spanning tree,STP lost-hellos R=12 Fd=21 L/U=0 sd/U=0,baseline,209.28,210.1,1.004,True
+Spanning tree,STP lost-hellos R=12 Fd=21 L/U=0 sd/U=0,timed,973.5,965.54,0.992,True
+Kafka/nisshi (P1 only),nisshi T=2 R=4 L=1 U=8 sd=0 W=1 B=0 fix=epoch-bump,baseline,292.94,289.54,0.988,True
+Kafka/nisshi (P1 only),nisshi T=2 R=4 L=1 U=8 sd=0 W=1 B=0 fix=epoch-bump,timed,212.82,211.87,0.996,True
+PAR,PAR dK=3 dL=3 dR=1 To=8 K=7 R=1,timed,218.75,224.42,1.026,True
+Lease lock,Lease C=5 R=1 L=0 U=2 sd=1 TTL=10 PAUSE=3,baseline,233.71,232.15,0.993,True
+Lease lock,Lease C=5 R=1 L=0 U=2 sd=1 TTL=10 PAUSE=3,timed,558.17,550.02,0.985,True
+Online shop,Shop v2 C=3 N=3 R=2 S=20 D=7,baseline,230.08,241.77,1.051,True
+Online shop,Shop v2 C=3 N=3 R=2 S=20 D=7,timed,576.07,601.93,1.045,True
+Spanning tree,STP lost-hellos R=12 Fd=20 L/U=1 sd/U=0,baseline,285.05,286.01,1.003,True
+Spanning tree,STP lost-hellos R=12 Fd=20 L/U=1 sd/U=0,timed,694.47,704.05,1.014,True
+Kafka/nisshi (P1 only),nisshi T=16 R=3 L=1 U=5 sd=0 W=1 B=0,timed,324.52,329.22,1.014,True
+BRP,BRP F=1 n=2 MAX=6 TD=1 T1=3 TR=39 SYNC=39 k=2 (p2),timed,388.2,393.46,1.014,True
+Lease lock (with fencing),Lease + fencing C=2 R=4 L=0 U=2 sd=1 TTL=10 PAUSE=4,baseline,441.22,436.09,0.988,True
+Lease lock (with fencing),Lease + fencing C=2 R=4 L=0 U=2 sd=1 TTL=10 PAUSE=4,timed,579.43,571.18,0.986,True
+SWIM,SWIM N=10 R=1 L=0 U=2 sd=1 Wp=2 Ws=6,baseline,475.21,468.45,0.986,True
+SWIM,SWIM N=10 R=1 L=0 U=2 sd=1 Wp=2 Ws=6,timed,1319.15,1308.13,0.992,True
+Alternating bit,ABP-file abp K=2 R=8 W=3U,timed,510.06,513.78,1.007,True
+YARN,YARN K=2 QS=3 DD=8 U=0 H=14 miss,timed,546.16,546.3,1.0,True
+Lease lock (with fencing),Lease + fencing C=5 R=1 L=0 U=2 sd=1 TTL=10 PAUSE=4,baseline,1442.81,1464.28,1.015,True
+Lease lock (with fencing),Lease + fencing C=5 R=1 L=0 U=2 sd=1 TTL=10 PAUSE=4,timed,551.33,551.37,1.0,True
+Spanning tree,STP lost-hellos R=13 Fd=24 L/U=0 sd/U=0,baseline,555.87,561.68,1.01,True
+SWIM,SWIM N=6 R=2 L=1 U=2 sd=1 Wp=2 Ws=6,baseline,830.09,785.62,0.946,True
+SWIM,SWIM N=6 R=2 L=1 U=2 sd=1 Wp=2 Ws=6,timed,601.29,593.1,0.986,True
+PAR,PAR dK=3 dL=3 dR=1 To=7 K=6 R=1,baseline,671.19,660.55,0.984,True
+PAR,PAR dK=3 dL=3 dR=1 To=7 K=6 R=1,timed,955.31,940.98,0.985,True
+Kafka/nisshi (P1 only),nisshi T=8 R=4 L=1 U=5 sd=0 W=1 B=0,timed,755.03,784.79,1.039,True
+Sensor network,Sensor --table3-row 1,timed,943.15,908.16,0.963,True
+Sensor network,Sensor --table3-row 2,timed,928.12,909.96,0.98,True
+NRP,NRP nrp R=4,timed,1016.31,1030.97,1.014,True
+Chandra-Toueg,CT delta=2 phi=4 to=13 H=19,baseline,1277.93,1281.03,1.002,True
+Lease lock,Lease C=2 R=5 L=0 U=2 sd=1 TTL=10 PAUSE=3,baseline,1822.02,1823.69,1.001,True
+NRP,NRP leasing R=4,timed,1898.62,1940.03,1.022,True
+NRP,NRP noopt R=4,timed,2018.77,2064.44,1.023,True
+PAR,PAR dK=3 dL=3 dR=1 To=9 K=12 R=1 no-errs,timed,2422.94,2490.11,1.028,True
+SWIM,SWIM N=11 R=1 L=0 U=2 sd=1 Wp=2 Ws=6,baseline,2561.47,2597.48,1.014,True
+SWIM,SWIM N=3 R=6 L=1 U=2 sd=1 Wp=2 Ws=6,baseline,2806.27,2843.77,1.013,True
+SWIM,SWIM N=3 R=6 L=0 U=2 sd=1 Wp=2 Ws=6,baseline,2892.79,2886.42,0.998,True
