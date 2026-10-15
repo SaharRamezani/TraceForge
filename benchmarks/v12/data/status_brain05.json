@@ -1,0 +1,52 @@
+{
+ "time": "2026-10-15 07:49:40",
+ "deadline": "2026-10-15 07:50",
+ "free_cores": 59,
+ "ballast": 59,
+ "queued": 0,
+ "queued_timing": 0,
+ "running": [
+  {
+   "id": "v12L-nisshi-00216-b-r1",
+   "cores": 1,
+   "elapsed_s": 21455,
+   "pred_s": 411,
+   "tier": "timing"
+  },
+  {
+   "id": "v12P8-abp-00538-b-r1",
+   "cores": 8,
+   "elapsed_s": 16204,
+   "pred_s": 288,
+   "tier": "timing"
+  },
+  {
+   "id": "v12P16-nisshi-B-8_4-r1",
+   "cores": 16,
+   "elapsed_s": 13456,
+   "pred_s": 158,
+   "tier": "timing"
+  },
+  {
+   "id": "v12P8-brp-B-2_1_3_p2-r1",
+   "cores": 8,
+   "elapsed_s": 11263,
+   "pred_s": 36,
+   "tier": "timing"
+  },
+  {
+   "id": "v12P16-yarn-B-4_5_8_miss-r2",
+   "cores": 16,
+   "elapsed_s": 9985,
+   "pred_s": 1920,
+   "tier": "timing"
+  },
+  {
+   "id": "v12E-05-mus-v12P8-lease-00077-t-r1",
+   "cores": 16,
+   "elapsed_s": 3224,
+   "pred_s": 154,
+   "tier": "timing"
+  }
+ ]
+}

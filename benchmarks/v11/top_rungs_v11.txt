@@ -1,0 +1,106 @@
+
+### Chandra-Toueg
+  [both        ] CT delta=2 phi=4 to=13 H=18                                Must 19900392/6368/0 16.4m (x2) | Mustard 7016455/764/0 94.5m (x1)
+  [both        ] CT delta=2 phi=2 to=7 H=19                                 Must 20728566/109448/0 17.3m (x2) | Mustard 4770710/8674/0 63.3m (x1)
+  [both        ] CT delta=2 phi=2 to=7 H=18                                 Must 16822548/109448/0 13.9m (x3) | Mustard 3567616/7695/0 46.1m (x1)
+  [only Must   ] CT delta=2 phi=4 to=13 H=19                                Must 25456791/6368/0 21.4m (x2) | Mustard // >7163 (DNF) (x0)
+
+### Sensor network
+  [both        ] Sensor --period-ratio 5                                    Must 19589858/14707244/51804061 104.6m (x1) | Mustard 13200/16740/65275 89s (x3)
+  [both        ] Sensor --readings safe --property sensor --rounds 3        Must 660672/6566092/7796493 20.5m (x2) | Mustard 2592/21420/85419 168s (x3)
+  [both        ] Sensor --sensors 1 --rounds 2                              Must 718716/1619860/4264927 556s (x3) | Mustard 300/1628/5300 5s (x3)
+  [only Mustard] Sensor --table3-row 2                                      Must // >7163 (DNF) (x0) | Mustard 172800/213120/1569280 21.0m (x2)
+  [only Mustard] Sensor --table3-row 1                                      Must // >7163 (DNF) (x0) | Mustard 172800/284160/1569280 20.7m (x2)
+  [only Mustard] Sensor --sensors 1 --rounds 3                              Must // >6055 (DNF) (x0) | Mustard 2250/38710/157366 276s (x3)
+  [neither     ] Sensor --period-ratio 6 --rounds 2                         Must >6055 (DNF) | Mustard >6056 (DNF)
+  [neither     ] Sensor --readings safe --property sensor --rounds 4        Must >6053 (DNF) | Mustard >6053 (DNF)
+  [neither     ] Sensor --sensors 1 --rounds 4                              Must >6051 (DNF) | Mustard >6051 (DNF)
+
+### NRP
+  [both        ] NRP noopt R=3                                              Must 830390/722620/4295035 394s (x3) | Mustard 729/4872/41074 30s (x3)
+  [both        ] NRP leasing R=3                                            Must 819278/0/4229825 340s (x3) | Mustard 729/0/40690 26s (x3)
+  [both        ] NRP nrp R=3 --u 2 --l-ratio 0.5                            Must 242855/110862/1216728 104s (x3) | Mustard 1278/2156/31937 22s (x3)
+  [only Mustard] NRP noopt R=4                                              Must // >7163 (DNF) (x0) | Mustard 6561/171920/1913197 34.7m (x2)
+  [only Mustard] NRP leasing R=4                                            Must // >7162 (DNF) (x0) | Mustard 6561/0/2020801 33.2m (x2)
+  [only Mustard] NRP nrp R=4                                                Must // >7162 (DNF) (x0) | Mustard 6561/51632/961714 18.2m (x2)
+
+### Spanning tree
+  [both        ] STP lost-hellos R=13 Fd=24 L/U=0 sd/U=0                    Must 59862/0/8426133 549s (x3) | Mustard 25250/0/2946560 69.5m (x1)
+  [both        ] STP lost-hellos R=13 Fd=23 L/U=0 sd/U=0                    Must 59861/1594323/8417942 11.4m (x3) | Mustard 25249/12288/2938369 64.1m (x1)
+  [both        ] STP lost-hellos R=12 Fd=21 L/U=0 sd/U=0                    Must 28279/531441/2622466 204s (x3) | Mustard 12620/6144/973802 15.5m (x2)
+  [only Must   ] STP lost-hellos R=15 Fd=28 L/U=0 sd/U=0                    Must 275873/0/85787064 99.7m (x1) | Mustard // >6052 (DNF) (x0)
+  [only Must   ] STP link-up R=15 Fd=20 L/U=0 sd/U=0                        Must 65534/28665046/28599512 70.8m (x1) | Mustard // >6052 (DNF) (x0)
+  [only Must   ] STP lost-hellos R=14 Fd=26 L/U=0 sd/U=0                    Must 129009/0/26951433 31.0m (x2) | Mustard // >6053 (DNF) (x0)
+  [neither     ] STP link-up R=17 Fd=20 L/U=0 sd/U=0                        Must >7161 (DNF) | Mustard >7161 (DNF)
+
+### Lease lock
+  [both        ] Lease C=2 R=5 L=1 U=2 sd=0 TTL=10 PAUSE=9                  Must 1889568/1111508/8336312 30.0m (x2) | Mustard 32768/21648/349880 12.5m (x3)
+  [both        ] Lease C=2 R=4 L=0 U=2 sd=1 TTL=10 PAUSE=3                  Must 104976/61748/463112 87s (x3) | Mustard 104976/0/475460 557s (x3)
+  [both        ] Lease C=5 R=1 L=0 U=2 sd=1 TTL=10 PAUSE=3                  Must 29160/943680/904712 224s (x3) | Mustard 29160/0/904712 544s (x3)
+  [only Mustard] Lease C=3 R=3 L=1 U=2 sd=0 TTL=10 PAUSE=9                  Must // >6054 (DNF) (x0) | Mustard 110592/139600/2187408 68.0m (x1)
+  [only Must   ] Lease C=2 R=5 L=0 U=2 sd=1 TTL=10 PAUSE=3                  Must 1889568/1111508/8336312 29.7m (x2) | Mustard // >7163 (DNF) (x0)
+  [neither     ] Lease C=2 R=6 L=0 U=2 sd=1 TTL=10 PAUSE=3                  Must >6050 (DNF) | Mustard >6050 (DNF)
+  [neither     ] Lease C=2 R=6 L=1 U=2 sd=0 TTL=10 PAUSE=9                  Must >3889 (DNF) | Mustard >3889 (DNF)
+  [neither     ] Lease C=3 R=3 L=0 U=2 sd=1 TTL=10 PAUSE=3                  Must >7160 (DNF) | Mustard >7160 (DNF)
+
+### Lease lock (with fencing)
+  [both        ] Lease + fencing C=5 R=1 L=0 U=2 sd=1 TTL=10 PAUSE=4        Must 1247400/0/11765192 22.7m (x2) | Mustard 29160/0/904712 545s (x3)
+  [both        ] Lease + fencing C=2 R=4 L=0 U=2 sd=1 TTL=10 PAUSE=4        Must 810000/0/2336884 412s (x3) | Mustard 104976/0/475460 560s (x3)
+  [both        ] Lease + fencing C=3 R=2 L=0 U=2 sd=1 TTL=10 PAUSE=6        Must 396900/0/1566404 210s (x3) | Mustard 47524/0/314232 248s (x3)
+  [neither     ] Lease + fencing C=2 R=5 L=0 U=2 sd=1 TTL=10 PAUSE=4        Must >6054 (DNF) | Mustard >6054 (DNF)
+  [neither     ] Lease + fencing C=3 R=3 L=0 U=2 sd=1 TTL=10 PAUSE=4        Must >7160 (DNF) | Mustard >7160 (DNF)
+  [neither     ] Lease + fencing C=4 R=2 L=0 U=2 sd=1 TTL=10 PAUSE=4        Must >7160 (DNF) | Mustard >7160 (DNF)
+
+### SWIM
+  [both        ] SWIM N=10 R=1 L=0 U=2 sd=1 Wp=2 Ws=6                       Must 19684/7371918/177156 17.7m (x2) | Mustard 19684/6723651/229644 61.0m (x1)
+  [both        ] SWIM N=6 R=2 L=1 U=2 sd=1 Wp=2 Ws=6                        Must 59536/13870962/297680 25.3m (x2) | Mustard 59536/2671230/297680 22.8m (x2)
+  [both        ] SWIM N=3 R=5 L=0 U=2 sd=1 Wp=2 Ws=6                        Must 100000/3217554/200000 289s (x3) | Mustard 100000/2574969/233333 24.3m (x2)
+  [only Must   ] SWIM N=11 R=1 L=0 U=2 sd=1 Wp=2 Ws=6                       Must 59050/37290312/590500 94.9m (x1) | Mustard // >7162 (DNF) (x0)
+  [only Must   ] SWIM N=3 R=6 L=0 U=2 sd=1 Wp=2 Ws=6                        Must 1000000/44428230/2000000 73.0m (x1) | Mustard // >7162 (DNF) (x0)
+  [only Must   ] SWIM N=3 R=6 L=1 U=2 sd=1 Wp=2 Ws=6                        Must 1000000/44428230/2000000 71.3m (x1) | Mustard // >7162 (DNF) (x0)
+  [neither     ] SWIM N=12 R=1 L=0 U=2 sd=1 Wp=2 Ws=6                       Must >7161 (DNF) | Mustard >7161 (DNF)
+  [neither     ] SWIM N=4 R=4 L=0 U=2 sd=1 Wp=2 Ws=6                        Must >7161 (DNF) | Mustard >7161 (DNF)
+  [neither     ] SWIM N=4 R=4 L=1 U=2 sd=1 Wp=2 Ws=6                        Must >7161 (DNF) | Mustard >7162 (DNF)
+
+### Alternating bit
+  [both        ] ABP-file par K=5 R=2 W=2U                                  Must 21891101/3109929/44528549 72.7m (x1) | Mustard 680302/60702/1214410 14.6m (x3)
+  [both        ] ABP-file par K=5 R=2 W=3U                                  Must 21891101/3109929/44528549 71.8m (x1) | Mustard 16807/0/39215 22s (x3)
+  [both        ] ABP-file abp K=4 R=2 W=1U                                  Must 1811617/0/4503679 360s (x3) | Mustard 1510894/0/2686510 35.4m (x2)
+  [only Mustard] ABP-file abp K=2 R=9 W=3U                                  Must // >6052 (DNF) (x0) | Mustard 1046529/0/2095105 43.0m (x1)
+  [only Mustard] ABP-file abp K=7 R=2 W=3U                                  Must // >6052 (DNF) (x0) | Mustard 823543/0/1921599 27.9m (x2)
+  [only Mustard] ABP-file par K=7 R=2 W=3U                                  Must // >6053 (DNF) (x0) | Mustard 823543/0/1921599 27.7m (x2)
+
+### PAR
+  [both        ] PAR dK=3 dL=3 dR=1 To=9 K=7 R=1                            Must 51701027/1878176/39546805 108.9m (x1) | Mustard 171875/0/124996 165s (x3)
+  [both        ] PAR dK=3 dL=3 dR=1 To=8 K=7 R=1                            Must 51701027/1878176/39546805 108.2m (x1) | Mustard 171875/0/124996 168s (x3)
+  [both        ] PAR dK=3 dL=3 dR=1 To=9 K=4 R=2                            Must 61400043/377046/22811357 75.8m (x1) | Mustard 287091/0/103720 151s (x3)
+  [only Mustard] PAR dK=3 dL=3 dR=1 To=9 K=5 R=2                            Must // >6054 (DNF) (x0) | Mustard 6028911/0/2178184 76.7m (x1)
+  [only Mustard] PAR dK=3 dL=3 dR=1 To=9 K=12 R=1 no-errs                   Must // >7163 (DNF) (x0) | Mustard 885735/0/531439 35.1m (x2)
+  [only Mustard] PAR dK=3 dL=3 dR=1 To=9 K=8 R=1                            Must // >6055 (DNF) (x0) | Mustard 859375/0/624996 17.5m (x2)
+  [neither     ] PAR dK=3 dL=3 dR=1 To=9 K=13 R=1 no-errs                   Must >6052 (DNF) | Mustard >6052 (DNF)
+  [neither     ] PAR dK=3 dL=3 dR=1 To=9 K=14 R=1 no-errs                   Must >6051 (DNF) | Mustard >6051 (DNF)
+  [neither     ] PAR dK=3 dL=3 dR=1 To=9 K=4 R=3                            Must >6053 (DNF) | Mustard >6054 (DNF)
+
+### BRP
+  [both        ] BRP F=1 n=5 MAX=1 TD=1 T1=3 TR=9 SYNC=9 k=2 (p2)           Must 14500281/959143/13594265 31.1m (x2) | Mustard 24316/0/30985 42s (x3)
+  [both        ] BRP F=1 n=2 MAX=4 TD=1 T1=3 TR=27 SYNC=27 k=2 (p2)         Must 6542125/124669/4351750 10.4m (x3) | Mustard 4084/0/4218 5s (x3)
+  [both        ] BRP F=1 n=3 MAX=2 TD=1 T1=3 TR=15 SYNC=15 k=2 (p2)         Must 1789020/92574/1430136 181s (x3) | Mustard 3744/0/4224 4s (x3)
+  [only Mustard] BRP F=1 n=7 MAX=1 TD=1 T1=3 TR=9 SYNC=9 k=2 (p2)           Must // >6051 (DNF) (x0) | Mustard 2052084/0/2605125 93.5m (x1)
+  [only Mustard] BRP F=1 n=4 MAX=3 TD=1 T1=3 TR=21 SYNC=21 k=2 (p2)         Must // >6054 (DNF) (x0) | Mustard 1589408/0/1670746 66.0m (x1)
+  [only Mustard] BRP F=1 n=5 MAX=2 TD=1 T1=3 TR=15 SYNC=15 k=2 (p2)         Must // >6055 (DNF) (x0) | Mustard 1579608/0/1754330 65.3m (x1)
+
+### Online shop
+  [both        ] Shop v2 C=2 N=2 R=4 S=20 D=7                               Must 17920/1020432/0 142s (x3) | Mustard 17920/691512/0 568s (x3)
+  [both        ] Shop v2 C=3 N=3 R=2 S=20 D=7                               Must 5760/1558912/0 198s (x3) | Mustard 5760/855568/0 551s (x3)
+  [both        ] Shop v2 C=3 N=2 R=2 S=20 D=7                               Must 5760/1021088/0 126s (x3) | Mustard 5760/540312/0 340s (x3)
+  [neither     ] Shop v2 C=3 N=2 R=3 S=20 D=7                               Must >6052 (DNF) | Mustard >6052 (DNF)
+
+### YARN
+  [both        ] YARN K=2 QS=3 DD=8 U=0 H=9 miss                            Must 3859600/45689/28028707 53.9m (x1) | Mustard 650/372/13363 11s (x3)
+  [both        ] YARN K=2 QS=3 DD=8 U=0 H=8 miss                            Must 774400/9397/5624023 10.2m (x3) | Mustard 326/112/6773 5s (x3)
+  [both        ] YARN K=2 QS=3 DD=7 U=0 H=8 miss                            Must 748920/30989/5460605 597s (x3) | Mustard 278/448/5897 4s (x3)
+  [only Mustard] YARN K=3 QS=4 DD=8 U=0 H=9 miss                            Must // >7162 (DNF) (x0) | Mustard 136704/17336/3443001 76.9m (x1)
+  [only Mustard] YARN K=2 QS=3 DD=8 U=0 H=16 miss                           Must // >6052 (DNF) (x0) | Mustard 68858/45896/1465639 47.8m (x1)
+  [only Mustard] YARN K=4 QS=5 DD=8 U=0 H=5 miss                            Must // >6057 (DNF) (x0) | Mustard 75408/0/1913585 31.9m (x2)
+  [neither     ] YARN K=4 QS=5 DD=8 U=0 H=6 miss                            Must >6056 (DNF) | Mustard >6057 (DNF)
+  [neither     ] YARN K=4 QS=5 DD=8 U=0 H=7 miss                            Must >6053 (DNF) | Mustard >6053 (DNF)

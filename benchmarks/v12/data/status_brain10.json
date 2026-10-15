@@ -1,0 +1,66 @@
+{
+ "time": "2026-10-15 07:49:30",
+ "deadline": "2026-10-15 07:50",
+ "free_cores": 86,
+ "ballast": 86,
+ "queued": 0,
+ "queued_timing": 0,
+ "running": [
+  {
+   "id": "v12L-abp-00601-t-r1",
+   "cores": 1,
+   "elapsed_s": 25822,
+   "pred_s": 24,
+   "tier": "timing"
+  },
+  {
+   "id": "v12L-abp-00689-t-r1",
+   "cores": 1,
+   "elapsed_s": 25821,
+   "pred_s": 24,
+   "tier": "timing"
+  },
+  {
+   "id": "v12L-abp-00687-b-r1",
+   "cores": 1,
+   "elapsed_s": 25132,
+   "pred_s": 36,
+   "tier": "timing"
+  },
+  {
+   "id": "v12L-lease_f-00046-b-r1",
+   "cores": 1,
+   "elapsed_s": 21179,
+   "pred_s": 210,
+   "tier": "timing"
+  },
+  {
+   "id": "v12L-retail-00018-b-r1",
+   "cores": 1,
+   "elapsed_s": 16207,
+   "pred_s": 4726,
+   "tier": "timing"
+  },
+  {
+   "id": "v12P16-abp-B-par-10_1-r2",
+   "cores": 16,
+   "elapsed_s": 7702,
+   "pred_s": 1152,
+   "tier": "timing"
+  },
+  {
+   "id": "v12D-nisshi-03-t-r1",
+   "cores": 1,
+   "elapsed_s": 7702,
+   "pred_s": 2409,
+   "tier": "timing"
+  },
+  {
+   "id": "v12E2-104-must",
+   "cores": 16,
+   "elapsed_s": 2440,
+   "pred_s": 154,
+   "tier": "timing"
+  }
+ ]
+}

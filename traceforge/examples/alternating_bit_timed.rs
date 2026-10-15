@@ -79,11 +79,20 @@
 //! ## How the protocol maps onto TraceForge
 //!
 //! Two protocol threads (sender, receiver) plus main, which spawns the
-//! receiver (a daemon reactor) and then the sender, which captures the
-//! receiver's id, and joins the sender. There is no bootstrap message:
-//! the receiver learns the sender's address from the `from` of each
-//! frame (as 3PC's participants learn the coordinator from Prepare).
-//! Both threads start at time 0, their own `Begin` events.
+//! receiver and then the sender, which captures the receiver's id, and
+//! joins the sender. There is no bootstrap message: the receiver learns
+//! the sender's address from the `from` of each frame (as 3PC's
+//! participants learn the coordinator from Prepare). Both threads start
+//! at time 0, their own `Begin` events.
+//!
+//! No thread is a daemon. The receiver's loop is bounded by the
+//! protocol's own end-of-session message: it ends when it reads the
+//! sender's Done, and the sender sends Done after its K-th accepted Ack.
+//! So in a run in which Done arrives every thread terminates. A run that
+//! ends with the receiver still waiting is a blocked execution: Done was
+//! dropped or expired, or the sender gave up and sent none. Each
+//! completed execution has a twin in which its Done is dropped, so
+//! blocked is at least execs.
 //!
 //! Sender, for payload i in 0..K with bit = i % 2:
 //!
@@ -95,9 +104,10 @@
 //!     None               retransmit the same frame (lossy) if fewer
 //!                        than R retransmissions of message i so far,
 //!                        otherwise give up (GAVE_UP)
-//!   after K accepted Acks: Done{completed: true}; after giving up:
-//!   Done{completed: false}. Done may be dropped like every send; the
-//!   receiver then blocks and the execution counts as blocked.
+//!   after K accepted Acks: send Done; after giving up: return, no Done
+//!   is sent. Done may be dropped like every send; the receiver then
+//!   blocks and the execution counts as blocked, as it does when the
+//!   sender gave up.
 //!
 //! The sender reads ANY acknowledgement from the receiver and discards a
 //! wrong bit in code. It must not select the current bit with the
@@ -111,7 +121,7 @@
 //!   Frame{bit == e, payload}  deliver: P1, DELIVERED, sleep(dR) when
 //!                             dR > 0, flip e, send_lossy_msg Ack
 //!   Frame{bit != e}           duplicate: DUPLICATES, send_lossy_msg Ack
-//!   Done{completed}           P2 when completed, then return
+//!   Done                      P2, then return (the loop's only exit)
 //!
 //! Ack is `Ack{bit: Some(frame bit)}` for abp and `Ack{bit: None}` for
 //! par (DT-Spin's PAR acknowledgement is the constant ACK and its sender
@@ -235,9 +245,10 @@
 //!       Bosnacki-Dams "never resends it" outcome; with K = 2 it is the
 //!       only place the PAR bug can show.
 //!
-//! No assertion on Done{completed: false}: a sender that gave up because
-//! every copy of a frame or of its Ack was lost is not a violation
-//! (counted in GAVE_UP; P1 still covered the prefix it delivered).
+//! No assertion when the sender gave up (it sends no Done, so the
+//! receiver ends blocked): a sender that gave up because every copy of a
+//! frame or of its Ack was lost is not a violation (counted in GAVE_UP;
+//! P1 still covered the prefix it delivered).
 //! "Every message is eventually delivered" is deliberately not asserted:
 //! it is false under loss and inconclusive in a bounded model.
 //!
@@ -582,6 +593,9 @@ fn receiver(p: Params) {
         Variant::Par => None,
     };
 
+    // The loop ends on Done, the sender's end-of-session message. A
+    // receiver still waiting when the run ends never got Done (dropped,
+    // expired, or the sender gave up): a blocked execution.
     loop {
         match traceforge::recv_msg_block_timed::<SMsg>() {
             SMsg::Frame { bit, payload, from: sender } if bit == expected_bit => {
@@ -678,10 +692,11 @@ fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
     reset_counts();
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
-        // No bootstrap message: the receiver is a daemon reactor, spawned
-        // first; the sender is spawned last and captures its id. The
-        // receiver learns the sender's address from the frames.
-        let r = thread::spawn_daemon(move || receiver(p)).thread().id();
+        // No bootstrap message: the receiver is spawned first; the sender
+        // is spawned last and captures its id. The receiver learns the
+        // sender's address from the frames. Both are ordinary threads:
+        // the receiver's loop ends on the sender's Done.
+        let r = thread::spawn(move || receiver(p)).thread().id();
         let s = thread::spawn(move || sender(p, r));
         let _ = s.join();
     });

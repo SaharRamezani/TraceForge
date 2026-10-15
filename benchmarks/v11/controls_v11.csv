@@ -1,0 +1,43 @@
+paper_row,cell,side,main_host,main_s,control_host,control_s,ratio,counts_identical
+Online shop,Shop v2 C=2 N=2 R=3 S=20 D=None,baseline,brain10,5.7,brain05,5.54,0.972,True
+Online shop,Shop v2 C=2 N=2 R=3 S=20 D=None,timed,brain10,22.3,brain05,22.01,0.987,True
+Lease lock (with fencing),Lease + fencing C=4 R=1 L=0 U=2 sd=1 TTL=10 PAUSE=4,baseline,brain10,14.73,brain05,14.61,0.992,True
+Lease lock (with fencing),Lease + fencing C=4 R=1 L=0 U=2 sd=1 TTL=10 PAUSE=4,timed,brain10,14.06,brain05,13.85,0.985,True
+PAR,PAR dK=3 dL=3 dR=1 To=7 K=4 R=1,baseline,brain10,1.82,brain05,1.77,0.973,True
+PAR,PAR dK=3 dL=3 dR=1 To=7 K=4 R=1,timed,brain10,4.43,brain05,4.36,0.984,True
+Lease lock,Lease C=4 R=1 L=1 U=2 sd=0 TTL=10 PAUSE=9,baseline,brain10,5.28,brain05,5.17,0.979,True
+Lease lock,Lease C=4 R=1 L=1 U=2 sd=0 TTL=10 PAUSE=9,timed,brain10,9.78,brain05,9.64,0.986,True
+Alternating bit,ABP-file abp K=3 R=2 W=2U,baseline,brain10,7.22,brain05,7.1,0.983,True
+Alternating bit,ABP-file abp K=3 R=2 W=2U,timed,brain10,4.34,brain05,4.35,1.002,True
+SWIM,SWIM N=4 R=2 L=0 U=2 sd=1 Wp=2 Ws=6,baseline,brain10,2.0,brain05,1.95,0.975,True
+SWIM,SWIM N=4 R=2 L=0 U=2 sd=1 Wp=2 Ws=6,timed,brain10,6.83,brain05,6.69,0.98,True
+BRP,BRP F=1 n=2 MAX=4 TD=1 T1=3 TR=27 SYNC=27 k=2 (p2),baseline,brain10,626.15,brain05,631.52,1.009,True
+BRP,BRP F=1 n=2 MAX=4 TD=1 T1=3 TR=27 SYNC=27 k=2 (p2),timed,brain10,4.68,brain05,4.64,0.991,True
+YARN,YARN K=2 QS=3 DD=8 U=0 H=8 miss,baseline,brain10,610.53,brain05,603.86,0.989,True
+YARN,YARN K=2 QS=3 DD=8 U=0 H=8 miss,timed,brain10,4.65,brain05,4.63,0.996,True
+PAR,PAR dK=3 dL=3 dR=1 To=9 K=8 R=1 no-errs,baseline,brain10,1234.43,brain05,1254.06,1.016,True
+PAR,PAR dK=3 dL=3 dR=1 To=9 K=8 R=1 no-errs,timed,brain10,12.76,brain05,12.73,0.998,True
+NRP,NRP noopt R=3,baseline,brain10,394.32,brain05,396.13,1.005,True
+NRP,NRP noopt R=3,timed,brain10,30.45,brain05,29.52,0.969,True
+Lease lock,Lease C=2 R=4 L=0 U=2 sd=1 TTL=10 PAUSE=3,baseline,brain10,86.77,brain05,85.04,0.98,True
+Lease lock,Lease C=2 R=4 L=0 U=2 sd=1 TTL=10 PAUSE=3,timed,brain10,557.06,brain05,559.29,1.004,True
+Chandra-Toueg,CT delta=2 phi=4 to=13 H=17,baseline,brain10,134.92,brain05,132.75,0.984,True
+Chandra-Toueg,CT delta=2 phi=4 to=13 H=17,timed,brain10,915.31,brain05,903.3,0.987,True
+Online shop,Shop v2 C=2 N=2 R=4 S=20 D=7,baseline,brain10,142.06,brain05,138.09,0.972,True
+Online shop,Shop v2 C=2 N=2 R=4 S=20 D=7,timed,brain10,567.87,brain05,575.36,1.013,True
+Sensor network,Sensor --readings safe --property sensor --rounds 3,baseline,brain10,1228.39,brain05,1234.62,1.005,True
+Sensor network,Sensor --readings safe --property sensor --rounds 3,timed,brain10,168.36,brain05,172.62,1.025,True
+Lease lock (with fencing),Lease + fencing C=5 R=1 L=0 U=2 sd=1 TTL=10 PAUSE=4,baseline,brain10,1361.18,brain05,1399.47,1.028,True
+Lease lock (with fencing),Lease + fencing C=5 R=1 L=0 U=2 sd=1 TTL=10 PAUSE=4,timed,brain10,545.46,brain05,542.45,0.994,True
+Spanning tree,STP lost-hellos R=10 Fd=15 L/U=1 sd/U=0,baseline,brain05,25.75,brain10,25.98,1.009,True
+Spanning tree,STP lost-hellos R=10 Fd=15 L/U=1 sd/U=0,timed,brain05,47.59,brain10,48.65,1.022,True
+Chandra-Toueg,CT delta=2 phi=2 to=7 H=12,baseline,brain05,5.6,brain10,5.65,1.009,True
+Chandra-Toueg,CT delta=2 phi=2 to=7 H=12,timed,brain05,21.09,brain10,21.22,1.006,True
+BRP,BRP F=1 n=2 MAX=2 TD=1 T1=3 TR=15 SYNC=15 k=2 (p2),baseline,brain05,1.04,brain10,1.07,1.029,True
+BRP,BRP F=1 n=2 MAX=2 TD=1 T1=3 TR=15 SYNC=15 k=2 (p2),timed,brain05,0.14,brain10,0.13,0.929,True
+Alternating bit,ABP-file abp K=3 R=3 W=3U,baseline,brain05,1155.19,brain10,1173.82,1.016,True
+Alternating bit,ABP-file abp K=3 R=3 W=3U,timed,brain05,3.26,brain10,3.24,0.994,True
+Spanning tree,STP lost-hellos R=12 Fd=21 L/U=0 sd/U=0,baseline,brain05,203.59,brain10,210.96,1.036,True
+Spanning tree,STP lost-hellos R=12 Fd=21 L/U=0 sd/U=0,timed,brain05,932.44,brain10,956.72,1.026,True
+SWIM,SWIM N=6 R=2 L=1 U=2 sd=1 Wp=2 Ws=6,baseline,brain05,1520.77,brain10,1553.56,1.022,True
+SWIM,SWIM N=6 R=2 L=1 U=2 sd=1 Wp=2 Ws=6,timed,brain05,1370.41,brain10,1418.76,1.035,True

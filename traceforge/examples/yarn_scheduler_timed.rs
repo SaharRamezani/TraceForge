@@ -94,9 +94,14 @@
 //! The SoCC 2013 YARN paper has no deadline scheduler: the deadline
 //! queue is the Rebeca authors' abstraction of the RM's scheduling loop.
 //!
-//! Threads. The RM and the AMs are daemons: Rebeca actors react to their
-//! next message for ever, nobody waits for them, and an execution is
-//! over when nothing can move any more.
+//! Threads. The RM and the AMs are ordinary threads. A Rebeca actor
+//! reacts to its next message for ever; here every loop is bounded by
+//! what a run that loses nothing delivers to it, so every thread ends in
+//! such a run, and, where no assertion failed, a thread left blocked at
+//! a receive means that a message was lost or expired. The RM is bounded
+//! by a count of what it is owed. The number of jobs an AM gets depends
+//! on the completion times, so no count bounds an AM: it ends on the
+//! harness Stop (see below).
 //!
 //!   RM         one blocking receive loop, the Rebeca actor shape:
 //!              Tick      => checkQueue() verbatim (see below), then the
@@ -107,13 +112,18 @@
 //!                           report is checked against its deadline.
 //!              Tick 0 is sent at time 0 with transit 0 (the
 //!              constructor's call). After tick H the RM hands out
-//!              nothing and keeps reading reports.
+//!              nothing and keeps reading reports. It leaves the loop
+//!              when it has read tick H and a report for every job it
+//!              handed out, and then sends Stop to the last AM
+//!              (HARNESS).
 //!   AM i       (i = 0..k-1; am1 of the source is AM 0) blocking receive
 //!              of RunJob{job, dline, tick, rm}; completion c is chosen
 //!              from the work-time set (default {2}, see CLI); if
 //!              c > dline: sleep(dline), send
 //!              Update{miss: true} (the source's self-preemption); else
 //!              doneJobs++, sleep(c), send Update{miss: false}.
+//!              HARNESS: on Stop it forwards Stop to AM i-1 (AM 0
+//!              forwards nothing) and leaves the loop.
 //!   Monitor    only with --property throughput (see Properties); an
 //!              ordinary thread with one finite wait.
 //!
@@ -133,9 +143,11 @@
 //! paper text says "set to 0") is preserved too.
 //!
 //! Messages: Tick (RM to itself, exact transit), RunJob (RM -> AM) and
-//! Update (AM -> RM) with the global transit window [L, U]. No thread
-//! needs a bootstrap message: the RM gets the AMs' ids through its spawn
-//! closure, and RunJob carries the address the AM answers to. Deadlines
+//! Update (AM -> RM) with the global transit window [L, U]; the harness
+//! Stop (RM -> AM k-1 -> AM k-2 -> ... -> AM 0, same window) is not the
+//! protocol's. No thread needs a bootstrap message: the RM gets the AMs'
+//! ids through its spawn closure (each AM gets that of the AM below it,
+//! for Stop), and RunJob carries the address the AM answers to. Deadlines
 //! are data: the RM keeps, for each busy AM, the tick the job was handed
 //! out at and its dline, so its absolute deadline is D = tick + dline in
 //! tick units. Nothing in the model reads the clock.
@@ -158,7 +170,8 @@
 //!   - Bounded horizon instead of unbounded time: the RM re-arms its
 //!     timer up to tick H (default 10, the TCTL time bound) and hands out
 //!     nothing afterwards. The bound is a count kept by the RM; no
-//!     message announces the end of the run.
+//!     protocol message announces the end of the run (the harness Stop
+//!     only lets the AMs leave their loops).
 //!   - `send ... after(d)` at the AM becomes sleep(d) followed by an
 //!     ordinary send. Equivalent here: a busy AM gets no other work.
 //!   - The source line is `int completion = 2;//?(2, 5);`. In Timed
@@ -217,9 +230,20 @@
 //! leaves the AM busy in the RM's table, and the queue behind it
 //! expires: it is a deadline miss like any other and is now reported.
 //! There is no Clock thread (the RM's timer is its own self-sent message,
-//! as in the source), no assume!, no drain, no release message and no
-//! deferred judgement: each property is asserted at the step where it
-//! fails, and the counters are raised there.
+//! as in the source), no assume!, no drain and no deferred judgement:
+//! each property is asserted at the step where it fails, and the
+//! counters are raised there.
+//!
+//! Apart from the throughput probe, the one message that is not the
+//! source's is the Stop chain (HARNESS in the code), which ends the AMs
+//! now that they are not daemons. The RM leaves its loop on its own
+//! counts and sends one Stop to the last AM; each AM forwards it to the
+//! AM below it and leaves. It is lossy like every send: a lost Stop
+//! leaves the AMs after the loss blocked at their receive, so a run in
+//! which the RM reaches its end is explored K+1 times, once for each hop
+//! at which the chain can break and once without a break (the only one
+//! that can be filed under execs). A run in which the RM never reaches
+//! its end has no Stop and is explored as before, but under blocked.
 //!
 //! ## Properties checked (--property)
 //!
@@ -259,11 +283,12 @@
 //!                Finite(H) from time 0 and asserts false when it reads
 //!                it, so exit 101 = REACHABLE (the TCTL formula is true)
 //!                and exit 0 = unreachable. Fifth is the one message of
-//!                this file that is not the protocol's: the property
-//!                relates am1's state to an instant on another clock, so
-//!                one probe carries it there. A lost probe is a timeout:
-//!                it can hide the start, never invent one. (The paper
-//!                checks am2; the property file, used here, checks am1.)
+//!                this file that is not the protocol's, the harness Stop
+//!                apart: the property relates am1's state to an instant
+//!                on another clock, so one probe carries it there. A
+//!                lost probe is a timeout: it can hide the start, never
+//!                invent one. (The paper checks am2; the property file,
+//!                used here, checks am1.)
 //!                The paper reports no verdict for this formula, only
 //!                state counts, so the throughput verdicts below are not
 //!                a reproduction either.
@@ -313,12 +338,13 @@
 //! is an upper bound whenever impossible > 0 (it was 0 in every run
 //! below); a count of zero is sound.
 //!
-//!   execs, blocked      the checker's counts: endings without a failed
-//!                       assertion, and endings stopped at one (the RM
-//!                       and the AMs are daemons, so nothing else blocks).
-//!                       The throughput monitor ends right after its
-//!                       assertion, and the engine files such an ending
-//!                       under execs: for throughput read fifth=a/b
+//!   execs, blocked      the checker's counts: endings in which every
+//!                       thread ended, and endings that did not: stopped
+//!                       at a failed assertion (the throughput monitor's
+//!                       too, which parks it), or with the RM or an AM
+//!                       blocked at its receive because a message was
+//!                       lost or expired (for an AM, its Stop). For
+//!                       throughput read fifth=a/b
 //!   dispatched, done, preempted, expired, late
 //!                       jobs handed out, "done" reports read, give-ups,
 //!                       queue expiries, late "done" reports
@@ -357,6 +383,18 @@
 //!
 //! with the flags of the row (--deadline DD, --property P, --horizon H,
 //! --u U, --l L, --ams K, --queue-size QS).
+//!
+//! The execs / blocked counts of this section were measured when the RM
+//! and the AMs were daemons. With the Stop chain (see Threads) the
+//! verdicts and the violation counts of miss, expiry, preempt and
+//! late-report stay as they are; execs falls to the endings in which
+//! every thread ended (the daemons hid the endings with a lost message
+//! in it); blocked grows by those and by the lost-Stop endings, so that
+//! execs + blocked grows by K times the new execs (miss DD=8 below:
+//! 223 / 14 / 14 is now 16 / 237 / 14). A throughput run counts each
+//! violating ending of the monitor K+1 times, because the RM still
+//! reaches its end. The counters that sum over endings (dispatched,
+//! done, ...) grow with the endings too.
 //!
 //!   property     cell            old                        new
 //!   miss         DD=3            FIRE  0 / 9,070 / 32       FIRE  7 / 5 / 6
@@ -476,8 +514,11 @@
 //! Counts move there too (execs / blocked / violations, old then new):
 //! timed U=0 at H=7: 24 / 1,087 / 0, now 148 / 0 / 0; H=8: 32 / 2,219 / 0,
 //! now 218 / 0 / 0; H=9: 49 / 4,511 / 2, now 321 / 0 / 2; H=10:
-//! 68 / 9,116 / 4, now 465 / 0 / 6. The monitor returns after its failed
-//! assertion, so a reaching execution is filed under execs.
+//! 68 / 9,116 / 4, now 465 / 0 / 6. Those "now" counts file a reaching
+//! execution under execs (the monitor returned after its failed
+//! assertion); an assertion now parks its thread, so such an ending is
+//! filed under blocked (H=10: 459 / 6 / 6, and 33 / 467 / 8 with the
+//! Stop chain).
 //!
 //! baseline, the same program without a clock: FIRE (exit 101) at miss
 //! DD=3 and 8, expiry DD=8, preempt DD=3 and 8 and late-report DD=8, in
@@ -558,11 +599,15 @@ enum AmMsg {
     /// bookkeeping; `rm` is the address the AM answers to, carried by
     /// the packet (Rebeca's known rebec `rm`).
     RunJob { job: u32, dline: u64, tick: u32, rm: ThreadId },
+    /// HARNESS: not the protocol's. The RM sends it to the last AM when it
+    /// has met every obligation; each AM forwards it to the AM below it
+    /// and leaves its loop (AM 0 forwards nothing).
+    Stop,
 }
 
 /// The throughput probe (--property throughput only), the one message
-/// that is not the protocol's: am1's doneJobs just became 5 (tag
-/// TAG_FIFTH, zero transit).
+/// that is not the protocol's, the harness Stop apart: am1's doneJobs
+/// just became 5 (tag TAG_FIFTH, zero transit).
 #[derive(Clone, Debug, PartialEq)]
 enum MonMsg {
     Fifth,
@@ -681,10 +726,14 @@ struct Running {
     dline: u64,
 }
 
-/// A daemon: the Rebeca actor shape, one blocking receive loop over its
-/// own timer and the AMs' reports, for ever. Its timer is a self-sent
-/// Tick like any other message: a lost Tick stops the RM's clock for
-/// good, and the RM then only reads reports.
+/// The Rebeca actor shape: one blocking receive loop over its own timer
+/// and the AMs' reports. Its timer is a self-sent Tick like any other
+/// message: a lost Tick stops the RM's clock for good, and the RM then
+/// only reads reports. The loop is bounded by what a run that loses
+/// nothing delivers to the RM: the H+1 ticks of its own timer chain and
+/// one report for every job it handed out. It leaves the loop when it
+/// has read them all; a lost Tick, RunJob or Update leaves it blocked
+/// at its receive.
 fn resource_manager(p: Params, ams: Vec<ThreadId>) {
     let me = thread::current().id();
     let k = ams.len();
@@ -698,7 +747,11 @@ fn resource_manager(p: Params, ams: Vec<ThreadId>) {
 
     // Source: the constructor's `self.checkQueue()`, tick 0 at time 0.
     traceforge::send_msg_timed(me, RmMsg::Tick, 0, 0);
-    loop {
+    // Owed to the RM: ticks 0..=H (the chain re-arms while index < H, so
+    // `ticks` reaches H+1) and one Update per dispatched job, which is
+    // exactly the busy slots of `running` (nothing is dispatched after
+    // tick H, so that set only shrinks from then on).
+    while ticks <= p.horizon || running.iter().any(Option::is_some) {
         match traceforge::recv_msg_block_timed::<RmMsg>() {
             RmMsg::Tick => {
                 let index = ticks;
@@ -784,18 +837,34 @@ fn resource_manager(p: Params, ams: Vec<ThreadId>) {
             }
         }
     }
+    // HARNESS: every obligation is met, nothing can reach the RM any more.
+    // Tell the last AM to stop; each AM forwards the Stop to the AM below
+    // it. Like every send it is lossy, and a lost Stop leaves the AMs
+    // after the loss blocked at their receive.
+    traceforge::send_msg(ams[k - 1], AmMsg::Stop);
 }
 
 // =====================================================================
 // ApplicationMaster
 // =====================================================================
 
-/// A daemon: it reacts to every RunJob, for ever.
-fn app_master(index: usize, p: Params, monitor: Option<ThreadId>) {
+/// It reacts to every RunJob. How many it gets depends on the completion
+/// times, so no count bounds the loop: it ends on the harness Stop, which
+/// it passes on to AM index-1 (`stop_to`, none for AM 0).
+fn app_master(index: usize, p: Params, monitor: Option<ThreadId>, stop_to: Option<ThreadId>) {
     let mut done_jobs: u32 = 0;
     let mut fifth_sent = false;
     loop {
-        let AmMsg::RunJob { job, dline, rm, .. } = traceforge::recv_msg_block_timed::<AmMsg>();
+        let (job, dline, rm) = match traceforge::recv_msg_block_timed::<AmMsg>() {
+            AmMsg::RunJob { job, dline, rm, .. } => (job, dline, rm),
+            AmMsg::Stop => {
+                // HARNESS: pass the Stop on to AM index-1, then leave.
+                if let Some(to) = stop_to {
+                    traceforge::send_msg(to, AmMsg::Stop);
+                }
+                break;
+            }
+        };
         // Source: int completion = 2; //?(2, 5);
         let completion = p.work.pick();
         if completion > dline {
@@ -869,6 +938,11 @@ const THREAD_EVENT_LIMIT: u32 = 1000;
 ///          block (the receive that waits for ever, or a failed assert).
 ///   AM:    begin + <= (H+1) jobs * (read, choice, sleep, send) + Fifth +
 ///          the final block.
+/// A thread that ends instead of blocking has, in place of its final
+/// block, the Stop send and End (RM, one event more) or the Stop read,
+/// its forward and End (AM, two more). TraceForge stops the search only
+/// when a thread that already holds THREAD_EVENT_LIMIT + 1 events gets
+/// another, so every horizon accepted below still fits.
 fn max_thread_events(ams: usize, horizon: u32) -> u64 {
     let ticks = u64::from(horizon) + 1;
     let k = ams as u64;
@@ -920,16 +994,21 @@ fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
             None
         };
         let monitor_id = monitor.as_ref().map(|h| h.thread().id());
-        // The AMs and the RM are daemons: they react for ever and nobody
-        // waits for them. Ids go through the spawn closures (the AMs
-        // learn the RM's from RunJob), so every thread starts at time 0.
+        // The AMs and the RM are ordinary threads, each bounded as its
+        // function says; nobody needs to wait for them here. Ids go
+        // through the spawn closures (the AMs learn the RM's from
+        // RunJob), so every thread starts at time 0.
+        // HARNESS: the Stop chain runs from the last AM down to AM 0, so
+        // each AM is spawned knowing the id of the AM it forwards to (the
+        // one spawned before it) and the spawn order is the original one.
         let mut am_ids: Vec<ThreadId> = Vec::new();
         for i in 0..p.ams {
             let m = if i == 0 { monitor_id } else { None };
-            am_ids.push(thread::spawn_daemon(move || app_master(i, p, m)).thread().id());
+            let stop_to = am_ids.last().copied();
+            am_ids.push(thread::spawn(move || app_master(i, p, m, stop_to)).thread().id());
         }
-        thread::spawn_daemon(move || resource_manager(p, am_ids));
-        // Only the monitor ends by itself (its one wait is finite).
+        thread::spawn(move || resource_manager(p, am_ids));
+        // The monitor ends by itself too (its one wait is finite).
         if let Some(h) = monitor {
             let _ = h.join();
         }
@@ -1035,11 +1114,10 @@ fn print_compare(p: Params, baseline: (Stats, Duration), timed: (Stats, Duration
 fn warn_if_vacuous(label: &str, p: Params, stats: &Stats, c: Counts) {
     if c.violations > 0 {
         // Only reachable with --keep-going (otherwise the first violation
-        // aborts). A failed assertion stops the RM or an AM, and that
-        // execution is filed under `blocked` (nothing else blocks: the
-        // reactors are daemons). The monitor's failed assertion is its
-        // last step, so its thread still ends and the engine files that
-        // execution under `execs`: for throughput read fifth=a/b.
+        // aborts). A failed assertion parks the RM, an AM or the monitor,
+        // and that execution is filed under `blocked`, as is one in which
+        // a lost message leaves the RM or an AM blocked at its receive.
+        // For throughput read fifth=a/b.
         println!(
             "VIOLATIONS ({label}): {} failed assertions counted (--keep-going continued past \
              them; exit 0 here does NOT mean the property holds).",

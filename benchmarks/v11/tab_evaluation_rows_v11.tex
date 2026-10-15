@@ -1,0 +1,47 @@
+    \multicolumn{10}{l}{\emph{Sensor network} ($S$ sensors, $R$ check rounds, sensor period)} \\
+    \quad $S{=}1,R{=}2$ & 1 & 1 & 0 & 6\,603\,503 & 1\,619\,860 & 556 & 7\,228 & 1\,628 & 5.5 \\
+    \quad $S{=}2,R{=}1$, period $5U$ & 1 & 1 & 0 & 86\,101\,163 & 14\,707\,244 & 6\,278$^\dagger$ & 95\,215 & 16\,740 & 89 \\
+    \quad $S{=}1,R{=}3$ & 1 & 1 & 0 & -- & -- & $>$6\,055 & 198\,326 & 38\,710 & 276 \\
+    \midrule
+    \multicolumn{10}{l}{\emph{NRP} (variant, $R$ heartbeat rounds)} \\
+    \quad noopt, $R{=}3$ & 1 & 1 & 0 & 5\,848\,045 & 722\,620 & 394 & 46\,675 & 4\,872 & 30 \\
+    \quad leasing, $R{=}3$ & 1 & 1 & 0 & 5\,049\,103 & 0 & 340 & 41\,419 & 0 & 26 \\
+    \quad noopt, $R{=}4$ & 1 & 1 & 0 & -- & -- & $>$7\,163 & 2\,091\,678 & 171\,920 & 2\,084$^\dagger$ \\
+    \midrule
+    \multicolumn{10}{l}{\emph{Lease lock} ($C$ clients, $R$ rounds, TTL 10, client pause)} \\
+    \quad $C{=}2,R{=}3$, pause 4 & 0 & 2 & 1 & 34\,972 & 3\,428 & 3.9 & 32\,228 & 0 & 21 \\
+    \quad $C{=}2,R{=}3$, pause 5 & 0 & 2 & 1 & 34\,972 & 3\,428 & 3.8 & 33\,504 & 1\,276 & 22 \\
+    \quad $C{=}2,R{=}4$, pause 3 & 0 & 2 & 1 & 629\,836 & 61\,748 & 87 & 580\,436 & 0 & 557 \\
+    \quad $C{=}5,R{=}1$, pause 3 & 0 & 2 & 1 & 1\,877\,552 & 943\,680 & 224 & 933\,872 & 0 & 544 \\
+    \quad $C{=}2,R{=}5$, pause 9 & 1 & 2 & 0 & 11\,337\,388 & 1\,111\,508 & 1\,801$^\dagger$ & 404\,296 & 21\,648 & 749 \\
+    \midrule
+    \multicolumn{10}{l}{\emph{Lease lock (with fencing)} ($C$ clients, $R$ rounds, TTL 10, client pause)} \\
+    \quad $C{=}2,R{=}4$, pause 4 & 0 & 2 & 1 & 3\,146\,884 & 0 & 412 & 580\,436 & 0 & 560 \\
+    \quad $C{=}5,R{=}1$, pause 4 & 0 & 2 & 1 & 13\,012\,592 & 0 & 1\,361$^\dagger$ & 933\,872 & 0 & 545 \\
+    \midrule
+    \multicolumn{10}{l}{\emph{Alternating bit} ($K$ messages, $R$ retries, timeout $W$)} \\
+    \quad $K{=}4,R{=}2,W{=}3U$ & 0 & 1 & 0 & 6\,315\,296 & 0 & 360 & 8\,002 & 0 & 2.3 \\
+    \quad $K{=}3,R{=}3,W{=}3U$ & 0 & 1 & 0 & 20\,391\,072 & 0 & 1\,155$^\dagger$ & 10\,606 & 0 & 3.3 \\
+    \quad $K{=}2,R{=}9,W{=}3U$ & 0 & 1 & 0 & -- & -- & $>$6\,052 & 3\,141\,634 & 0 & 2\,580$^\dagger$ \\
+    \quad var.\ par, $K{=}5,R{=}2,W{=}3U$ & 0 & 1 & 0 & 69\,529\,579 & 3\,109\,929 & 4\,306$^\dagger$ & 56\,022 & 0 & 22 \\
+    \quad var.\ par, $K{=}5,R{=}2,W{=}2U$ & 0 & 1 & 0 & 69\,529\,579 & 3\,109\,929 & 4\,365$^\dagger$ & 1\,955\,414 & 60\,702 & 874 \\
+    \midrule
+    \multicolumn{10}{l}{\emph{PAR} ($K$ messages, $R$ retries, timeout $T_o$, delays $d_K{=}d_L{=}3$)} \\
+    \quad $K{=}6,R{=}1,T_o{=}7$ & 3 & 3 & 0 & 7\,014\,285 & 117\,342 & 427 & 1\,434\,291 & 4\,040 & 653 \\
+    \quad $K{=}6,R{=}1,T_o{=}8$ & 3 & 3 & 0 & 7\,014\,285 & 117\,342 & 422 & 59\,371 & 0 & 25 \\
+    \quad $K{=}7,R{=}1,T_o{=}8$ & 3 & 3 & 0 & 93\,126\,008 & 1\,878\,176 & 6\,495$^\dagger$ & 296\,871 & 0 & 168 \\
+    \quad $K{=}5,R{=}2,T_o{=}9$ & 3 & 3 & 0 & -- & -- & $>$6\,054 & 8\,207\,095 & 0 & 4\,600$^\dagger$ \\
+    \midrule
+    \multicolumn{10}{l}{\emph{BRP} ($F$ files, $n$ chunks, $\mathit{MAX}$ retransmissions, $T_1{=}3$, $TR$, $\mathit{SYNC}$)} \\
+    \quad $n{=}2,\mathit{MAX}{=}3,TR{=}\mathit{SYNC}{=}20$ & $\tfrac12$ & 1 & 0 & 543\,340 & 9\,838 & 27 & 1\,982 & 4 & 0.8 \\
+    \quad $n{=}2,\mathit{MAX}{=}3,TR{=}\mathit{SYNC}{=}21$ & $\tfrac12$ & 1 & 0 & 543\,340 & 9\,838 & 28 & 1\,978 & 0 & 0.8 \\
+    \quad $F{=}2,n{=}2,\mathit{MAX}{=}1,TR{=}9,\mathit{SYNC}{=}6$ & $\tfrac12$ & 1 & 0 & 2\,592\,389 & 97\,784 & 150 & 16\,177 & 3 & 8.8 \\
+    \quad $F{=}2,n{=}2,\mathit{MAX}{=}1,TR{=}9,\mathit{SYNC}{=}7$ & $\tfrac12$ & 1 & 0 & 2\,592\,389 & 97\,784 & 147 & 15\,575 & 0 & 8.5 \\
+    \quad $n{=}5,\mathit{MAX}{=}1,TR{=}\mathit{SYNC}{=}9$ & $\tfrac12$ & 1 & 0 & 29\,053\,689 & 959\,143 & 1\,866$^\dagger$ & 55\,301 & 0 & 42 \\
+    \quad $n{=}7,\mathit{MAX}{=}1,TR{=}\mathit{SYNC}{=}9$ & $\tfrac12$ & 1 & 0 & -- & -- & $>$6\,051 & 4\,657\,209 & 0 & 5\,608$^\dagger$ \\
+    \midrule
+    \multicolumn{10}{l}{\emph{YARN} ($K$ application masters, deadline $DD$, horizon $H$, property)} \\
+    \quad $K{=}1,DD{=}7,H{=}12$, late-report & 0 & 0 & 0 & 26\,309 & 524 & 1.9 & 555 & 0 & 0.3 \\
+    \quad $K{=}1,DD{=}8,H{=}12$, preempt & 0 & 0 & 0 & 25\,397 & 316 & 1.9 & 504 & 0 & 0.3 \\
+    \quad $K{=}2,DD{=}8,H{=}9$, miss & 0 & 0 & 0 & 31\,933\,996 & 45\,689 & 3\,237$^\dagger$ & 14\,385 & 372 & 11 \\
+    \quad $K{=}2,DD{=}8,H{=}16$, miss & 0 & 0 & 0 & -- & -- & $>$6\,052 & 1\,580\,393 & 45\,896 & 2\,867$^\dagger$ \\

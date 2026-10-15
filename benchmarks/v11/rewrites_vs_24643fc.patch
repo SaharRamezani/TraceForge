@@ -1,0 +1,2281 @@
+diff --git a/traceforge/examples/alternating_bit_timed.rs b/traceforge/examples/alternating_bit_timed.rs
+index c8fa200..ef94209 100644
+--- a/traceforge/examples/alternating_bit_timed.rs
++++ b/traceforge/examples/alternating_bit_timed.rs
+@@ -79,11 +79,20 @@
+ //! ## How the protocol maps onto TraceForge
+ //!
+ //! Two protocol threads (sender, receiver) plus main, which spawns the
+-//! receiver (a daemon reactor) and then the sender, which captures the
+-//! receiver's id, and joins the sender. There is no bootstrap message:
+-//! the receiver learns the sender's address from the `from` of each
+-//! frame (as 3PC's participants learn the coordinator from Prepare).
+-//! Both threads start at time 0, their own `Begin` events.
++//! receiver and then the sender, which captures the receiver's id, and
++//! joins the sender. There is no bootstrap message: the receiver learns
++//! the sender's address from the `from` of each frame (as 3PC's
++//! participants learn the coordinator from Prepare). Both threads start
++//! at time 0, their own `Begin` events.
++//!
++//! No thread is a daemon. The receiver's loop is bounded by the
++//! protocol's own end-of-session message: it ends when it reads the
++//! sender's Done, and the sender sends Done after its K-th accepted Ack.
++//! So in a run in which Done arrives every thread terminates. A run that
++//! ends with the receiver still waiting is a blocked execution: Done was
++//! dropped or expired, or the sender gave up and sent none. Each
++//! completed execution has a twin in which its Done is dropped, so
++//! blocked is at least execs.
+ //!
+ //! Sender, for payload i in 0..K with bit = i % 2:
+ //!
+@@ -95,9 +104,10 @@
+ //!     None               retransmit the same frame (lossy) if fewer
+ //!                        than R retransmissions of message i so far,
+ //!                        otherwise give up (GAVE_UP)
+-//!   after K accepted Acks: Done{completed: true}; after giving up:
+-//!   Done{completed: false}. Done may be dropped like every send; the
+-//!   receiver then blocks and the execution counts as blocked.
++//!   after K accepted Acks: send Done; after giving up: return, no Done
++//!   is sent. Done may be dropped like every send; the receiver then
++//!   blocks and the execution counts as blocked, as it does when the
++//!   sender gave up.
+ //!
+ //! The sender reads ANY acknowledgement from the receiver and discards a
+ //! wrong bit in code. It must not select the current bit with the
+@@ -111,7 +121,7 @@
+ //!   Frame{bit == e, payload}  deliver: P1, DELIVERED, sleep(dR) when
+ //!                             dR > 0, flip e, send_lossy_msg Ack
+ //!   Frame{bit != e}           duplicate: DUPLICATES, send_lossy_msg Ack
+-//!   Done{completed}           P2 when completed, then return
++//!   Done                      P2, then return (the loop's only exit)
+ //!
+ //! Ack is `Ack{bit: Some(frame bit)}` for abp and `Ack{bit: None}` for
+ //! par (DT-Spin's PAR acknowledgement is the constant ACK and its sender
+@@ -235,9 +245,10 @@
+ //!       Bosnacki-Dams "never resends it" outcome; with K = 2 it is the
+ //!       only place the PAR bug can show.
+ //!
+-//! No assertion on Done{completed: false}: a sender that gave up because
+-//! every copy of a frame or of its Ack was lost is not a violation
+-//! (counted in GAVE_UP; P1 still covered the prefix it delivered).
++//! No assertion when the sender gave up (it sends no Done, so the
++//! receiver ends blocked): a sender that gave up because every copy of a
++//! frame or of its Ack was lost is not a violation (counted in GAVE_UP;
++//! P1 still covered the prefix it delivered).
+ //! "Every message is eventually delivered" is deliberately not asserted:
+ //! it is false under loss and inconclusive in a bounded model.
+ //!
+@@ -582,6 +593,9 @@ fn receiver(p: Params) {
+         Variant::Par => None,
+     };
+ 
++    // The loop ends on Done, the sender's end-of-session message. A
++    // receiver still waiting when the run ends never got Done (dropped,
++    // expired, or the sender gave up): a blocked execution.
+     loop {
+         match traceforge::recv_msg_block_timed::<SMsg>() {
+             SMsg::Frame { bit, payload, from: sender } if bit == expected_bit => {
+@@ -678,10 +692,11 @@ fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
+     reset_counts();
+     let start = Instant::now();
+     let stats = traceforge::verify(cfg, move || {
+-        // No bootstrap message: the receiver is a daemon reactor, spawned
+-        // first; the sender is spawned last and captures its id. The
+-        // receiver learns the sender's address from the frames.
+-        let r = thread::spawn_daemon(move || receiver(p)).thread().id();
++        // No bootstrap message: the receiver is spawned first; the sender
++        // is spawned last and captures its id. The receiver learns the
++        // sender's address from the frames. Both are ordinary threads:
++        // the receiver's loop ends on the sender's Done.
++        let r = thread::spawn(move || receiver(p)).thread().id();
+         let s = thread::spawn(move || sender(p, r));
+         let _ = s.join();
+     });
+diff --git a/traceforge/examples/brp_timed.rs b/traceforge/examples/brp_timed.rs
+index ff98fba..2c2b1d3 100644
+--- a/traceforge/examples/brp_timed.rs
++++ b/traceforge/examples/brp_timed.rs
+@@ -59,9 +59,11 @@
+ //!     sleep; asserted at the probe); client: the one-file analogue of DKRT
+ //!     Table 2 (1) and (2) on their Sec. 3.2 channels, the run ends with one
+ //!     client in ok and the other in nok (see client_violation; refused for
+-//!     more than one file). The client property relates both processes, so
+-//!     S and R publish their observations and a monitor's on_stop judges it
+-//!     once main has joined both; it waits for no message.
++//!     more than one file). The client property relates both processes: S
++//!     sends R a zero-transit SoutOk when SC enters ok (as the Probe does),
++//!     and R asserts on its own state when RC is in nok at that instant or at
++//!     its next z = TR. main also judges the observations of the runs in
++//!     which both processes end; a `join` is no message (see BOUND).
+ //!
+ //! DEVIATIONS FROM FIG. 4 (each harmless when T1 > 2 TD, DKRT's premise):
+ //!   * Channels are TraceForge's unbounded lossy FIFO queues (DKRT Sec. 3.2),
+@@ -93,11 +95,30 @@
+ //! other (a lost timer is a receiver without a clock, and (4) then fails at
+ //! S's next probe); they are now explored and judged. Under the receive
+ //! discipline above R's wait cannot pass over its Timer for a later message
+-//! (a frame, the Probe, Done), and R is never busy when its Timer arrives (it
++//! (a frame, the Probe), and R is never busy when its Timer arrives (it
+ //! sleeps only right after reading the live one), so R's clock fails only when
+-//! the Timer send itself is lost. R keeps running after Done until its pending
+-//! timeout (its I_NOK is a client indication); Done travels on the frame
+-//! channel with transit k*TD.
++//! the Timer send itself is lost.
++//!
++//! BOUND (since 2026-10-14; no Done, no Terminate). The model is bounded by
++//! rounds: S runs F files of n chunks with at most MAX resends per chunk, and
++//! R serves the same F files: it ends at the timeout z = TR that follows the
++//! last chunk (bN) of the last file (file F - 1). A run that loses and
++//! expires nothing ends every thread (each frame is read, so is each Timer it
++//! arms, and the live one is that timeout); a run that loses a frame R needs,
++//! or its last Timer, leaves R at its receive: blocked, a message was lost (in
++//! the baseline mode a timeout taken while an ack was readable is that ack
++//! lost on L, so S giving up before the last chunk is such a run).
++//! No message stops R and none carries a verdict: (2), (4) and the client
++//! property are asserted at R where they fail, main only joins. R's state
++//! after that timeout is the same whether a copy of the last chunk is still
++//! to come or not, so the bound does not read such a copy, nor a Probe that
++//! arrives after it. In timed mode no copy can arrive after it when
++//! TR >= MAX T1 + TD (a NOTE is printed below it) and a Probe that does finds
++//! R in new_file, so (2) and (4) are exact there (only probe_nontrivial_runs
++//! reads fewer runs). The baseline mode has no clock: R's Timer can fire
++//! before a copy still in transit and that copy is not read (62% to 82% of
++//! the (2) executions of the p2 cells tried; the violation is still found
++//! from the earlier timeouts).
+ //!
+ //! MODELS. `--model dkrt` is the above. `--model spin` is DKRT's App. C
+ //! untimed Promela model: lines Line_K / Line_L deliver or tell S of a loss
+@@ -109,7 +130,10 @@
+ //! while their environment draws n per file.
+ //!
+ //! RESULTS. Re-measured 2026-10-13, after the first-arrival ruling (see
+-//! "Receive discipline" under ENCODING), on this file as it stands: one
++//! "Receive discipline" under ENCODING), on the file before BOUND (it had
++//! Done and Terminate, so its counts include the loss branches of those two
++//! sends, and the tables below are not re-measured except where a bound
++//! column says so): one
+ //! worker, counts with --keep-going, a certified witness from the same cell
+ //! run without it (exit 101; the search is deterministic, the same witness on
+ //! 30 repeats at TR 8, SYNC 8 to 11 and the T1 = 2 TD cell). The IMITATOR
+@@ -121,19 +145,24 @@
+ //! The 11 cells of the 2026-10-12 harness removal (MAX 1, TD 1, T1 3, k 1, one
+ //! file), verdict and violating runs. old = HEAD 0cbe2c7 (timer drain, Probe
+ //! `assume!`, earlier receive rule); 10-12 = this file with the earlier
+-//! receive rule; now = this file:
+-//!                                     old            10-12          now
+-//!   (2) TR 8,  SYNC 13                VIOLATED 12    VIOLATED 8     VIOLATED 4
+-//!   (2) TR 9,  SYNC 14                HOLDS          HOLDS          HOLDS
+-//!   (2) TR 10, SYNC 15                HOLDS          HOLDS          HOLDS
+-//!   (4) TR 11, SYNC 8                 VIOLATED 10    VIOLATED 464   VIOLATED 188
+-//!   (4) TR 11, SYNC 9                 VIOLATED 10    VIOLATED 500   VIOLATED 188
+-//!   (4) TR 11, SYNC 10                HOLDS          VIOLATED 464   VIOLATED 152
+-//!   (4) TR 11, SYNC 11                HOLDS          VIOLATED 464   VIOLATED 152
+-//!   client, T1 3, TR = SYNC = 11      HOLDS          HOLDS          HOLDS
+-//!   client, T1 2, TR = SYNC = 7       VIOLATED 1     VIOLATED 1     VIOLATED 1
+-//!   baseline, TR 9, SYNC 14, p2       VIOLATED 528   VIOLATED 186   VIOLATED 186
+-//!   --model spin, 50 executions       HOLDS          HOLDS          HOLDS
++//! receive rule; now = the file before BOUND; bound = this file (2026-10-14):
++//!                                     old            10-12          now            bound
++//!   (2) TR 8,  SYNC 13                VIOLATED 12    VIOLATED 8     VIOLATED 4     VIOLATED 2
++//!   (2) TR 9,  SYNC 14                HOLDS          HOLDS          HOLDS          HOLDS
++//!   (2) TR 10, SYNC 15                HOLDS          HOLDS          HOLDS          HOLDS
++//!   (4) TR 11, SYNC 8                 VIOLATED 10    VIOLATED 464   VIOLATED 188   VIOLATED 94
++//!   (4) TR 11, SYNC 9                 VIOLATED 10    VIOLATED 500   VIOLATED 188   VIOLATED 94
++//!   (4) TR 11, SYNC 10                HOLDS          VIOLATED 464   VIOLATED 152   VIOLATED 76
++//!   (4) TR 11, SYNC 11                HOLDS          VIOLATED 464   VIOLATED 152   VIOLATED 76
++//!   client, T1 3, TR = SYNC = 11      HOLDS          HOLDS          HOLDS          HOLDS
++//!   client, T1 2, TR = SYNC = 7       VIOLATED 1     VIOLATED 1     VIOLATED 1     VIOLATED 1
++//!   baseline, TR 9, SYNC 14, p2       VIOLATED 528   VIOLATED 186   VIOLATED 186   VIOLATED 35
++//!   --model spin, 50 executions       HOLDS          HOLDS          HOLDS          HOLDS
++//! now to bound: the violating runs of (2) and (4) are half (the loss branch
++//! of Done repeated each of them: R parked at its assert, S still sent it),
++//! the client ones and the spin model's executions are the same, and the
++//! baseline's fall to 35 for the reason BOUND gives (116 of its 186 came
++//! after the bound, (186 - 116) / 2).
+ //! Counts, old to now: the executions explored (completed + blocked) fall 2.8x
+ //! to 3.2x in the timed cells (blocked 3.3x to 3.8x: no drains, no summaries,
+ //! no passed-over arrivals), completed ones rise 1.2x to 2.4x, user CPU falls
+@@ -279,25 +308,23 @@
+ use std::sync::atomic::{AtomicUsize, Ordering};
+ use std::time::{Duration, Instant};
+ 
+-use traceforge::monitor_types::*;
+ use traceforge::thread::{self, ThreadId};
+ use traceforge::{Config, ConsType, Stats, WaitTime};
+-use traceforge_macros::monitor;
+ 
+ // =====================================================================
+ // Messages
+ // =====================================================================
+ 
+-/// `pub` because the client monitor's generated message enum wraps it.
+ #[derive(Clone, Debug, PartialEq)]
+-pub enum Msg {
++enum Msg {
+     /// Bootstrap from main, SPIN MODEL ONLY (untimed, transparent for
+     /// timing). The DKRT model has none: R is spawned first and S last, so S
+     /// captures R's id, and R learns S's from the `from` of the frames.
+     Init { peer: ThreadId },
+     /// Channel K, S -> R: F!(b1, bN, ab). `file` and `chunk` are ghost data
+-    /// for the observations; no protocol decision reads them. `from` is S's
+-    /// own address, the reply address of the ack (as in 3PC's Prepare).
++    /// for the observations; no protocol decision reads them (R's bound reads
++    /// `file`, see BOUND). `from` is S's own address, the reply address of the
++    /// ack (as in 3PC's Prepare).
+     Frame { b1: bool, bn: bool, ab: bool, file: u32, chunk: u32, from: ThreadId },
+     /// Channel L, R -> S. DKRT's ack carries no bit; `file` and `chunk` are
+     /// ghost data (which frame R answered), read only by the observations.
+@@ -310,8 +337,9 @@ pub enum Msg {
+     /// Property (4) monitor: S at x = SYNC in state error, zero transit.
+     /// `file` (ghost) is the file S just gave up.
+     Probe { file: u32 },
+-    /// S -> R after the last file: stop.
+-    Done,
++    /// Property client: S -> R at the instant SC enters ok, zero transit.
++    /// Sent only when the client property is judged (see `client_check`).
++    SoutOk,
+     /// DKRT App. C (Promela) model only: loss notification from a line to S,
+     /// the SyncWait double handshake, and the end of the run.
+     ChunkTimeout,
+@@ -361,6 +389,8 @@ struct ReceiverObs {
+     p2_tr_side: bool,
+     p2_sync_side: bool,
+     p4: bool,
++    /// The client property was found to fail at R (S's I_OK with RC in nok).
++    client: bool,
+     /// The last indication the receiving client got.
+     last_rout: Option<Rout>,
+     frames: u32,
+@@ -476,9 +506,9 @@ impl Params {
+ }
+ 
+ // =====================================================================
+-// Counters. (2) and (4) are counted by R at the step where they fail (once
+-// per run); the others by the monitor's on_stop, over the runs whose two
+-// observations it saw.
++// Counters. (2), (4) and the client property are counted by R at the step
++// where they fail (once per run); the others by main's `judge`, over the runs
++// in which both processes ended.
+ // =====================================================================
+ 
+ static JUDGED: AtomicUsize = AtomicUsize::new(0);
+@@ -528,7 +558,8 @@ fn count(flag: bool, c: &AtomicUsize) {
+ // Sender S (Fig. 1 / Fig. 4) with its client SC
+ // =====================================================================
+ 
+-fn sender(p: Params, receiver: ThreadId) {
++/// Returns its observation: main reads it through `join` (no message).
++fn sender(p: Params, receiver: ThreadId) -> SenderObs {
+     let me = thread::current().id();
+     let mut obs = SenderObs::default();
+     // Fig. 1: ab := 0 initially.
+@@ -592,6 +623,9 @@ fn sender(p: Params, receiver: ThreadId) {
+                 }
+                 obs.ok += 1; // Sout I_OK
+                 obs.last_sout = Some(Sout::Ok);
++                if p.property.checks_client(p.files) {
++                    traceforge::send_msg_timed(receiver, Msg::SoutOk, 0, 0);
++                }
+                 break false;
+             }
+             // x == T1, rc == MAX: I_DK if i == n else I_NOK, x := 0, error.
+@@ -615,12 +649,7 @@ fn sender(p: Params, receiver: ThreadId) {
+         }
+         failed_before |= failed;
+     }
+-    // Harness: after the last file, on the same FIFO channel as every frame.
+-    // If it is lost R keeps waiting; the twin execution where it arrives is
+-    // judged.
+-    traceforge::send_msg_timed(receiver, Msg::Done, p.td(), p.td());
+-    // Observation only: read by the monitor's on_stop.
+-    traceforge::publish(obs);
++    obs
+ }
+ 
+ // =====================================================================
+@@ -648,11 +677,14 @@ struct RState {
+     /// Which ghost properties are asserted where they fail (the others are
+     /// only counted).
+     property: Property,
++    files: u32,
++    /// S's I_OK has reached R (property client).
++    sout_ok: bool,
+     obs: ReceiverObs,
+ }
+ 
+ impl RState {
+-    fn new(property: Property) -> Self {
++    fn new(property: Property, files: u32) -> Self {
+         Self {
+             loc: RLoc::NewFile,
+             exp_ab: false,
+@@ -662,10 +694,26 @@ impl RState {
+             seen_any: false,
+             last_reported_file: None,
+             property,
++            files,
++            sout_ok: false,
+             obs: ReceiverObs::default(),
+         }
+     }
+ 
++    /// Property client, asserted where it fails: SC in ok (S's SoutOk has
++    /// arrived) and RC in nok, checked at the SoutOk and at every z = TR. A
++    /// lost or expired SoutOk can only hide a violation in its run, as a lost
++    /// Probe does (its twin with the SoutOk read is explored).
++    fn client_check(&mut self) {
++        if self.sout_ok && self.obs.last_rout == Some(Rout::Nok) {
++            count(!self.obs.client, &CLIENT_RUNS);
++            self.obs.client = true;
++            if self.property.checks_client(self.files) {
++                traceforge::assert(false);
++            }
++        }
++    }
++
+     /// G?(rb1, rbN, rab) in new_file or idle. Returns (ack, report): whether
+     /// R sends an ack, and whether it reported (then exp_ab flips, z := 0).
+     fn frame(&mut self, b1: bool, bn: bool, ab: bool, file: u32, chunk: u32) -> (bool, bool) {
+@@ -748,6 +796,7 @@ impl RState {
+             self.obs.last_rout = Some(Rout::Nok);
+         }
+         self.loc = RLoc::NewFile;
++        self.client_check();
+     }
+ 
+     fn probe(&mut self, file: u32) {
+@@ -768,6 +817,12 @@ impl RState {
+     fn ack(&self) -> Msg {
+         Msg::Ack { file: self.last_file, chunk: self.last_chunk }
+     }
++
++    /// R's bound (see BOUND in the header): the last frame K delivered is
++    /// the last chunk (bN) of the last of the `files` files.
++    fn took_last_chunk(&self, files: u32) -> bool {
++        self.rbn && self.last_file + 1 == files
++    }
+ }
+ 
+ struct Receiver {
+@@ -820,39 +875,35 @@ impl Receiver {
+     }
+ }
+ 
+-fn receiver(p: Params) {
++/// R serves the F files and ends at the timeout (z = TR) that follows the
++/// last chunk of the last file (see BOUND in the header); in a run that loses
++/// nothing every frame and every Timer it armed is read, so it ends there,
++/// with no message to stop it. A run that loses a frame it needs (or its last
++/// Timer) leaves R at this receive: that run is blocked. Returns its
++/// observation, which main reads through `join`.
++fn receiver(p: Params) -> ReceiverObs {
+     let me = thread::current().id();
+-    let mut r = Receiver { me, sender: None, p, st: RState::new(p.property), epoch: 0 };
++    let mut r = Receiver { me, sender: None, p, st: RState::new(p.property, p.files), epoch: 0 };
+     loop {
+         match traceforge::recv_msg_block_timed::<Msg>() {
+             Msg::Frame { b1, bn, ab, file, chunk, from } => r.frame(b1, bn, ab, file, chunk, from),
+             Msg::Timer { epoch } => {
+                 if epoch == r.epoch && r.st.loc == RLoc::Idle {
+                     r.timeout();
++                    if r.st.took_last_chunk(p.files) {
++                        break;
++                    }
+                 }
+             }
+             Msg::Probe { file } => r.st.probe(file),
+-            Msg::Done => break,
+-            m => panic!("receiver: unexpected {m:?}"),
+-        }
+-    }
+-    // Nothing else can come on the S -> R channel after Done (FIFO), so R's
+-    // remaining DKRT behaviour is its pending timeout (idle has invariant
+-    // z <= TR): let it happen, since its I_NOK is a client indication. If
+-    // that timer was lost, R waits here for ever (a run in which R has no
+-    // clock; its client indication is then never given).
+-    while r.st.loc == RLoc::Idle {
+-        match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == me) {
+-            Msg::Timer { epoch } => {
+-                if epoch == r.epoch {
+-                    r.timeout();
+-                }
++            Msg::SoutOk => {
++                r.st.sout_ok = true;
++                r.st.client_check();
+             }
+-            m => panic!("receiver after Done: unexpected {m:?}"),
++            m => panic!("receiver: unexpected {m:?}"),
+         }
+     }
+-    // Observation only: read by the monitor's on_stop.
+-    traceforge::publish(r.st.obs);
++    r.st.obs
+ }
+ 
+ // =====================================================================
+@@ -865,7 +916,7 @@ fn receiver(p: Params) {
+ // a double SyncWait handshake before a new file starts (assumption (A2)).
+ // DKRT searched it with Spin (bitstate) and verified an optimized form exhaustively.
+ 
+-fn spin_sender(p: Params, main_tid: ThreadId) {
++fn spin_sender(p: Params, main_tid: ThreadId) -> SenderObs {
+     let (line_k, receiver) = match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
+         Msg::Init { peer } => match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
+             Msg::Init { peer: r } => (peer, r),
+@@ -934,7 +985,7 @@ fn spin_sender(p: Params, main_tid: ThreadId) {
+         failed_before |= failed;
+     }
+     traceforge::send_msg(line_k, Msg::Stop);
+-    traceforge::publish(obs);
++    obs
+ }
+ 
+ /// Line_K (S -> R) or Line_L (R -> S): deliver, or lose and tell S.
+@@ -963,7 +1014,7 @@ fn spin_line(main_tid: ThreadId) {
+     }
+ }
+ 
+-fn spin_receiver(p: Params, main_tid: ThreadId) {
++fn spin_receiver(p: Params, main_tid: ThreadId) -> ReceiverObs {
+     let (line_l, sender) = match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
+         Msg::Init { peer } => match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
+             Msg::Init { peer: s } => (peer, s),
+@@ -971,7 +1022,7 @@ fn spin_receiver(p: Params, main_tid: ThreadId) {
+         },
+         m => panic!("spin receiver: expected Init, got {m:?}"),
+     };
+-    let mut st = RState::new(p.property);
++    let mut st = RState::new(p.property, p.files);
+     loop {
+         match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s != main_tid) {
+             Msg::Frame { b1, bn, ab, file, chunk, .. } => {
+@@ -995,83 +1046,48 @@ fn spin_receiver(p: Params, main_tid: ThreadId) {
+             m => panic!("spin receiver: unexpected {m:?}"),
+         }
+     }
+-    traceforge::publish(st.obs);
++    st.obs
+ }
+ 
+ // =====================================================================
+-// Harness: main spawns the processes; a monitor judges the client property
++// Harness: main spawns the processes and judges the client property
+ // =====================================================================
+ 
+-/// The client property relates S's and R's indications, so it has no single
+-/// step to assert at. S and R `publish` their observations when they end,
+-/// and this monitor's on_stop reads them once main has joined every process
+-/// and terminated the monitor. The monitor accepts no message (its acceptor
+-/// is a plain `fn` run on a Default instance, see three_pc_timed), so it
+-/// adds no read to the exploration, and the verdict waits for no message
+-/// that could be lost. It also tallies the counters that need both sides.
+-#[monitor(Msg)]
+-#[derive(Clone, Debug, Default)]
+-struct ClientMonitor {
+-    property: Option<Property>,
+-    files: u32,
+-}
+-
+-impl Acceptor<Msg> for ClientMonitor {
+-    fn accept(&mut self, _who: ThreadId, _whom: ThreadId, _what: &Msg) -> bool {
+-        false
+-    }
+-}
+-
+-impl Observer<Msg> for ClientMonitor {}
+-
+-impl Monitor for ClientMonitor {
+-    fn on_stop(&mut self, end: &ExecutionEnd) -> MonitorResult {
+-        // Judge only when main terminated the monitor, i.e. after it joined
+-        // every process. The engine also calls on_stop when an execution
+-        // ends with a thread waiting for a lost message (an Init, Done, a
+-        // Timer, the Terminate itself); the observations are then
+-        // incomplete, and the twin execution without that loss is judged.
+-        if end.condition != EndCondition::MonitorTerminated {
+-            return Ok(());
+-        }
+-        let so = end.get_published::<SenderObs>().into_values().next();
+-        let ro = end.get_published::<ReceiverObs>().into_values().next();
+-        let (Some(so), Some(ro)) = (so, ro) else {
+-            return Ok(());
+-        };
+-        JUDGED.fetch_add(1, Ordering::Relaxed);
+-        let client = client_violation(&so, &ro);
+-        count(client, &CLIENT_RUNS);
+-        count(so.nok + so.dk > 0, &FAILED_FILE_RUNS);
+-        count(ro.timeouts > 0, &TIMEOUT_RUNS);
+-        count(so.restart_after_fail, &RESTART_AFTER_FAIL_RUNS);
+-        count(ro.first_safe_after_timeout > 0, &FIRST_SAFE_AFTER_TIMEOUT_RUNS);
+-        count(ro.probes_nontrivial > 0, &PROBE_NONTRIVIAL_RUNS);
+-        count(so.confused_acks > 0, &CONFUSED_RUNS);
+-        let checks_client = self.property.map_or(false, |pr| pr.checks_client(self.files));
+-        if checks_client && client {
+-            ASSERT_FAIL_RUNS.fetch_add(1, Ordering::Relaxed);
+-            return Err(format!(
+-                "client: SC ended in {:?} and RC in {:?} for the same file",
+-                so.last_sout, ro.last_rout
+-            ));
+-        }
+-        Ok(())
++/// S and R return their observations when they end and main reads them
++/// through `join`, which is no message. A run in which a process cannot end
++/// (R waits for a frame or a Timer a run lost) is blocked at that join and is
++/// not judged here; the client property is asserted at R as well (see
++/// `client_check`), for it must also fail in those runs, where S ended in ok
++/// on a stale ack and R never got the last chunk. This also tallies the
++/// counters that need both sides.
++fn judge(p: &Params, so: &SenderObs, ro: &ReceiverObs) {
++    JUDGED.fetch_add(1, Ordering::Relaxed);
++    let client = client_violation(so, ro);
++    count(client, &CLIENT_RUNS);
++    count(so.nok + so.dk > 0, &FAILED_FILE_RUNS);
++    count(ro.timeouts > 0, &TIMEOUT_RUNS);
++    count(so.restart_after_fail, &RESTART_AFTER_FAIL_RUNS);
++    count(ro.first_safe_after_timeout > 0, &FIRST_SAFE_AFTER_TIMEOUT_RUNS);
++    count(ro.probes_nontrivial > 0, &PROBE_NONTRIVIAL_RUNS);
++    count(so.confused_acks > 0, &CONFUSED_RUNS);
++    if p.property.checks_client(p.files) && client {
++        // SC ended in ok and RC in nok (or the converse) for the same file.
++        ASSERT_FAIL_RUNS.fetch_add(1, Ordering::Relaxed);
++        traceforge::assert(false);
+     }
+ }
+ 
+ fn run_once(p: Params) {
+     let main_tid = thread::current().id();
+-    // Spawned first, so it is registered before any protocol message exists.
+-    let mon = start_monitor_client_monitor(ClientMonitor { property: Some(p.property), files: p.files });
+-    match p.model {
++    let (so, ro) = match p.model {
+         Model::Dkrt => {
+             // No bootstrap message: R first, S last (S captures R's id).
+             let r = thread::spawn(move || receiver(p));
+             let rt = r.thread().id();
+             let s = thread::spawn(move || sender(p, rt));
+-            let _ = s.join();
+-            let _ = r.join();
++            let so = s.join().unwrap();
++            let ro = r.join().unwrap();
++            (so, ro)
+         }
+         Model::Spin => {
+             let s = thread::spawn(move || spin_sender(p, main_tid));
+@@ -1083,17 +1099,15 @@ fn run_once(p: Params) {
+                 traceforge::send_msg(to, Msg::Init { peer: a });
+                 traceforge::send_msg(to, Msg::Init { peer: b });
+             }
+-            for h in [s, r, k, l] {
+-                let _ = h.join();
+-            }
++            let so = s.join().unwrap();
++            let ro = r.join().unwrap();
++            let _ = k.join();
++            let _ = l.join();
++            (so, ro)
+         }
+-    }
+-    // Every process has ended: judge. Terminate is a message and may be
+-    // lost; main then waits here, that execution goes unjudged, and its twin
+-    // where Terminate arrives, identical up to this point, is judged.
+-    terminate_monitor_client_monitor(mon.thread().id());
+-    let verdict: MonitorResult = mon.join().unwrap();
+-    traceforge::assert(verdict.is_ok());
++    };
++    // Every process has ended: judge.
++    judge(&p, &so, &ro);
+ }
+ 
+ fn build_config(mode: Mode, keep_going: bool, workers: usize) -> Config {
+@@ -1166,7 +1180,7 @@ fn print_one(mode: Mode, p: &Params, stats: &Stats, dur: Duration) {
+         if viol > 0 { "VIOLATED" } else { "HOLDS" },
+     );
+     if j == 0 && viol == 0 {
+-        println!("WARNING: no execution reached the monitor's judgement and nothing failed: no data, not a hold.");
++        println!("WARNING: no execution reached the judgement and nothing failed: no data, not a hold.");
+     }
+     // The verdict comes from these counters, and the counters are raised by
+     // PROGRAM code, which runs on every ending the search enumerates. Since
+@@ -1209,6 +1223,17 @@ fn print_one(mode: Mode, p: &Params, stats: &Stats, dur: Duration) {
+     if p.model == Model::Dkrt && p.t1 <= 2 * p.td {
+         println!("NOTE: T1 <= 2 TD: outside DKRT's one-place channel assumption; not comparable with their Fig. 4 model.");
+     }
++    if p.model == Model::Dkrt && mode == Mode::Baseline {
++        println!(
++            "NOTE: no clock: R's Timer can fire before a copy of the last chunk (or the Probe) still in transit, \
++             and R's bound (BOUND in the header) does not read it."
++        );
++    } else if p.model == Model::Dkrt && p.tr < p.max as u64 * p.t1 + p.td {
++        println!(
++            "NOTE: TR < MAX T1 + TD: a copy of the last chunk can reach R after the timeout its bound ends on \
++             (BOUND in the header); such runs are not read."
++        );
++    }
+ }
+ 
+ fn main() {
+diff --git a/traceforge/examples/lease_timed.rs b/traceforge/examples/lease_timed.rs
+index f979f24..a9413c2 100644
+--- a/traceforge/examples/lease_timed.rs
++++ b/traceforge/examples/lease_timed.rs
+@@ -16,7 +16,8 @@
+ //! pausing holder, all other clients never pause)
+ //!
+ //! Threads are long-lived (the three_pc_timed idiom): each is spawned
+-//! once and loops over R rounds internally. Every round:
++//! once and loops over R rounds internally (the Storage over the C*R
++//! writes of the run). No thread is a daemon. Every round:
+ //!
+ //!   LockService ---- RoundStart{r} ----> every client
+ //!   client i    ---- Acquire{i,r} ----> LockService    (tag ACQ)
+@@ -50,7 +51,11 @@
+ //! Release tag encodes the token (rel_tag), so a stale Release from an
+ //! expired ex-holder, which stays in the mailbox forever, can never be
+ //! confused for the current holder's Release, in any round. The
+-//! Storage receives exactly C*R writes and always acks. RoundStart r+1
++//! Storage receives exactly C*R writes and always acks, then returns:
++//! every client writes once per round after its Grant (the pauser too,
++//! with an expired lease), so C*R is what a run with no lost or
++//! expired message delivers, and a thread ends blocked at a receive
++//! only because a message it needs was lost or expired. RoundStart r+1
+ //! is broadcast only after every round-r lease is resolved, so rounds
+ //! never overlap at the service; a round at the service is the direct
+ //! analog of a 3PC round at the coordinator.
+@@ -412,10 +417,13 @@ fn client(storage_tid: ThreadId, pause: u64, rounds: u32) {
+ // Storage
+ // =====================================================================
+ 
+-fn storage(fencing: bool) {
++fn storage(fencing: bool, writes: u32) {
+     let mut last_applied: u64 = 0;
+-    loop {
+-        // A reactor daemon: the run ends when no client can move.
++    // `writes` = C*R: every client writes exactly once per round, after
++    // reading its Grant (the pauser too, even when its lease expired),
++    // so a run in which no message is lost or expired delivers exactly
++    // this many writes. The Storage then returns.
++    for _ in 0..writes {
+         let w: WMsg = traceforge::recv_msg_block_timed();
+         if fencing && w.token < last_applied {
+             // Fencing check: reject stale tokens. (Tokens are unique,
+@@ -507,11 +515,13 @@ fn run(
+     STALE_APPLIED.store(0, Ordering::Relaxed);
+     let start = Instant::now();
+     let stats = traceforge::verify(cfg, move || {
+-        // No bootstrap message. Spawn order: the storage (a daemon reactor),
+-        // then the clients (they capture its id), then the service last
+-        // (it captures the client ids). The clients learn the service's
++        // No bootstrap message. Spawn order: the storage (an ordinary
++        // thread bounded to the C*R writes of a loss-free run), then the
++        // clients (they capture its id), then the service last (it
++        // captures the client ids). The clients learn the service's
+         // address from the RoundStart they wait for.
+-        let storage_tid = thread::spawn_daemon(move || storage(fencing)).thread().id();
++        let writes = num_clients * rounds;
++        let storage_tid = thread::spawn(move || storage(fencing, writes)).thread().id();
+         let mut clients = Vec::new();
+         for i in 0..num_clients {
+             let pause = if i == 0 { b.pause } else { 0 };
+diff --git a/traceforge/examples/nrp_failure_detector_timed.rs b/traceforge/examples/nrp_failure_detector_timed.rs
+index bb659ab..6f5ba18 100644
+--- a/traceforge/examples/nrp_failure_detector_timed.rs
++++ b/traceforge/examples/nrp_failure_detector_timed.rs
+@@ -120,9 +120,10 @@
+ //!
+ //! ## How the protocol maps onto TraceForge
+ //!
+-//! Three threads, all daemons: reactive actors that never return, each a
+-//! loop over ONE blocking timed receive that dispatches on the message,
+-//! like a Rebeca message server. DCN1 and DCN2 run the node code of
++//! Three threads, none a daemon: reactive actors, each a loop over ONE
++//! blocking timed receive that dispatches on the message, like a Rebeca
++//! message server, and each leaving its loop on a bound of its own (see
++//! Termination). DCN1 and DCN2 run the node code of
+ //! NRPFD.rebeca / LeasingNRPFD.rebeca. SW is the DCN1-side switch pair
+ //! A1 + B1: the initial NRP (A1), the second NRP candidate (B1), forwarding
+ //! and, for the leasing variant, the per-switch lease memory (`primary`,
+@@ -159,29 +160,29 @@
+ //! earlier one expire unread; that is not a behaviour of the semantics any
+ //! more.) Handlers take no time and an actor does nothing but wait and
+ //! handle, so a message that is not dropped is read at its arrival instant
+-//! (with sd > 0, within sd of it) until the run ends: the only way a message
+-//! is never read is that its send is dropped. This holds for pings,
+-//! answers, heartbeats and new_NRP, and for the two timers as well, which
++//! (with sd > 0, within sd of it) unless its receiver has left its loop (see
++//! Termination): the only way a message that a thread waits for is never
++//! read is that its send is dropped. This holds for pings, answers,
++//! heartbeats and new_NRP, and for the two timers as well, which
+ //! are lossy self-sends: a DCN whose Tick is dropped stops for good and
+ //! keeps its role (each tick arms the next), one whose PingTimeout is
+ //! dropped skips that round's decision. Those stopped clocks are among the
+ //! explored executions.
+ //!
+-//! The run is bounded by a count, not by a message: each DCN handles R
+-//! ticks (rounds 0..R-1) and arms nothing after the last one. When no
+-//! message is left to read every actor sits in its receive and the
+-//! execution is complete (daemons need not terminate). The bound cannot
+-//! cause a FIRE. DCN2 decides for the last time at its last ping timer, at
+-//! most at t2 + (R - 1)H + P (t2 its first tick). A longer run could show
+-//! DCN1 in another role at t1 + R*H + P at the earliest: only a ping timer
+-//! makes DCN1 step down, and that is the ping timer of the first round
+-//! this run does not have. Since t2 - t1 = phase < H, the first instant is
+-//! before the second, and whatever DCN1 would send in the missing rounds
+-//! may be lost in the longer run too: every violating execution here is a
+-//! prefix of a violating execution of every longer run. With sd > 0 a
+-//! timer may be read up to sd late and the condition becomes
+-//! phase + (R + 1)sd < H, which the CLI enforces. A hold, on the other
+-//! hand, speaks for R rounds and nothing beyond.
++//! The run is bounded by a count, not by silence: each DCN handles R
++//! ticks (rounds 0..R-1) and arms nothing after the last one, and leaves its
++//! loop once it has read everything it armed or sent (see Termination). The
++//! bound cannot cause a FIRE. DCN2 decides for the last time at its last
++//! ping timer, at most at t2 + (R - 1)H + P (t2 its first tick). A longer
++//! run could show DCN1 in another role at t1 + R*H + P at the earliest:
++//! only a ping timer makes DCN1 step down, and that is the ping timer of
++//! the first round this run does not have. Since t2 - t1 = phase < H, the
++//! first instant is before the second, and whatever DCN1 would send in the
++//! missing rounds may be lost in the longer run too: every violating
++//! execution here is a prefix of a violating execution of every longer
++//! run. With sd > 0 a timer may be read up to sd late and the condition
++//! becomes phase + (R + 1)sd < H, which the CLI enforces. A hold, on the
++//! other hand, speaks for R rounds and nothing beyond.
+ //!
+ //! ## Deviations from the paper (deliberate)
+ //!
+@@ -304,8 +305,9 @@
+ //! no sequence number, no drain, no Done, no Init, no EndOfRun, no monitor,
+ //! no report and no scripted failure. Nothing is filtered and nothing is
+ //! judged at the end of the run. What is left besides the protocol is one
+-//! zero-transit probe (next section) and the outcome counters, which are
+-//! observation only and are raised where their event happens.
++//! zero-transit probe (next section), two messages that only end the loops
++//! (Termination) and the outcome counters, which are observation only and
++//! are raised where their event happens.
+ //!
+ //! ## Property checked
+ //!
+@@ -332,24 +334,58 @@
+ //! after every message that arrived before it, so a step-down that arrived
+ //! before the promotion but is handled after it goes unseen. A violation
+ //! can therefore be missed, never invented: a DCN1 that is PRIMARY when it
+-//! reads the probe has been PRIMARY all along. The probe is the only
+-//! message that is not protocol, and nothing else is judged: no collector,
+-//! no report, no end-of-run check.
++//! reads the probe has been PRIMARY all along. DCN1 is there to read every
++//! probe: it leaves its loop only after DCN2's Finished, which follows the
++//! probe on the same channel (Termination). The probe is the only message
++//! that is judged, and nothing else is: no collector, no report, no
++//! end-of-run check.
+ //!
+-//! Reading the output. `execs` counts complete executions; `blocked` those
+-//! that ended at the failed assertion (with --keep-going; nothing else
+-//! blocks, because every actor is a daemon); `impossible` endings that
+-//! admit no timeline. The other fields are event counts over all explored
+-//! endings, raised by program code where the event happens (`dual` just
+-//! before the assertion), so with `impossible` > 0 a non-zero `dual` is an
+-//! upper bound and the binary says so. The verdict is the engine's: a run
+-//! WITHOUT --keep-going that exits 101, in timed mode after printing the
+-//! execution graph and a certified witness timeline. A hold with no
++//! Reading the output. `execs` counts complete executions, in which every
++//! thread terminated; `blocked` those in which a thread waits for ever for
++//! a message that was lost (see Termination), the ones that ended at the
++//! failed assertion (with --keep-going) among them; `impossible` endings
++//! that admit no timeline. The other fields are event counts over all
++//! explored endings, raised by program code where the event happens (`dual`
++//! just before the assertion), so with `impossible` > 0 a non-zero `dual`
++//! is an upper bound and the binary says so. The verdict is the engine's: a
++//! run WITHOUT --keep-going that exits 101, in timed mode after printing
++//! the execution graph and a certified witness timeline. A hold with no
+ //! promotion, no takeover ping and no shortcut is a run too short for the
+ //! backup to decide, and a leasing hold with lease_chances = 0 is one in
+ //! which the lease could never have granted the role; the binary warns in
+ //! both cases.
+ //!
++//! ## Termination (since 2026-10-14)
++//!
++//! No thread is a daemon: each leaves its loop on a count of what it is
++//! owed, never on time and never on silence. A run in which no message is
++//! lost ends with all three threads terminated, and a thread ends blocked
++//! only because a message it still waits for was lost.
++//!   * A DCN leaves once its R-th Tick has been read and every PingTimeout
++//!     it armed and every PingReply to a ping it sent has been read. A lost
++//!     ping, answer or timer is therefore a DCN that waits for ever.
++//!   * DCN2 may promote at any of its ticks and ping timers, up to its last,
++//!     and DCN1 cannot see when that is. So DCN2, when it leaves, sends DCN1
++//!     one `Finished` (after any Promoted: one channel keeps send order),
++//!     and DCN1 leaves only when it has read it as well as everything it is
++//!     owed itself.
++//!   * SW cannot be bounded by a count: DCN1 sends it `Stop` when it leaves,
++//!     and SW leaves on reading it. By then no ping is outstanding (both
++//!     DCNs read every answer before leaving), everything DCN1 sent SW came
++//!     before `Stop` on its channel, and DCN2 has left. What SW may leave
++//!     unread, a heartbeat or new_NRP bound for DCN2 and, in the leasing
++//!     variant, DCN2's new_NRPBack, could only change an answer to a later
++//!     ping, and there is none.
++//! `Finished` and `Stop` are plain sends, lossy like every send, marked
++//! HARNESS in the code; nothing is judged on them. Their cost is executions:
++//! one that reaches `Finished` is explored in two ways (lost, delivered),
++//! one that also reaches `Stop` in three (`Finished` lost; delivered and
++//! `Stop` lost; both delivered), and a DCN parked at the failed assertion
++//! sends nothing. Where nothing fixes the arrival of `Finished` (baseline
++//! mode, or timed with L < U or sd > 0) DCN1 can in addition read it at
++//! several places among its other reads, which multiplies the delivered
++//! cases once more.
++//!
+ //! ## CLI parameters (ratios are over U, like swim_timed)
+ //!
+ //!   --mode baseline|timed        default timed; the program is the same in
+@@ -425,6 +461,37 @@
+ //! 957 timed and 3,353 baseline. The first-arrival rule is a rule of the
+ //! clock, so the baseline counts are not affected by it.)
+ //!
++//! Bounded threads (2026-10-14, see Termination). Every execs / blocked / dual
++//! count above, and the Cost paragraph below, was measured with the daemon
++//! version of this file. The bounded version explores the same protocol
++//! behaviours (in each cell listed here the two controllers read the same
++//! messages in the same order, the violating ones included) and counts each
++//! execution once more for every way its termination messages can be lost
++//! or delivered; `blocked` is now every execution in which a thread waits
++//! for a lost message. With --keep-going, execs / blocked / violating:
++//!
++//!   mode      variant  R  daemons                       bounded
++//!   timed     nrp      1  38 / 0 / 0                     9 / 57 / 0
++//!   timed     nrp      2  957 / 0 / 0                    81 / 1,276 / 0
++//!   timed     nrp      3  24,642 / 1,078 / 1,078         729 / 31,773 / 2,156
++//!   timed     noopt    3  35,943 / 2,436 / 2,436         729 / 45,946 / 4,872
++//!   timed     leasing  3  35,751 / 0 / 0                 729 / 40,690 / 0
++//!   baseline  nrp      1  53 / 0 / 0                     56 / 137 / 0
++//!   baseline  nrp      2  3,353 / 0 / 0                  2,660 / 9,251 / 0
++//!   baseline  nrp      3  560,331 / 55,431 / 55,431      242,855 / 1,327,590 / 110,862
++//!
++//! Timed nrp at R = 3: of the 25,720 executions of the daemon version, 19,667
++//! lose a message that DCN2 waits for (they stay one), 5,324 reach Finished
++//! (two, the 1,078 violating ones among them: DCN1 is parked at the failed
++//! assertion and sends nothing more) and 729 reach Stop as well (three):
++//! 32,502 in all, the violating ones exactly twice. The 729 complete
++//! executions are the fates of the six heartbeats (lost on one leg, lost on
++//! the other, delivered: 3^6). In baseline mode DCN1 can read Finished at
++//! any place among its other reads, so a delivered case is multiplied by
++//! the number of places (R = 3: the 142,061 non-violating executions that
++//! reach Finished and not Stop give 413,542, the 76,623 that reach Stop give
++//! 242,855 with Stop lost and as many with Stop delivered).
++//!
+ //! What changed, and why. In the old version exactly one execution reached
+ //! the judgement in each timed cell, the one in which nothing is lost and
+ //! nothing expires; every other execution was discarded by the sequence
+@@ -648,9 +715,17 @@ enum Body {
+     /// DCN2 -> SW (leasing): new_NRPBack, the NRP records the new primary.
+     NewNrpBack { net: usize },
+     /// DCN2 -> DCN1, zero transit, sent at the instant DCN2 becomes PRIMARY:
+-    /// the NoDualPrimary probe (the only message that is not protocol, see
+-    /// Property checked).
++    /// the NoDualPrimary probe (the only message that is judged, see Property
++    /// checked).
+     Promoted,
++    /// HARNESS: DCN2 -> DCN1, sent when DCN2 leaves its loop, after any
++    /// Promoted on the same channel. DCN1 leaves its loop only after reading
++    /// it, so that DCN1 is still there for every probe DCN2 can send (see
++    /// Termination).
++    Finished,
++    /// HARNESS: DCN1 -> SW, sent when DCN1 leaves its loop; SW leaves its loop
++    /// on reading it (see Termination).
++    Stop,
+ }
+ 
+ /// Every message: sender (DCN1, DCN2 or SW; the NRP's lease memory compares
+@@ -727,7 +802,8 @@ fn recv() -> (usize, Body) {
+ // Controller node (DCN1 starts PRIMARY, DCN2 starts BACKUP)
+ // =====================================================================
+ 
+-/// One controller, a daemon: one blocking receive loop for ever. `sw` is the
++/// One controller: one blocking receive loop, left once everything this
++/// controller armed or sent has been read (see Termination). `sw` is the
+ /// switch pair, `peer` the other controller (DCN1 sends its heartbeats to
+ /// DCN2, DCN2 sends its Promoted probe to DCN1).
+ fn dcn(node: usize, p: Params, sw: ThreadId, peer: ThreadId) {
+@@ -749,17 +825,32 @@ fn dcn(node: usize, p: Params, sw: ThreadId, peer: ThreadId) {
+     let max = p.max_missed;
+     // pingNRP: the packet names the thread to answer.
+     let ping = |net: usize| Body::Ping { net, reply_to: me };
++    // What ends the loop (Termination): counts of what this controller is
++    // owed, not time. The Ticks still to be read, the PingTimeouts it armed
++    // and the PingReplies to the pings it sent (two per ping), and, for
++    // DCN1, DCN2's Finished.
++    let mut ticks_left = p.rounds;
++    let mut owed: u32 = 0;
++    let mut peer_finished = node != DCN1;
+ 
+     send(&p, node, me, Leg::Exact(p.first_tick(node)), Body::Tick { k: 0 });
+ 
+-    loop {
++    while ticks_left > 0 || owed > 0 || !peer_finished {
+         let (from, body) = recv();
++        // Settle what this message was owed.
++        match body {
++            Body::Tick { .. } => ticks_left -= 1,
++            Body::PingTimeout | Body::PingReply { .. } => owed -= 1,
++            Body::Finished => peer_finished = true,
++            _ => {}
++        }
+         match body {
+             Body::Tick { k } => {
+                 match role {
+                     Role::Primary if node == DCN1 => {
+                         // runMe, PRIMARY: ping the NRP, arm ping_timed_out.
+                         ping_pending = true;
++                        owed += 2;
+                         send(&p, node, sw, net_leg, ping(nrp_net));
+                         send(&p, node, me, Leg::Exact(p.p), Body::PingTimeout);
+                     }
+@@ -784,6 +875,7 @@ fn dcn(node: usize, p: Params, sw: ThreadId, peer: ThreadId) {
+                                 clamp(&mut missed, max);
+                                 ping_pending = true;
+                                 takeover_ping = true;
++                                owed += 2;
+                                 TAKEOVER_PINGS.fetch_add(1, Ordering::Relaxed);
+                                 send(&p, node, sw, net_leg, ping(nrp_net));
+                                 send(&p, node, me, Leg::Exact(p.p), Body::PingTimeout);
+@@ -794,6 +886,7 @@ fn dcn(node: usize, p: Params, sw: ThreadId, peer: ThreadId) {
+                             if (nrp_net == NET_A && over_a) || (nrp_net == NET_B && over_b) {
+                                 ping_pending = true;
+                                 takeover_ping = false;
++                                owed += 2;
+                                 send(&p, node, sw, net_leg, ping(nrp_net));
+                                 send(&p, node, me, Leg::Exact(p.p), Body::PingTimeout);
+                             }
+@@ -804,7 +897,7 @@ fn dcn(node: usize, p: Params, sw: ThreadId, peer: ThreadId) {
+                 }
+                 // Next runMe (sent after the ping timer: firing order). The
+                 // run is bounded by this count: after its last round a DCN
+-                // arms nothing and only reacts to what is still in flight.
++                // arms nothing and only waits for what it is still owed.
+                 if k + 1 < p.rounds {
+                     send(&p, node, me, Leg::Exact(p.h), Body::Tick { k: k + 1 });
+                 }
+@@ -887,9 +980,21 @@ fn dcn(node: usize, p: Params, sw: ThreadId, peer: ThreadId) {
+                 }
+                 traceforge::assert(role != Role::Primary);
+             }
++            // HARNESS: DCN2's termination message, settled above.
++            Body::Finished if node == DCN1 => {}
+             m => panic!("DCN{node}: unexpected {m:?} from actor {from}"),
+         }
+     }
++    // HARNESS: the termination messages, plain sends (lossy like every
++    // send) and the only messages that are neither protocol nor the probe.
++    // DCN2 tells DCN1, after any Promoted on their channel, that it decides
++    // nothing more; DCN1, having read that and everything it is owed itself,
++    // tells SW to leave (see Termination).
++    if node == DCN2 {
++        traceforge::send_msg(peer, Msg { from: node, body: Body::Finished });
++    } else {
++        traceforge::send_msg(sw, Msg { from: node, body: Body::Stop });
++    }
+ }
+ 
+ /// DCN1's heartBeat(0) and heartBeat(1) of one instant: one message per
+@@ -930,8 +1035,9 @@ fn promote(
+ // SW: switches A1 (initial NRP) and B1 (second candidate)
+ // =====================================================================
+ 
+-/// The switch pair, a daemon: one blocking receive loop for ever. It knows no
+-/// thread id: every packet carries the address it needs.
++/// The switch pair: one blocking receive loop, left on DCN1's Stop (see
++/// Termination). It knows no thread id: every packet carries the address it
++/// needs.
+ fn switch(p: Params) {
+     // Lease memory per NRP switch (LeasingNRPFD.rebeca Switch statevars).
+     let mut primary: [Option<usize>; 2] = [Some(DCN1), None];
+@@ -958,6 +1064,8 @@ fn switch(p: Params) {
+                 send(&p, SW, to, Leg::Far, Body::NewNrp { net, to });
+             }
+             Body::NewNrpBack { net } => primary[net] = Some(from),
++            // HARNESS: DCN1's termination message.
++            Body::Stop => break,
+             m => panic!("SW: unexpected {m:?} from actor {from}"),
+         }
+     }
+@@ -999,15 +1107,17 @@ fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
+     reset_counts();
+     let start = Instant::now();
+     let stats = traceforge::verify(cfg, move || {
+-        // Three daemons and nothing else: `main` spawns and returns, joins
+-        // nobody and sends nothing. The run ends when no actor can move
+-        // (the DCNs arm no timer after their R-th round).
+-        let sw = thread::spawn_daemon(move || switch(p)).thread().id();
+-        thread::spawn_daemon(move || {
++        // Three threads and nothing else, none a daemon: `main` spawns and
++        // returns, joins nobody and sends nothing. Each thread leaves its
++        // loop on its own bound (see Termination), so a run in which no
++        // message is lost ends with all three terminated, and a thread waits
++        // for ever only for a message that was lost.
++        let sw = thread::spawn(move || switch(p)).thread().id();
++        thread::spawn(move || {
+             // DCN1 spawns DCN2: each needs the other's id (heartbeats go to
+             // DCN2, the probe to DCN1) and no message may carry them.
+             let dcn1 = thread::current().id();
+-            let dcn2 = thread::spawn_daemon(move || dcn(DCN2, p, sw, dcn1)).thread().id();
++            let dcn2 = thread::spawn(move || dcn(DCN2, p, sw, dcn1)).thread().id();
+             dcn(DCN1, p, sw, dcn2)
+         });
+     });
+@@ -1102,8 +1212,9 @@ fn warn_if_vacuous(label: &str, p: &Params, stats: &Stats, c: Counts) {
+         return;
+     }
+     // A violating execution ends at its assertion and is filed under
+-    // `block`; nothing else blocks here (every actor is a daemon). No
+-    // complete execution and no violation is an empty run, not a hold.
++    // `block`, like every execution in which a thread waits for a lost
++    // message. No complete execution and no violation is an empty run, not
++    // a hold.
+     if stats.execs == 0 {
+         println!(
+             "WARNING ({label}): 0 complete executions (blocked={}) and no violation: this run \
+diff --git a/traceforge/examples/par_timed.rs b/traceforge/examples/par_timed.rs
+index b1e3ae7..b669016 100644
+--- a/traceforge/examples/par_timed.rs
++++ b/traceforge/examples/par_timed.rs
+@@ -84,12 +84,22 @@
+ //!   these bounds.
+ //! * The assertion needs 4 messages to fail (message 2 lost and its place
+ //!   taken by message 4), so K >= 4 is needed for a FIRE.
+-//! * No harness message. The receiver is a daemon reactor spawned before
+-//!   the sender, which captures its id; the receiver learns the sender's
+-//!   address from the `from` of the frames. Until 2026-10-14 main sent an
+-//!   Init to each and the sender a Done to the receiver; they were lossy
+-//!   sends that only added blocked executions (and counted each violating
+-//!   execution twice, once per fate of the Done).
++//! * No harness message, no daemon. The receiver is an ordinary thread
++//!   spawned before the sender, which captures its id; the receiver learns
++//!   the sender's address from the `from` of the frames. It is bounded on
++//!   deliveries, not on frames received: it returns after accepting K new
++//!   frames (the `rsn == esn` branch, after the MSGerr discard) and
++//!   acknowledging the last one. Unless a frame is lost, discarded or
++//!   expired, or the sender gives up, it terminates; a receiver left
++//!   waiting means one of these. Copies of message K that arrive after it
++//!   has returned are no longer acknowledged: a sender whose last ack was
++//!   lost gives up (gave_up) where the listing's receiver, which loops for
++//!   ever, would ack again. P1 fires only on a delivery and there are at
++//!   most K of them (accepted frames come from distinct, increasing
++//!   messages), so no violation depends on that tail. Until 2026-10-14
++//!   main sent an Init to each and the sender a Done to the receiver; they
++//!   were lossy sends that only added blocked executions (and counted each
++//!   violating execution twice, once per fate of the Done).
+ //!
+ //! Integer time: the listing is a discrete-time model, and TraceForge's
+ //! timed engine uses integer instants, so the two share one time domain.
+@@ -304,7 +314,10 @@ fn sender(p: Params, receiver: ThreadId) {
+ fn receiver(p: Params) {
+     let mut me: u8 = 1;
+     let mut esn: u8 = 0;
+-    loop {
++    // Bounded on deliveries (new frames accepted), not on frames received:
++    // retransmissions vary, the K deliveries of a run without loss do not.
++    let mut deliveries: u32 = 0;
++    while deliveries < p.messages {
+         // W_f: B?mr,rsn
+         let (mr, rsn, sender) = match traceforge::recv_msg_block_timed::<SMsg>() {
+             SMsg::Frame { mt, sn, from } => (mt, sn, from),
+@@ -326,6 +339,7 @@ fn receiver(p: Params) {
+             }
+             esn = 1 - esn;
+             me = (me + 1) % MAX;
++            deliveries += 1;
+         } else {
+             DUPLICATES.fetch_add(1, Ordering::Relaxed);
+         }
+@@ -371,10 +385,11 @@ fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
+     reset_counts();
+     let start = Instant::now();
+     let stats = traceforge::verify(cfg, move || {
+-        // No bootstrap or release message: the receiver is a daemon reactor,
+-        // spawned first; the sender is spawned last and captures its id. The
+-        // receiver learns the sender's address from the frames.
+-        let r = thread::spawn_daemon(move || receiver(p)).thread().id();
++        // No bootstrap or release message: the receiver is spawned first and
++        // ends after its K-th delivery; the sender is spawned last and
++        // captures its id. The receiver learns the sender's address from the
++        // frames.
++        let r = thread::spawn(move || receiver(p)).thread().id();
+         let s = thread::spawn(move || sender(p, r));
+         let _ = s.join();
+     });
+diff --git a/traceforge/examples/retail_saga_timed.rs b/traceforge/examples/retail_saga_timed.rs
+index fd9219e..55a9a26 100644
+--- a/traceforge/examples/retail_saga_timed.rs
++++ b/traceforge/examples/retail_saga_timed.rs
+@@ -92,7 +92,7 @@
+ //! Threads (default 5 besides main). Main spawns the inventory, then the
+ //! order services (each gets the inventory's id through its spawn
+ //! closure), then the customers (each gets the services' ids), and joins
+-//! the customers only:
++//! the customers only. No thread is a daemon:
+ //!
+ //!   Customer c (x C)        ordinary thread. Listing 4.2: R orders, one
+ //!                           at a time; each order picks a product in
+@@ -100,23 +100,36 @@
+ //!                           ?(0,1) and ?(1,2)), then waits for the Reply
+ //!                           on its own topic. It ends after its R-th
+ //!                           Reply (or at a deadline, see Properties).
+-//!   OrderService k (x N)    daemon thread, never ends. Listing 4.3 (v1)
+-//!                           or 4.4 (v2): getMessage is a blocking
+-//!                           receive for the next Order; while an order
+-//!                           is open it reads ONLY from the inventory
+-//!                           (and its own shipping message), so queued
+-//!                           orders wait, exactly like the Kafka consumer
+-//!                           that asks for the next message only after
+-//!                           answering.
+-//!   Inventory (x 1)         daemon thread, never ends. Listing 2.3 (v1)
+-//!                           or 4.4 (v2); stock[p] = S.
++//!   OrderService k (x N)    ordinary thread. Listing 4.3 (v1) or 4.4
++//!                           (v2): getMessage is a blocking receive for
++//!                           the next Order; while an order is open it
++//!                           reads ONLY from the inventory (and its own
++//!                           shipping message), so queued orders wait,
++//!                           exactly like the Kafka consumer that asks
++//!                           for the next message only after answering.
++//!                           It ends after the orders it is owed.
++//!   Inventory (x 1)         ordinary thread. Listing 2.3 (v1) or 4.4
++//!                           (v2); stock[p] = S. It ends after the
++//!                           Checks and Confirms it is owed.
+ //!
+-//! A daemon may wait for ever without making an execution blocked, so
+-//! the reactive actors need nobody to tell them that the run is over.
+-//! The bound of the run is local: each customer counts its own R orders.
+-//! An execution is complete when every customer has ended, and blocked
+-//! when a customer waits for ever (or when the stock assertion has
+-//! stopped the inventory).
++//! The bound of every thread is the count of messages that a run in which
++//! no message is lost delivers to it, so a thread that ends blocked is
++//! waiting for a message that was lost or expired. A customer ends after
++//! its R Replies. The inventory is owed one Check per order (C x R in all)
++//! and, in v1 and direct, one Confirm per approved order; how many orders
++//! are approved depends on the stock, so it keeps the approvals whose
++//! Confirm it has not handled yet, and ends when no Check is due and no
++//! approval is waiting for its Confirm. An order service is owed the
++//! orders of its customers: R for each customer c with c mod N = k under
++//! `--assign fixed` (or with one service). A Kafka service serves them
++//! one after the other; the direct service ends once it has read all of
++//! them and answered every one it has read. Under `--assign any` with
++//! two or more services the customer's own nondeterministic choice
++//! decides how many orders a service gets, which the service cannot
++//! know, so there main sends each service a HARNESS Terminate after
++//! joining the customers (see No harness). Without a failed assertion, an
++//! execution is complete when every thread has ended, and blocked when a
++//! thread waits for a message that was lost or expired.
+ //!
+ //! Message flow of one order (v1; v2 skips Confirm/Confirmed and takes
+ //! the items inside Check):
+@@ -224,8 +237,20 @@
+ //!
+ //! The file contains the protocol and nothing else: every message is an
+ //! order, a stock request or an answer of the listings, and no code
+-//! filters executions. Until 2026-10-13 it carried three pieces of
+-//! verification harness:
++//! filters executions. The one exception is the Terminate that main sends
++//! to each service under `--assign any` with two or more services, whose
++//! order count no service can know (see the bound of the run): it is
++//! marked HARNESS in the code, is a plain lossy send, and filters
++//! nothing. In baseline mode it only adds blocked executions (the run in
++//! which it is lost). In timed mode a join does not advance main's
++//! clock, so it is sent at instant 0, arrives by U, and a service that
++//! has done work starts its last wait later than that: unless sd covers
++//! the gap it expires unread, which adds more blocked executions, and
++//! with L > 0 and a small sd no timeline lets a busy service read it, so
++//! the cell reports no complete execution (the 0-executions WARNING).
++//! Verdicts are not affected: a violating execution never reaches the
++//! send. Until 2026-10-13 the file carried three pieces of verification
++//! harness:
+ //!
+ //!   * Init messages (OsMsg::Init, CustMsg::Init), by which main told
+ //!     every thread the ids it needed. Ids now travel through the spawn
+@@ -236,9 +261,9 @@
+ //!     the inventory, so that the reactive threads terminated and main
+ //!     could join them. A lost Done left a service waiting for ever, and
+ //!     the execution blocked although no shopper was waiting for
+-//!     anything. The services and the inventory are now daemon threads
+-//!     that serve for ever, and the run is bounded by each customer's own
+-//!     count of R orders.
++//!     anything. The services and the inventory now end on the count of
++//!     messages that a run without a lost message delivers to them (see
++//!     the bound of the run), so only a lost message leaves one blocked.
+ //!   * The timeout validation read (assume_reply_was_late). After its
+ //!     deadline the customer made a BLOCKING read of the very Reply it
+ //!     had been waiting for, so that a timeout counted only if that
+@@ -277,15 +302,15 @@
+ //!   Deadlock freedom (paper: "no deadlock"): without a deadline every
+ //!       receive is blocking, as in the listings. A shopper whose Order,
+ //!       Reply or any message in between is lost waits for ever, and the
+-//!       execution ends blocked (the services and the inventory are
+-//!       daemons, their waiting never counts). So blocked > 0 without a
+-//!       deadline and without a violation is a deadlock: the binary
+-//!       prints a DEADLOCK line and exits 3 (distinct from a hold's 0 and
+-//!       a violation's 101), by the same rule in both modes. The paper's
+-//!       claim is about Rebeca mailboxes, which lose nothing. Under
+-//!       semantics that may lose any message, shoppers and services that
+-//!       wait without a timeout cannot be deadlock free, and the DEADLOCK
+-//!       verdict says exactly that.
++//!       execution ends blocked (so does the service or the inventory
++//!       that waits for the same lost message: no thread is a daemon).
++//!       So blocked > 0 without a deadline and without a violation is a
++//!       deadlock: the binary prints a DEADLOCK line and exits 3
++//!       (distinct from a hold's 0 and a violation's 101), by the same
++//!       rule in both modes. The paper's claim is about Rebeca mailboxes,
++//!       which lose nothing. Under semantics that may lose any message,
++//!       shoppers and services that wait without a timeout cannot be
++//!       deadlock free, and the DEADLOCK verdict says exactly that.
+ //!
+ //! ## Evidence counters and vacuity warnings
+ //!
+@@ -681,6 +706,12 @@ enum OsMsg {
+     /// The folded arrangeDelivery / shippingIsScheduled round trip,
+     /// self-addressed (see deviations).
+     ShippingScheduled { customer: ThreadId },
++    /// HARNESS: not a message of the listings. Main sends one to each
++    /// service once every customer has ended, and only under `--assign
++    /// any` with two or more services, where no service knows how many
++    /// orders it is owed (see `service_quota`). The service leaves its
++    /// loop on reading it.
++    Terminate,
+ }
+ 
+ /// Everything the inventory receives.
+@@ -806,6 +837,21 @@ fn shipping_round_trip(b: Bounds) -> (u64, u64) {
+     (2 * b.l, 2 * b.u + b.sd)
+ }
+ 
++/// Orders that a run without a lost message delivers to service `k`, and
++/// so the bound of its loop. Customer c uses service c mod N under
++/// `--assign fixed`, and every order goes to the one service when N = 1:
++/// R orders for each customer assigned to it. Under `--assign any` with
++/// two or more services the customer's own nondeterministic choice
++/// decides the count, which no service can know: None, and the service
++/// ends on the HARNESS Terminate that main sends it (see `run`).
++fn service_quota(s: Setup, k: usize) -> Option<usize> {
++    if s.assign == Assign::Any && s.order_services > 1 {
++        return None;
++    }
++    let customers = (0..s.customers).filter(|c| c % s.order_services == k).count();
++    Some(customers * s.rounds as usize)
++}
++
+ // =====================================================================
+ // Customer (Listings 2.1 and 4.2): an ordinary thread. It places R
+ // orders, one at a time, and ends; main joins the customers only.
+@@ -857,21 +903,25 @@ fn customer(index: usize, services: Vec<ThreadId>, s: Setup, b: Bounds) {
+ }
+ 
+ // =====================================================================
+-// Order service, Kafka variants (Listings 4.3 and 4.4): a daemon. It
+-// serves one order at a time, for ever. Its three inner waits (Status,
++// Order service, Kafka variants (Listings 4.3 and 4.4): an ordinary
++// thread. It serves one order at a time and ends after the `quota`
++// orders it is owed (service_quota). Its three inner waits (Status,
+ // Confirmed, its own ShippingScheduled) are the listing's: they have no
+ // timeout, so a service whose awaited message is lost stays in that
+-// order for good and answers nobody any more.
++// order for good, blocked, and answers nobody any more.
+ // =====================================================================
+ 
+ fn read_inventory_reply(inv: ThreadId) -> OsMsg {
+     traceforge::recv_tagged_msg_block_timed::<_, OsMsg>(move |snd, _| snd == inv)
+ }
+ 
+-fn kafka_order_service(inv: ThreadId, variant: Variant, b: Bounds) {
++fn kafka_order_service(inv: ThreadId, variant: Variant, b: Bounds, quota: Option<usize>) {
+     let me = thread::current().id();
++    let mut served = 0usize;
+ 
+-    loop {
++    // `quota` is None only under `--assign any` with two or more
++    // services: the loop then ends on the HARNESS Terminate below.
++    while quota.map_or(true, |q| served < q) {
+         // getMessage(ORDER_TOPIC): the next order. Only customers write
+         // to the order topic.
+         match traceforge::recv_tagged_msg_block_timed::<_, OsMsg>(move |snd, _| {
+@@ -909,7 +959,10 @@ fn kafka_order_service(inv: ThreadId, variant: Variant, b: Bounds) {
+                 // getMessage(ORDER_TOPIC) at the top of the loop.
+                 traceforge::send_msg(customer, CustMsg::Reply { success: available });
+                 IN_FLIGHT_ORDERS.fetch_sub(1, Ordering::Relaxed);
++                served += 1;
+             }
++            // HARNESS: termination message (see OsMsg::Terminate).
++            OsMsg::Terminate => break,
+             // Unreachable: customers send only Orders.
+             m => panic!("service: unexpected {m:?}"),
+         }
+@@ -917,19 +970,30 @@ fn kafka_order_service(inv: ThreadId, variant: Variant, b: Bounds) {
+ }
+ 
+ // =====================================================================
+-// Order service, no broker (Listing 2.2): a daemon. It reacts to each
+-// message as it arrives, for ever, and may have several orders open at
+-// once.
++// Order service, no broker (Listing 2.2): an ordinary thread. It reacts
++// to each message as it arrives, may have several orders open at once,
++// and ends when it has read the `quota` orders it is owed
++// (service_quota) and answered every one of them.
+ // =====================================================================
+ 
+-fn direct_order_service(inv: ThreadId, b: Bounds) {
++fn direct_order_service(inv: ThreadId, b: Bounds, quota: Option<usize>) {
+     let me = thread::current().id();
++    // Orders read so far, and orders read and not yet answered with a
++    // Reply (this service's own share of IN_FLIGHT_ORDERS).
++    let mut read = 0usize;
++    let mut open = 0usize;
+ 
+-    loop {
++    // A lost Status, Confirmed or ShippingScheduled leaves its order open
++    // for good, so the thread stays blocked. `quota` is None only under
++    // `--assign any` with two or more services: the loop then ends on the
++    // HARNESS Terminate below.
++    while quota.map_or(true, |q| read < q) || open > 0 {
+         match traceforge::recv_msg_block_timed::<OsMsg>() {
+             OsMsg::Order { customer, product, qty } => {
+                 // placeOrder
+                 IN_FLIGHT_ORDERS.fetch_add(1, Ordering::Relaxed);
++                read += 1;
++                open += 1;
+                 traceforge::send_msg(inv, InvMsg::Check { from: me, customer, product, qty });
+             }
+             OsMsg::Status { customer, available, product, qty } => {
+@@ -939,6 +1003,7 @@ fn direct_order_service(inv: ThreadId, b: Bounds) {
+                 } else {
+                     traceforge::send_msg(customer, CustMsg::Reply { success: false });
+                     IN_FLIGHT_ORDERS.fetch_sub(1, Ordering::Relaxed);
++                    open -= 1;
+                 }
+             }
+             OsMsg::Confirmed { customer, .. } => {
+@@ -950,13 +1015,18 @@ fn direct_order_service(inv: ThreadId, b: Bounds) {
+                 // shippingIsScheduled: cu.delivered(true)
+                 traceforge::send_msg(customer, CustMsg::Reply { success: true });
+                 IN_FLIGHT_ORDERS.fetch_sub(1, Ordering::Relaxed);
++                open -= 1;
+             }
++            // HARNESS: termination message (see OsMsg::Terminate).
++            OsMsg::Terminate => break,
+         }
+     }
+ }
+ 
+ // =====================================================================
+-// Inventory (Listings 2.3 and 4.4): a daemon, it answers for ever.
++// Inventory (Listings 2.3 and 4.4): an ordinary thread. It answers until
++// every order has put its Check here and every approval has been taken
++// off the count by its Confirm.
+ // =====================================================================
+ 
+ /// stockLevel[product] -= qty, followed by the SafeStockLevel check.
+@@ -972,13 +1042,20 @@ fn take_items(stock: &mut [i64], product: usize, qty: i64) {
+ fn inventory(s: Setup) {
+     let atomic = s.variant == Variant::V2;
+     let mut stock = vec![s.stock; s.products];
+-    // Evidence only: approvals given (Status true) whose Confirm has not
+-    // been handled yet, per product. Always 0 in v2.
++    // Approvals given (Status true) whose Confirm has not been handled
++    // yet, per product. Always 0 in v2. Race evidence, and the Confirms
++    // this thread is still owed.
+     let mut approved_not_taken = vec![0usize; s.products];
++    // Checks still due: every order of every customer puts one here.
++    let mut checks_due = s.customers * s.rounds as usize;
+ 
+-    loop {
++    // Ends when no Check is due and no approval waits for its Confirm. A
++    // lost message leaves one of the two open for good, and the thread
++    // blocked.
++    while checks_due > 0 || approved_not_taken.iter().any(|&n| n > 0) {
+         match traceforge::recv_msg_block_timed::<InvMsg>() {
+             InvMsg::Check { from, customer, product, qty } => {
++                checks_due -= 1;
+                 let others_open = IN_FLIGHT_ORDERS.load(Ordering::Relaxed) >= 2;
+                 if others_open {
+                     OVERLAP.fetch_add(1, Ordering::Relaxed);
+@@ -1052,15 +1129,17 @@ fn run(mode: Mode, s: Setup, b: Bounds, keep_going: bool) -> (Stats, Duration) {
+         IN_FLIGHT_ORDERS.store(0, Ordering::Relaxed);
+         // Thread ids travel through the spawn closures: the inventory
+         // first, then the services (they know the inventory), then the
+-        // customers (they know the services). The inventory and the
+-        // services are reactive daemons that never end; the customers
+-        // end after their R orders, and main joins the customers only.
+-        let inv = thread::spawn_daemon(move || inventory(s)).thread().id();
++        // customers (they know the services). No thread is a daemon: the
++        // customers end after their R orders, and the inventory and the
++        // services end on the orders they are owed (service_quota, and
++        // the inventory's own counts). Main joins the customers only.
++        let inv = thread::spawn(move || inventory(s)).thread().id();
+         let mut services = Vec::new();
+-        for _ in 0..s.order_services {
+-            let service = thread::spawn_daemon(move || match s.variant {
+-                Variant::Direct => direct_order_service(inv, b),
+-                v => kafka_order_service(inv, v, b),
++        for k in 0..s.order_services {
++            let quota = service_quota(s, k);
++            let service = thread::spawn(move || match s.variant {
++                Variant::Direct => direct_order_service(inv, b, quota),
++                v => kafka_order_service(inv, v, b, quota),
+             });
+             services.push(service.thread().id());
+         }
+@@ -1072,6 +1151,17 @@ fn run(mode: Mode, s: Setup, b: Bounds, keep_going: bool) -> (Stats, Duration) {
+         for h in customers {
+             let _ = h.join();
+         }
++        // HARNESS: a service without a quota (--assign any, two or more
++        // services) cannot know that the run is over, so main, after its
++        // last obligation (the joins above), tells each one. A plain
++        // send, lossy like every send: a service whose Terminate is lost
++        // stays blocked. Main's clock is still 0 here (a join does not
++        // advance it), see No harness in the header.
++        if service_quota(s, 0).is_none() {
++            for &service in &services {
++                traceforge::send_msg(service, OsMsg::Terminate);
++            }
++        }
+     });
+     (stats, start.elapsed())
+ }
+diff --git a/traceforge/examples/sensor_network_timed.rs b/traceforge/examples/sensor_network_timed.rs
+index e2130c6..bf810b6 100644
+--- a/traceforge/examples/sensor_network_timed.rs
++++ b/traceforge/examples/sensor_network_timed.rs
+@@ -180,9 +180,19 @@
+ //! use the Admin's own channel, and the CLI guard below keeps them in
+ //! send order.
+ //!
+-//! There is no release message: the scientist, the rescue team and the
+-//! timer threads are daemon reactors (until 2026-10-14 the Admin sent each
+-//! a Done once it had finished, four lossy sends outside the protocol).
++//! No thread is a daemon, and the protocol has no release message. The
++//! Admin and the sensors end by counts. The scientist, the rescue team and
++//! (with `--timers separate`) the two timer threads handle one message per
++//! mission, and which missions start depends on the path, so no fixed
++//! count ends them; the harness ends them with a chain of Stops: once the
++//! Admin has left its loop it sends one Stop to the scientist, which
++//! forwards it to the rescue team, which forwards it to the ScientistAck
++//! timer, which forwards it to the Rescue timer; each returns after
++//! forwarding. The Admin has read everything it needs by then, so no
++//! reactor ends before a message that matters. Every Stop is a plain send,
++//! lossy like all others: a lost Stop leaves the rest of the chain waiting
++//! and that run counts as blocked. An Admin parked at a failed assertion
++//! sends none.
+ //!
+ //! ## Deviations from the paper (deliberate)
+ //!
+@@ -322,7 +332,7 @@
+ //! and the rescue always arrives. It is now reported like any other.
+ //! There is no drain, no early cut and no condition: the Admin handles
+ //! messages until it has seen the R-th sensor check and the two mission
+-//! timers of every mission it started, then releases the other actors
++//! timers of every mission it started, then sends the Stop (see above)
+ //! and ends. A reading, Ack or RescueReach that is lost is simply never
+ //! read. The `--readings random-relevant` reduction went with the drain:
+ //! its argument assumed that every reading is read at its arrival
+@@ -548,11 +558,16 @@ enum AdminMsg {
+ #[derive(Clone, Debug, PartialEq)]
+ enum SciMsg {
+     AbortPlan { round: u32, admin: ThreadId },
++    /// HARNESS: not protocol. Head of the termination chain, sent by the
++    /// Admin once it has left its loop (see the doc header).
++    Stop,
+ }
+ 
+ #[derive(Clone, Debug, PartialEq)]
+ enum RescueMsg {
+     Go { round: u32, admin: ThreadId },
++    /// HARNESS: not protocol. Termination chain, forwarded by the scientist.
++    Stop,
+ }
+ 
+ /// Admin -> timer thread (`--timers separate` only). A timer thread is the
+@@ -561,6 +576,9 @@ enum RescueMsg {
+ #[derive(Clone, Debug, PartialEq)]
+ enum TimerMsg {
+     Arm { round: u32, admin: ThreadId },
++    /// HARNESS: not protocol. Termination chain, forwarded by the rescue
++    /// team to the ScientistAck timer and by that timer to the Rescue timer.
++    Stop,
+ }
+ 
+ /// How the Admin's two mission timers reach it.
+@@ -720,13 +738,20 @@ fn sensor(p: Params, index: u32, admin: ThreadId) {
+ // Scientist: purely reactive, always answers (Rebeca abortPlan)
+ // =====================================================================
+ 
+-fn scientist() {
++fn scientist(next: ThreadId) {
+     loop {
+         match traceforge::recv_msg_block_timed::<SciMsg>() {
+             // admin.ack() after(netDelay)
+             SciMsg::AbortPlan { round, admin } => {
+                 traceforge::send_msg(admin, AdminMsg::Ack { round })
+             }
++            // HARNESS: not protocol. Pass the Stop on to the rescue team,
++            // then end. The Stop cannot overtake an AbortPlan: both travel
++            // on the Admin's channel, in send order.
++            SciMsg::Stop => {
++                traceforge::send_msg(next, RescueMsg::Stop);
++                return;
++            }
+         }
+     }
+ }
+@@ -735,7 +760,7 @@ fn scientist() {
+ // Rescue: purely reactive, always gets there (Rebeca go)
+ // =====================================================================
+ 
+-fn rescue(obstacle: u64) {
++fn rescue(obstacle: u64, next: Option<ThreadId>) {
+     loop {
+         match traceforge::recv_msg_block_timed::<RescueMsg>() {
+             RescueMsg::Go { round, admin } => {
+@@ -747,6 +772,17 @@ fn rescue(obstacle: u64) {
+                 // message deadline is not modeled (doc header).
+                 traceforge::send_msg(admin, AdminMsg::RescueReach { round });
+             }
++            // HARNESS: not protocol. Pass the Stop on to the ScientistAck
++            // timer (only with --timers separate), then end. It comes from
++            // the scientist, so without a clock it can be read ahead of a
++            // Go still in flight; the Admin has ended and no longer needs
++            // that Go's answer.
++            RescueMsg::Stop => {
++                if let Some(next) = next {
++                    traceforge::send_msg(next, TimerMsg::Stop);
++                }
++                return;
++            }
+         }
+     }
+ }
+@@ -756,7 +792,7 @@ fn rescue(obstacle: u64) {
+ // one message kind, forwarded with exact transit d
+ // =====================================================================
+ 
+-fn timer(kind: TimerKind, delay: u64) {
++fn timer(kind: TimerKind, delay: u64, next: Option<ThreadId>) {
+     loop {
+         match traceforge::recv_msg_block_timed::<TimerMsg>() {
+             // The Arm arrives with exact transit 0 and, at sd = 0, is read at
+@@ -769,6 +805,15 @@ fn timer(kind: TimerKind, delay: u64) {
+                 };
+                 traceforge::send_msg_timed(admin, m, delay, delay);
+             }
++            // HARNESS: not protocol. Pass the Stop on to the Rescue timer
++            // (the ScientistAck timer only; the Rescue timer ends the
++            // chain), then end.
++            TimerMsg::Stop => {
++                if let Some(next) = next {
++                    traceforge::send_msg(next, TimerMsg::Stop);
++                }
++                return;
++            }
+         }
+     }
+ }
+@@ -944,6 +989,11 @@ fn admin(p: Params, scientist: ThreadId, rescue: ThreadId, timers: Option<(Threa
+ 
+     // Bounded run over: publish the tallies.
+     t.publish();
++
++    // HARNESS: not protocol. Start the termination chain with one Stop to
++    // the scientist; the reactors forward it (doc header). A thread parked
++    // at a failed assertion never gets here.
++    traceforge::send_msg(scientist, SciMsg::Stop);
+ }
+ 
+ // =====================================================================
+@@ -990,22 +1040,30 @@ fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
+     reset_counters();
+     let start = Instant::now();
+     let stats = traceforge::verify(cfg, move || {
+-        // The scientist, the rescue team and the timer threads are
+-        // reactive daemons: nothing releases them, the run ends when no
+-        // actor can move. The Admin and the sensors are joined.
+-        let sci_id = thread::spawn_daemon(scientist).thread().id();
+-        let res_id = thread::spawn_daemon(move || rescue(p.obstacle)).thread().id();
++        // No daemons: every thread ends. The Admin and the sensors are
++        // joined.
++        // HARNESS: the Stop chain (doc header) runs scientist, rescue team,
++        // ScientistAck timer, Rescue timer, so the tail is spawned first and
++        // each reactor is given the id of its successor.
+         let timer_ids = match p.timers {
+             Timers::SelfChannel => None,
+-            Timers::Separate => Some((
+-                thread::spawn_daemon(move || timer(TimerKind::ScientistAck, p.ack_deadline))
+-                    .thread()
+-                    .id(),
+-                thread::spawn_daemon(move || timer(TimerKind::Rescue, p.rescue_deadline))
+-                    .thread()
+-                    .id(),
+-            )),
++            Timers::Separate => {
++                let rescue_timer =
++                    thread::spawn(move || timer(TimerKind::Rescue, p.rescue_deadline, None))
++                        .thread()
++                        .id();
++                let ack_timer = thread::spawn(move || {
++                    timer(TimerKind::ScientistAck, p.ack_deadline, Some(rescue_timer))
++                })
++                .thread()
++                .id();
++                Some((ack_timer, rescue_timer))
++            }
+         };
++        let res_id = thread::spawn(move || rescue(p.obstacle, timer_ids.map(|(ack, _)| ack)))
++            .thread()
++            .id();
++        let sci_id = thread::spawn(move || scientist(res_id)).thread().id();
+         let adm = thread::spawn(move || admin(p, sci_id, res_id, timer_ids));
+         let adm_id = adm.thread().id();
+         let mut sensors = Vec::new();
+diff --git a/traceforge/examples/spanning_tree_timed.rs b/traceforge/examples/spanning_tree_timed.rs
+index 69a3051..8ab4bab 100644
+--- a/traceforge/examples/spanning_tree_timed.rs
++++ b/traceforge/examples/spanning_tree_timed.rs
+@@ -119,13 +119,18 @@
+ //! id through its spawn closure), then A (which gets B's id and, in
+ //! link-up, C's), and every receive selects by tag alone. Every bridge
+ //! clock therefore starts at 0: the instant the cable comes up (link-up)
+-//! or the start of observation (lost-hellos). A bridge that only reacts
+-//! is a daemon thread with a blocking receive: B in both stories (a loop
+-//! that never returns) and C in link-up (its first wait is blocking). A
+-//! daemon that waits for ever does not make an execution blocked. The
+-//! bridges that drive a run are ordinary threads and end by themselves:
+-//! A, which sleeps and sends R hellos, and C in lost-hellos, which waits
+-//! only finite times. `main` joins only those.
++//! or the start of observation (lost-hellos). Every bridge is an ordinary
++//! thread, and each ends by itself in a run in which no message it needs
++//! is lost or expired. A sleeps and sends R hellos. B only reacts, with R
++//! blocking receives, one per hello of the bounded root, and relays each
++//! (the root sends it exactly R, so a run without loss feeds it all R). C
++//! in link-up has no loop: a first blocking receive for the news or the
++//! notice and, after the news, one finite wait for the notice. C in
++//! lost-hellos waits only finite times. Apart from a failed assertion, a
++//! bridge therefore ends blocked only because a message it waits for was
++//! lost or expired (a root hello on its way to B, or, in link-up, the
++//! news and the notice together on their way to C). `main` joins A, and
++//! C in lost-hellos.
+ //! Each point-to-point LAN is a direct channel between its two bridges;
+ //! only the channels that carry news in the story exist.
+ //!
+@@ -203,7 +208,9 @@
+ //! The root is bounded to R hellos (`--rounds`). A bounded root that has
+ //! fallen silent must never be what closes a loop, and no message may
+ //! announce the end of a run (it could be lost, and its loss would
+-//! fabricate a loop). The bound is therefore local arithmetic.
++//! fabricate a loop). The bound is therefore local arithmetic. B is bounded
++//! on the same R: the root sends it exactly R hellos, so B ends after R
++//! receives and no hello it could still have read is cut off.
+ //!
+ //!   * link-up: the check happens at `Fd`, so the root must send every
+ //!     hello the real root sends up to `Fd`, those at `P + i*H <= Fd`:
+@@ -319,12 +326,13 @@
+ //!     other: a dropped one left a bridge waiting for ever, and an Init
+ //!     took up to U to arrive, so a bridge could start up to U late (in
+ //!     the old link-up witness under Results, B and C read theirs at time
+-//!     1). Ids now go through the spawn closures, reactive bridges are
+-//!     daemons, and the end of a run is local arithmetic (see "The bound
+-//!     of the run").
++//!     1). Ids now go through the spawn closures, B ends after the R
++//!     hellos the root sends, and the end of a run is local arithmetic
++//!     (see "The bound of the run").
+ //!
+ //! What is left that no bridge would do is the one probe of the link-up
+-//! property and, in lost-hellos, the subtraction that bounds C's run.
++//! property, in lost-hellos the subtraction that bounds C's run, and B's
++//! count of R receives.
+ //!
+ //! ## Properties checked
+ //!
+@@ -451,15 +459,20 @@
+ //! ("link-up MA 2" is `--max-age-ratio 2`, i.e. MA=2 Bd=4 Fd=6. The two
+ //! vacuous holds print the NOTE of "The bound of the run".)
+ //!
+-//! Reading the new rows. Nothing can block in this version (A, and C in
+-//! lost-hellos, never wait for ever; B, and C in link-up, are daemons), and
+-//! under --keep-going a violating run is filed under execs as well,
+-//! because C ends right after its failed assertion. So every explored
+-//! ending is a complete execution, blocked is 0, and violations counts
+-//! executions: in every cell it equals the engine's own count of failed
+-//! assertions (one `task-N` line each, which in timed mode the engine
+-//! prints only for an execution it certified), and no ending was judged
+-//! timeline-impossible (the printed `impossible=` is 0 in every cell).
++//! Reading the new rows. They were measured when a reactive bridge left
++//! waiting for ever did not make an execution blocked, and with a violating
++//! run filed under execs as well (C ends right after its failed
++//! assertion). So the execs column counts every explored ending, blocked
++//! is 0, and violations counts executions: in every cell it equals the
++//! engine's own count of failed assertions (one `task-N` line each, which
++//! in timed mode the engine prints only for an execution it certified),
++//! and no ending was judged timeline-impossible (the printed `impossible=`
++//! is 0 in every cell). With every bridge an ordinary thread the same
++//! endings are split between the columns: execs + blocked of the current
++//! binary is the execs column here, `execs` keeps the endings in which
++//! every bridge ended and no assertion failed, and `blocked` holds the
++//! violating ones (TFSTATS `violating`) and those in which a message was
++//! lost or expired (see "Threads").
+ //!
+ //! What the first-arrival rule changed. It orders the reads of a receive
+ //! that can take messages of two senders, and C's first receive in
+@@ -526,8 +539,8 @@
+ //! may also simply not be read in time (729 = 3^6).
+ //!
+ //! Further cells, new binary, the flags added to the command above; `v of
+-//! n` = violating executions of all executions explored, timed / baseline
+-//! (blocked = 0 and impossible = 0 in each; every FIRE confirmed by exit
++//! n` = violating executions of all executions explored (execs + blocked),
++//! timed / baseline (impossible = 0 in each; every FIRE confirmed by exit
+ //! 101 without --keep-going). link-up:
+ //!   --max-age-ratio 5 (R 7): 1,522 of 4,924 / 4,246 of 8,492. The old
+ //!       binary holds this cell at its R = 1 and FIREs with --rounds 7
+@@ -854,13 +867,14 @@ fn root_link_up(b: Bounds, rounds: u32, b_tid: ThreadId, c_tid: ThreadId) {
+ /// Bridge B. Settled before the cable: root link B-C at distance 2, with
+ /// C Designated on B-C. A's hello on A-B makes A-B its root link
+ /// (distance 1) and B Designated on B-C, so B relays at once.
+-/// Purely reactive, so a daemon: a blocking receive loop that never
+-/// returns.
+-fn bridge_b_link_up(c_tid: ThreadId) {
++/// Purely reactive: one blocking receive per hello, `rounds` of them, which
++/// is every hello the bounded root sends, and then it ends. If one of them
++/// is lost, B is left blocked at the receive that would have read it.
++fn bridge_b_link_up(c_tid: ThreadId, rounds: u32) {
+     // What B last heard on B-C from C before the change.
+     let heard_on_bc = Hello { root: ID_A, cost: 1, sender: ID_C, age: 0 };
+     let mut dist: u32 = 2;
+-    loop {
++    for _ in 0..rounds {
+         match traceforge::recv_tagged_msg_block_timed::<_, Msg>(|_s, t| t == Some(TAG_ROOT_HELLO)) {
+             Msg::Hello(h) => {
+                 // Distance = 1 + best distance heard from a Designated
+@@ -885,9 +899,10 @@ fn bridge_b_link_up(c_tid: ThreadId) {
+ }
+ 
+ /// Bridge C. Root link C-A at distance 1, Designated on B-C (so its B-C
+-/// end forwards) until B's hello arrives. Reactive, so a daemon: if the
+-/// news and the notice are both lost it waits for ever in its first
+-/// receive, which is no blocked execution.
++/// end forwards) until B's hello arrives. Reactive, with no loop: a first
++/// blocking receive for the news or the notice, then after the news one
++/// finite wait for the notice, and it ends. If the news and the notice are
++/// both lost, C is left blocked in its first receive.
+ fn bridge_c_link_up(b: Bounds) {
+     let my_root = ID_A;
+     let my_dist: u32 = 1;
+@@ -965,10 +980,11 @@ fn root_steady(b: Bounds, rounds: u32, b_tid: ThreadId) {
+ }
+ 
+ /// Bridge B, Designated on B-C: relays every root hello it reads at once.
+-/// Purely reactive, so a daemon: a blocking receive loop that never
+-/// returns.
+-fn bridge_b_steady(c_tid: ThreadId) {
+-    loop {
++/// Purely reactive: one blocking receive per hello, `rounds` of them, which
++/// is every hello the bounded root sends, and then it ends. If one of them
++/// is lost, B is left blocked at the receive that would have read it.
++fn bridge_b_steady(c_tid: ThreadId, rounds: u32) {
++    for _ in 0..rounds {
+         match traceforge::recv_tagged_msg_block_timed::<_, Msg>(|_s, t| t == Some(TAG_ROOT_HELLO)) {
+             Msg::Hello(h) => {
+                 traceforge::send_tagged_msg(
+@@ -1128,13 +1144,14 @@ fn run(
+     let start = Instant::now();
+     // No bootstrap message: ids go through the spawn closures, so every
+     // bridge clock starts at 0. Spawn order C, B, A: B needs C's id, A
+-    // needs B's (and C's for the notice). Reactive bridges are daemons;
+-    // main joins only the threads that always end.
++    // needs B's (and C's for the notice). Every bridge is an ordinary
++    // thread that ends by itself when no message is lost (B after the R
++    // hellos the root sends); main joins A, and C in lost-hellos.
+     let stats = traceforge::verify(cfg, move || match scenario {
+         Scenario::LinkUp => {
+-            let hc = thread::spawn_daemon(move || bridge_c_link_up(b));
++            let hc = thread::spawn(move || bridge_c_link_up(b));
+             let c_tid = hc.thread().id();
+-            let hb = thread::spawn_daemon(move || bridge_b_link_up(c_tid));
++            let hb = thread::spawn(move || bridge_b_link_up(c_tid, rounds));
+             let b_tid = hb.thread().id();
+             let ha = thread::spawn(move || root_link_up(b, rounds, b_tid, c_tid));
+             let _ = ha.join();
+@@ -1142,7 +1159,7 @@ fn run(
+         Scenario::LostHellos => {
+             let hc = thread::spawn(move || bridge_c_steady(b, rounds));
+             let c_tid = hc.thread().id();
+-            let hb = thread::spawn_daemon(move || bridge_b_steady(c_tid));
++            let hb = thread::spawn(move || bridge_b_steady(c_tid, rounds));
+             let b_tid = hb.thread().id();
+             let ha = thread::spawn(move || root_steady(b, rounds, b_tid));
+             let _ = ha.join();
+diff --git a/traceforge/examples/swim_timed.rs b/traceforge/examples/swim_timed.rs
+index 4b44b6c..0e010e1 100644
+--- a/traceforge/examples/swim_timed.rs
++++ b/traceforge/examples/swim_timed.rs
+@@ -43,12 +43,27 @@
+ //! inc + 1) is exercised for real from round 2 on.
+ //!
+ //! There is no bootstrap or release message. The bystanders and the
+-//! target are spawned first, as daemon actors, and the prober last, so
+-//! it captures their ids at spawn; the target learns the prober's id
+-//! from the `from` field of the Ping and Suspect it receives (the
+-//! 3PC `Prepare { coord }` idiom), and the bystanders filter by
+-//! message-kind tag, not by sender. The run ends when the prober has
+-//! resolved all R periods.
++//! target are spawned first and the prober last, so it captures their
++//! ids at spawn; the target learns the prober's id from the `from`
++//! field of the Ping and Suspect it receives (the 3PC `Prepare {
++//! coord }` idiom), and the bystanders filter by message-kind tag, not
++//! by sender.
++//!
++//! No thread is a daemon: every thread ends in a run in which no
++//! message is lost or expires. The prober ends after its R periods.
++//! The target and the bystanders cannot be bounded by a count (a
++//! Suspect is sent only when a probe times out), so one HARNESS
++//! message ends each of them: after its last period the prober sends a
++//! Stop to the target, waits for the target to end (a join, not a
++//! message), sends a Stop to the first bystander, waits for it, and so
++//! on. The Stops come from the prober, so FIFO delivers each one after
++//! every Suspect the prober sent to that bystander, and a member leaves
++//! its loop on reading it. The Stop is lossy like every send: a lost
++//! Stop leaves its reader blocked, the prober blocked at the join, and
++//! the later Stops unsent, so a run that ends blocked without a failed
++//! assertion is a run in which a message was lost or expired. A
++//! prober that fails its assertion sends no Stop (the run is a
++//! violation).
+ //!
+ //! ## Deviations from the paper (deliberate, defect-first model)
+ //!
+@@ -257,6 +272,10 @@ fn suspect_tag(round: u32) -> u32 {
+     round * TAG_KINDS + 3
+ }
+ 
++/// HARNESS: tag of the Stop; kind 0, so that a bystander's idle wait
++/// matches it (the target's untagged wait matches any tag).
++const STOP_TAG: u32 = 0;
++
+ /// Member-to-member protocol traffic.
+ #[derive(Clone, Debug, PartialEq)]
+ enum MMsg {
+@@ -266,6 +285,8 @@ enum MMsg {
+     Ack,
+     Suspect { inc: u64, round: u32, from: ThreadId },
+     Alive { inc: u64 },
++    /// HARNESS: end of run, sent by the prober to each reactor in turn.
++    Stop,
+ }
+ 
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+@@ -323,7 +344,15 @@ impl Bounds {
+ // Prober (member 0): drives the R protocol periods
+ // =====================================================================
+ 
+-fn prober(b: Bounds, rounds: u32, target: ThreadId, bystanders: Vec<ThreadId>) {
++fn prober(
++    b: Bounds,
++    rounds: u32,
++    target: ThreadId,
++    bystanders: Vec<ThreadId>,
++    // HARNESS: join handles of the target, then of the bystanders in
++    // spawn order (the order in which the Stops go out).
++    reactors: Vec<thread::JoinHandle<()>>,
++) {
+     let me = thread::current_id();
+ 
+     // The prober's current belief of the target's incarnation; rises
+@@ -398,6 +427,26 @@ fn prober(b: Bounds, rounds: u32, target: ThreadId, bystanders: Vec<ThreadId>) {
+             }
+         }
+     }
++
++    // HARNESS: end of run. After its last period and its last
++    // refutation wait the prober sends one Stop to each reactor, the
++    // target first. It joins a reactor before it sends the next Stop,
++    // so a reactor whose Stop was lost keeps the prober blocked and
++    // the later Stops are never sent: the fates of the Stops are
++    // dependent and the executions grow by one per reactor, not by a
++    // factor of two. The Stop comes from the prober, so FIFO orders it
++    // after the Suspects it sent to the same bystander.
++    let mut previous: Option<thread::JoinHandle<()>> = None;
++    for (member, handle) in std::iter::once(target)
++        .chain(bystanders.iter().copied())
++        .zip(reactors)
++    {
++        if let Some(p) = previous.take() {
++            let _ = p.join();
++        }
++        traceforge::send_tagged_msg(member, STOP_TAG, MMsg::Stop);
++        previous = Some(handle);
++    }
+ }
+ 
+ // =====================================================================
+@@ -440,8 +489,10 @@ fn target(bystanders: Vec<ThreadId>) {
+                     }
+                 }
+             }
++            // HARNESS: end of run.
++            MMsg::Stop => return,
+             // Unreachable: only the prober sends to the target, and it
+-            // sends only Ping and Suspect.
++            // sends only Ping, Suspect and Stop.
+             m => panic!("target: unexpected {m:?}"),
+         }
+     }
+@@ -457,7 +508,8 @@ fn bystander(b: Bounds) {
+         // bystanders nothing in a healthy period). Only the prober's
+         // Suspect carries the suspect kind of tag (the target's Alive
+         // does not), and FIFO from the prober delivers Suspects in
+-        // period order.
++        // period order. HARNESS: the Stop (kind 0 too) comes from the
++        // prober after its last Suspect, so FIFO delivers it last.
+         match traceforge::recv_tagged_msg_block_timed::<_, MMsg>(move |_s, tag| {
+             tag.is_some_and(|t| t % TAG_KINDS == 0)
+         }) {
+@@ -488,7 +540,10 @@ fn bystander(b: Bounds) {
+                     return;
+                 }
+             }
+-            // Unreachable: the prober sends bystanders only Suspect.
++            // HARNESS: end of run.
++            MMsg::Stop => return,
++            // Unreachable: the prober sends bystanders only Suspect and
++            // Stop.
+             m => panic!("bystander: unexpected {m:?}"),
+         }
+     }
+@@ -544,16 +599,23 @@ fn run(mode: Mode, nodes: u32, b: Bounds, rounds: u32, dot_out: Option<&str>, ke
+     TARGET_CRASHED.store(false, Ordering::Relaxed);
+     let start = Instant::now();
+     let stats = traceforge::verify(cfg, move || {
+-        // Reactive members are daemons, spawned before the prober so it
+-        // captures their ids; no bootstrap or release message exists.
+-        let by_ids: Vec<ThreadId> = (0..nodes.saturating_sub(2))
+-            .map(|_| thread::spawn_daemon(move || bystander(b)).thread().id())
+-            .collect();
+-        let t_id = {
++        // Members are spawned before the prober so it captures their
++        // ids; no bootstrap or release message exists. No daemons: the
++        // prober also gets the join handles, target first (HARNESS).
++        let mut by_ids: Vec<ThreadId> = Vec::new();
++        let mut reactors = Vec::new();
++        for _ in 0..nodes.saturating_sub(2) {
++            let h = thread::spawn(move || bystander(b));
++            by_ids.push(h.thread().id());
++            reactors.push(h);
++        }
++        let t_handle = {
+             let bys = by_ids.clone();
+-            thread::spawn_daemon(move || target(bys)).thread().id()
++            thread::spawn(move || target(bys))
+         };
+-        let p = thread::spawn(move || prober(b, rounds, t_id, by_ids));
++        let t_id = t_handle.thread().id();
++        reactors.insert(0, t_handle);
++        let p = thread::spawn(move || prober(b, rounds, t_id, by_ids, reactors));
+         let _ = p.join();
+     });
+     (stats, start.elapsed())
+diff --git a/traceforge/examples/yarn_scheduler_timed.rs b/traceforge/examples/yarn_scheduler_timed.rs
+index 4ea3b83..b23d891 100644
+--- a/traceforge/examples/yarn_scheduler_timed.rs
++++ b/traceforge/examples/yarn_scheduler_timed.rs
+@@ -94,9 +94,14 @@
+ //! The SoCC 2013 YARN paper has no deadline scheduler: the deadline
+ //! queue is the Rebeca authors' abstraction of the RM's scheduling loop.
+ //!
+-//! Threads. The RM and the AMs are daemons: Rebeca actors react to their
+-//! next message for ever, nobody waits for them, and an execution is
+-//! over when nothing can move any more.
++//! Threads. The RM and the AMs are ordinary threads. A Rebeca actor
++//! reacts to its next message for ever; here every loop is bounded by
++//! what a run that loses nothing delivers to it, so every thread ends in
++//! such a run, and, where no assertion failed, a thread left blocked at
++//! a receive means that a message was lost or expired. The RM is bounded
++//! by a count of what it is owed. The number of jobs an AM gets depends
++//! on the completion times, so no count bounds an AM: it ends on the
++//! harness Stop (see below).
+ //!
+ //!   RM         one blocking receive loop, the Rebeca actor shape:
+ //!              Tick      => checkQueue() verbatim (see below), then the
+@@ -107,13 +112,18 @@
+ //!                           report is checked against its deadline.
+ //!              Tick 0 is sent at time 0 with transit 0 (the
+ //!              constructor's call). After tick H the RM hands out
+-//!              nothing and keeps reading reports.
++//!              nothing and keeps reading reports. It leaves the loop
++//!              when it has read tick H and a report for every job it
++//!              handed out, and then sends Stop to the last AM
++//!              (HARNESS).
+ //!   AM i       (i = 0..k-1; am1 of the source is AM 0) blocking receive
+ //!              of RunJob{job, dline, tick, rm}; completion c is chosen
+ //!              from the work-time set (default {2}, see CLI); if
+ //!              c > dline: sleep(dline), send
+ //!              Update{miss: true} (the source's self-preemption); else
+ //!              doneJobs++, sleep(c), send Update{miss: false}.
++//!              HARNESS: on Stop it forwards Stop to AM i-1 (AM 0
++//!              forwards nothing) and leaves the loop.
+ //!   Monitor    only with --property throughput (see Properties); an
+ //!              ordinary thread with one finite wait.
+ //!
+@@ -133,9 +143,11 @@
+ //! paper text says "set to 0") is preserved too.
+ //!
+ //! Messages: Tick (RM to itself, exact transit), RunJob (RM -> AM) and
+-//! Update (AM -> RM) with the global transit window [L, U]. No thread
+-//! needs a bootstrap message: the RM gets the AMs' ids through its spawn
+-//! closure, and RunJob carries the address the AM answers to. Deadlines
++//! Update (AM -> RM) with the global transit window [L, U]; the harness
++//! Stop (RM -> AM k-1 -> AM k-2 -> ... -> AM 0, same window) is not the
++//! protocol's. No thread needs a bootstrap message: the RM gets the AMs'
++//! ids through its spawn closure (each AM gets that of the AM below it,
++//! for Stop), and RunJob carries the address the AM answers to. Deadlines
+ //! are data: the RM keeps, for each busy AM, the tick the job was handed
+ //! out at and its dline, so its absolute deadline is D = tick + dline in
+ //! tick units. Nothing in the model reads the clock.
+@@ -158,7 +170,8 @@
+ //!   - Bounded horizon instead of unbounded time: the RM re-arms its
+ //!     timer up to tick H (default 10, the TCTL time bound) and hands out
+ //!     nothing afterwards. The bound is a count kept by the RM; no
+-//!     message announces the end of the run.
++//!     protocol message announces the end of the run (the harness Stop
++//!     only lets the AMs leave their loops).
+ //!   - `send ... after(d)` at the AM becomes sleep(d) followed by an
+ //!     ordinary send. Equivalent here: a busy AM gets no other work.
+ //!   - The source line is `int completion = 2;//?(2, 5);`. In Timed
+@@ -217,9 +230,20 @@
+ //! leaves the AM busy in the RM's table, and the queue behind it
+ //! expires: it is a deadline miss like any other and is now reported.
+ //! There is no Clock thread (the RM's timer is its own self-sent message,
+-//! as in the source), no assume!, no drain, no release message and no
+-//! deferred judgement: each property is asserted at the step where it
+-//! fails, and the counters are raised there.
++//! as in the source), no assume!, no drain and no deferred judgement:
++//! each property is asserted at the step where it fails, and the
++//! counters are raised there.
++//!
++//! Apart from the throughput probe, the one message that is not the
++//! source's is the Stop chain (HARNESS in the code), which ends the AMs
++//! now that they are not daemons. The RM leaves its loop on its own
++//! counts and sends one Stop to the last AM; each AM forwards it to the
++//! AM below it and leaves. It is lossy like every send: a lost Stop
++//! leaves the AMs after the loss blocked at their receive, so a run in
++//! which the RM reaches its end is explored K+1 times, once for each hop
++//! at which the chain can break and once without a break (the only one
++//! that can be filed under execs). A run in which the RM never reaches
++//! its end has no Stop and is explored as before, but under blocked.
+ //!
+ //! ## Properties checked (--property)
+ //!
+@@ -259,11 +283,12 @@
+ //!                Finite(H) from time 0 and asserts false when it reads
+ //!                it, so exit 101 = REACHABLE (the TCTL formula is true)
+ //!                and exit 0 = unreachable. Fifth is the one message of
+-//!                this file that is not the protocol's: the property
+-//!                relates am1's state to an instant on another clock, so
+-//!                one probe carries it there. A lost probe is a timeout:
+-//!                it can hide the start, never invent one. (The paper
+-//!                checks am2; the property file, used here, checks am1.)
++//!                this file that is not the protocol's, the harness Stop
++//!                apart: the property relates am1's state to an instant
++//!                on another clock, so one probe carries it there. A
++//!                lost probe is a timeout: it can hide the start, never
++//!                invent one. (The paper checks am2; the property file,
++//!                used here, checks am1.)
+ //!                The paper reports no verdict for this formula, only
+ //!                state counts, so the throughput verdicts below are not
+ //!                a reproduction either.
+@@ -313,12 +338,13 @@
+ //! is an upper bound whenever impossible > 0 (it was 0 in every run
+ //! below); a count of zero is sound.
+ //!
+-//!   execs, blocked      the checker's counts: endings without a failed
+-//!                       assertion, and endings stopped at one (the RM
+-//!                       and the AMs are daemons, so nothing else blocks).
+-//!                       The throughput monitor ends right after its
+-//!                       assertion, and the engine files such an ending
+-//!                       under execs: for throughput read fifth=a/b
++//!   execs, blocked      the checker's counts: endings in which every
++//!                       thread ended, and endings that did not: stopped
++//!                       at a failed assertion (the throughput monitor's
++//!                       too, which parks it), or with the RM or an AM
++//!                       blocked at its receive because a message was
++//!                       lost or expired (for an AM, its Stop). For
++//!                       throughput read fifth=a/b
+ //!   dispatched, done, preempted, expired, late
+ //!                       jobs handed out, "done" reports read, give-ups,
+ //!                       queue expiries, late "done" reports
+@@ -358,6 +384,18 @@
+ //! with the flags of the row (--deadline DD, --property P, --horizon H,
+ //! --u U, --l L, --ams K, --queue-size QS).
+ //!
++//! The execs / blocked counts of this section were measured when the RM
++//! and the AMs were daemons. With the Stop chain (see Threads) the
++//! verdicts and the violation counts of miss, expiry, preempt and
++//! late-report stay as they are; execs falls to the endings in which
++//! every thread ended (the daemons hid the endings with a lost message
++//! in it); blocked grows by those and by the lost-Stop endings, so that
++//! execs + blocked grows by K times the new execs (miss DD=8 below:
++//! 223 / 14 / 14 is now 16 / 237 / 14). A throughput run counts each
++//! violating ending of the monitor K+1 times, because the RM still
++//! reaches its end. The counters that sum over endings (dispatched,
++//! done, ...) grow with the endings too.
++//!
+ //!   property     cell            old                        new
+ //!   miss         DD=3            FIRE  0 / 9,070 / 32       FIRE  7 / 5 / 6
+ //!   miss         DD=8            HOLD  16 / 8,072 / 0       FIRE  223 / 14 / 14
+@@ -476,8 +514,11 @@
+ //! Counts move there too (execs / blocked / violations, old then new):
+ //! timed U=0 at H=7: 24 / 1,087 / 0, now 148 / 0 / 0; H=8: 32 / 2,219 / 0,
+ //! now 218 / 0 / 0; H=9: 49 / 4,511 / 2, now 321 / 0 / 2; H=10:
+-//! 68 / 9,116 / 4, now 465 / 0 / 6. The monitor returns after its failed
+-//! assertion, so a reaching execution is filed under execs.
++//! 68 / 9,116 / 4, now 465 / 0 / 6. Those "now" counts file a reaching
++//! execution under execs (the monitor returned after its failed
++//! assertion); an assertion now parks its thread, so such an ending is
++//! filed under blocked (H=10: 459 / 6 / 6, and 33 / 467 / 8 with the
++//! Stop chain).
+ //!
+ //! baseline, the same program without a clock: FIRE (exit 101) at miss
+ //! DD=3 and 8, expiry DD=8, preempt DD=3 and 8 and late-report DD=8, in
+@@ -558,11 +599,15 @@ enum AmMsg {
+     /// bookkeeping; `rm` is the address the AM answers to, carried by
+     /// the packet (Rebeca's known rebec `rm`).
+     RunJob { job: u32, dline: u64, tick: u32, rm: ThreadId },
++    /// HARNESS: not the protocol's. The RM sends it to the last AM when it
++    /// has met every obligation; each AM forwards it to the AM below it
++    /// and leaves its loop (AM 0 forwards nothing).
++    Stop,
+ }
+ 
+ /// The throughput probe (--property throughput only), the one message
+-/// that is not the protocol's: am1's doneJobs just became 5 (tag
+-/// TAG_FIFTH, zero transit).
++/// that is not the protocol's, the harness Stop apart: am1's doneJobs
++/// just became 5 (tag TAG_FIFTH, zero transit).
+ #[derive(Clone, Debug, PartialEq)]
+ enum MonMsg {
+     Fifth,
+@@ -681,10 +726,14 @@ struct Running {
+     dline: u64,
+ }
+ 
+-/// A daemon: the Rebeca actor shape, one blocking receive loop over its
+-/// own timer and the AMs' reports, for ever. Its timer is a self-sent
+-/// Tick like any other message: a lost Tick stops the RM's clock for
+-/// good, and the RM then only reads reports.
++/// The Rebeca actor shape: one blocking receive loop over its own timer
++/// and the AMs' reports. Its timer is a self-sent Tick like any other
++/// message: a lost Tick stops the RM's clock for good, and the RM then
++/// only reads reports. The loop is bounded by what a run that loses
++/// nothing delivers to the RM: the H+1 ticks of its own timer chain and
++/// one report for every job it handed out. It leaves the loop when it
++/// has read them all; a lost Tick, RunJob or Update leaves it blocked
++/// at its receive.
+ fn resource_manager(p: Params, ams: Vec<ThreadId>) {
+     let me = thread::current().id();
+     let k = ams.len();
+@@ -698,7 +747,11 @@ fn resource_manager(p: Params, ams: Vec<ThreadId>) {
+ 
+     // Source: the constructor's `self.checkQueue()`, tick 0 at time 0.
+     traceforge::send_msg_timed(me, RmMsg::Tick, 0, 0);
+-    loop {
++    // Owed to the RM: ticks 0..=H (the chain re-arms while index < H, so
++    // `ticks` reaches H+1) and one Update per dispatched job, which is
++    // exactly the busy slots of `running` (nothing is dispatched after
++    // tick H, so that set only shrinks from then on).
++    while ticks <= p.horizon || running.iter().any(Option::is_some) {
+         match traceforge::recv_msg_block_timed::<RmMsg>() {
+             RmMsg::Tick => {
+                 let index = ticks;
+@@ -784,18 +837,34 @@ fn resource_manager(p: Params, ams: Vec<ThreadId>) {
+             }
+         }
+     }
++    // HARNESS: every obligation is met, nothing can reach the RM any more.
++    // Tell the last AM to stop; each AM forwards the Stop to the AM below
++    // it. Like every send it is lossy, and a lost Stop leaves the AMs
++    // after the loss blocked at their receive.
++    traceforge::send_msg(ams[k - 1], AmMsg::Stop);
+ }
+ 
+ // =====================================================================
+ // ApplicationMaster
+ // =====================================================================
+ 
+-/// A daemon: it reacts to every RunJob, for ever.
+-fn app_master(index: usize, p: Params, monitor: Option<ThreadId>) {
++/// It reacts to every RunJob. How many it gets depends on the completion
++/// times, so no count bounds the loop: it ends on the harness Stop, which
++/// it passes on to AM index-1 (`stop_to`, none for AM 0).
++fn app_master(index: usize, p: Params, monitor: Option<ThreadId>, stop_to: Option<ThreadId>) {
+     let mut done_jobs: u32 = 0;
+     let mut fifth_sent = false;
+     loop {
+-        let AmMsg::RunJob { job, dline, rm, .. } = traceforge::recv_msg_block_timed::<AmMsg>();
++        let (job, dline, rm) = match traceforge::recv_msg_block_timed::<AmMsg>() {
++            AmMsg::RunJob { job, dline, rm, .. } => (job, dline, rm),
++            AmMsg::Stop => {
++                // HARNESS: pass the Stop on to AM index-1, then leave.
++                if let Some(to) = stop_to {
++                    traceforge::send_msg(to, AmMsg::Stop);
++                }
++                break;
++            }
++        };
+         // Source: int completion = 2; //?(2, 5);
+         let completion = p.work.pick();
+         if completion > dline {
+@@ -869,6 +938,11 @@ const THREAD_EVENT_LIMIT: u32 = 1000;
+ ///          block (the receive that waits for ever, or a failed assert).
+ ///   AM:    begin + <= (H+1) jobs * (read, choice, sleep, send) + Fifth +
+ ///          the final block.
++/// A thread that ends instead of blocking has, in place of its final
++/// block, the Stop send and End (RM, one event more) or the Stop read,
++/// its forward and End (AM, two more). TraceForge stops the search only
++/// when a thread that already holds THREAD_EVENT_LIMIT + 1 events gets
++/// another, so every horizon accepted below still fits.
+ fn max_thread_events(ams: usize, horizon: u32) -> u64 {
+     let ticks = u64::from(horizon) + 1;
+     let k = ams as u64;
+@@ -920,16 +994,21 @@ fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
+             None
+         };
+         let monitor_id = monitor.as_ref().map(|h| h.thread().id());
+-        // The AMs and the RM are daemons: they react for ever and nobody
+-        // waits for them. Ids go through the spawn closures (the AMs
+-        // learn the RM's from RunJob), so every thread starts at time 0.
++        // The AMs and the RM are ordinary threads, each bounded as its
++        // function says; nobody needs to wait for them here. Ids go
++        // through the spawn closures (the AMs learn the RM's from
++        // RunJob), so every thread starts at time 0.
++        // HARNESS: the Stop chain runs from the last AM down to AM 0, so
++        // each AM is spawned knowing the id of the AM it forwards to (the
++        // one spawned before it) and the spawn order is the original one.
+         let mut am_ids: Vec<ThreadId> = Vec::new();
+         for i in 0..p.ams {
+             let m = if i == 0 { monitor_id } else { None };
+-            am_ids.push(thread::spawn_daemon(move || app_master(i, p, m)).thread().id());
++            let stop_to = am_ids.last().copied();
++            am_ids.push(thread::spawn(move || app_master(i, p, m, stop_to)).thread().id());
+         }
+-        thread::spawn_daemon(move || resource_manager(p, am_ids));
+-        // Only the monitor ends by itself (its one wait is finite).
++        thread::spawn(move || resource_manager(p, am_ids));
++        // The monitor ends by itself too (its one wait is finite).
+         if let Some(h) = monitor {
+             let _ = h.join();
+         }
+@@ -1035,11 +1114,10 @@ fn print_compare(p: Params, baseline: (Stats, Duration), timed: (Stats, Duration
+ fn warn_if_vacuous(label: &str, p: Params, stats: &Stats, c: Counts) {
+     if c.violations > 0 {
+         // Only reachable with --keep-going (otherwise the first violation
+-        // aborts). A failed assertion stops the RM or an AM, and that
+-        // execution is filed under `blocked` (nothing else blocks: the
+-        // reactors are daemons). The monitor's failed assertion is its
+-        // last step, so its thread still ends and the engine files that
+-        // execution under `execs`: for throughput read fifth=a/b.
++        // aborts). A failed assertion parks the RM, an AM or the monitor,
++        // and that execution is filed under `blocked`, as is one in which
++        // a lost message leaves the RM or an AM blocked at its receive.
++        // For throughput read fifth=a/b.
+         println!(
+             "VIOLATIONS ({label}): {} failed assertions counted (--keep-going continued past \
+              them; exit 0 here does NOT mean the property holds).",

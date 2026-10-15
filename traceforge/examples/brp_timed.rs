@@ -59,9 +59,11 @@
 //!     sleep; asserted at the probe); client: the one-file analogue of DKRT
 //!     Table 2 (1) and (2) on their Sec. 3.2 channels, the run ends with one
 //!     client in ok and the other in nok (see client_violation; refused for
-//!     more than one file). The client property relates both processes, so
-//!     S and R publish their observations and a monitor's on_stop judges it
-//!     once main has joined both; it waits for no message.
+//!     more than one file). The client property relates both processes: S
+//!     sends R a zero-transit SoutOk when SC enters ok (as the Probe does),
+//!     and R asserts on its own state when RC is in nok at that instant or at
+//!     its next z = TR. main also judges the observations of the runs in
+//!     which both processes end; a `join` is no message (see BOUND).
 //!
 //! DEVIATIONS FROM FIG. 4 (each harmless when T1 > 2 TD, DKRT's premise):
 //!   * Channels are TraceForge's unbounded lossy FIFO queues (DKRT Sec. 3.2),
@@ -93,11 +95,30 @@
 //! other (a lost timer is a receiver without a clock, and (4) then fails at
 //! S's next probe); they are now explored and judged. Under the receive
 //! discipline above R's wait cannot pass over its Timer for a later message
-//! (a frame, the Probe, Done), and R is never busy when its Timer arrives (it
+//! (a frame, the Probe), and R is never busy when its Timer arrives (it
 //! sleeps only right after reading the live one), so R's clock fails only when
-//! the Timer send itself is lost. R keeps running after Done until its pending
-//! timeout (its I_NOK is a client indication); Done travels on the frame
-//! channel with transit k*TD.
+//! the Timer send itself is lost.
+//!
+//! BOUND (since 2026-10-14; no Done, no Terminate). The model is bounded by
+//! rounds: S runs F files of n chunks with at most MAX resends per chunk, and
+//! R serves the same F files: it ends at the timeout z = TR that follows the
+//! last chunk (bN) of the last file (file F - 1). A run that loses and
+//! expires nothing ends every thread (each frame is read, so is each Timer it
+//! arms, and the live one is that timeout); a run that loses a frame R needs,
+//! or its last Timer, leaves R at its receive: blocked, a message was lost (in
+//! the baseline mode a timeout taken while an ack was readable is that ack
+//! lost on L, so S giving up before the last chunk is such a run).
+//! No message stops R and none carries a verdict: (2), (4) and the client
+//! property are asserted at R where they fail, main only joins. R's state
+//! after that timeout is the same whether a copy of the last chunk is still
+//! to come or not, so the bound does not read such a copy, nor a Probe that
+//! arrives after it. In timed mode no copy can arrive after it when
+//! TR >= MAX T1 + TD (a NOTE is printed below it) and a Probe that does finds
+//! R in new_file, so (2) and (4) are exact there (only probe_nontrivial_runs
+//! reads fewer runs). The baseline mode has no clock: R's Timer can fire
+//! before a copy still in transit and that copy is not read (62% to 82% of
+//! the (2) executions of the p2 cells tried; the violation is still found
+//! from the earlier timeouts).
 //!
 //! MODELS. `--model dkrt` is the above. `--model spin` is DKRT's App. C
 //! untimed Promela model: lines Line_K / Line_L deliver or tell S of a loss
@@ -109,7 +130,10 @@
 //! while their environment draws n per file.
 //!
 //! RESULTS. Re-measured 2026-10-13, after the first-arrival ruling (see
-//! "Receive discipline" under ENCODING), on this file as it stands: one
+//! "Receive discipline" under ENCODING), on the file before BOUND (it had
+//! Done and Terminate, so its counts include the loss branches of those two
+//! sends, and the tables below are not re-measured except where a bound
+//! column says so): one
 //! worker, counts with --keep-going, a certified witness from the same cell
 //! run without it (exit 101; the search is deterministic, the same witness on
 //! 30 repeats at TR 8, SYNC 8 to 11 and the T1 = 2 TD cell). The IMITATOR
@@ -121,19 +145,24 @@
 //! The 11 cells of the 2026-10-12 harness removal (MAX 1, TD 1, T1 3, k 1, one
 //! file), verdict and violating runs. old = HEAD 0cbe2c7 (timer drain, Probe
 //! `assume!`, earlier receive rule); 10-12 = this file with the earlier
-//! receive rule; now = this file:
-//!                                     old            10-12          now
-//!   (2) TR 8,  SYNC 13                VIOLATED 12    VIOLATED 8     VIOLATED 4
-//!   (2) TR 9,  SYNC 14                HOLDS          HOLDS          HOLDS
-//!   (2) TR 10, SYNC 15                HOLDS          HOLDS          HOLDS
-//!   (4) TR 11, SYNC 8                 VIOLATED 10    VIOLATED 464   VIOLATED 188
-//!   (4) TR 11, SYNC 9                 VIOLATED 10    VIOLATED 500   VIOLATED 188
-//!   (4) TR 11, SYNC 10                HOLDS          VIOLATED 464   VIOLATED 152
-//!   (4) TR 11, SYNC 11                HOLDS          VIOLATED 464   VIOLATED 152
-//!   client, T1 3, TR = SYNC = 11      HOLDS          HOLDS          HOLDS
-//!   client, T1 2, TR = SYNC = 7       VIOLATED 1     VIOLATED 1     VIOLATED 1
-//!   baseline, TR 9, SYNC 14, p2       VIOLATED 528   VIOLATED 186   VIOLATED 186
-//!   --model spin, 50 executions       HOLDS          HOLDS          HOLDS
+//! receive rule; now = the file before BOUND; bound = this file (2026-10-14):
+//!                                     old            10-12          now            bound
+//!   (2) TR 8,  SYNC 13                VIOLATED 12    VIOLATED 8     VIOLATED 4     VIOLATED 2
+//!   (2) TR 9,  SYNC 14                HOLDS          HOLDS          HOLDS          HOLDS
+//!   (2) TR 10, SYNC 15                HOLDS          HOLDS          HOLDS          HOLDS
+//!   (4) TR 11, SYNC 8                 VIOLATED 10    VIOLATED 464   VIOLATED 188   VIOLATED 94
+//!   (4) TR 11, SYNC 9                 VIOLATED 10    VIOLATED 500   VIOLATED 188   VIOLATED 94
+//!   (4) TR 11, SYNC 10                HOLDS          VIOLATED 464   VIOLATED 152   VIOLATED 76
+//!   (4) TR 11, SYNC 11                HOLDS          VIOLATED 464   VIOLATED 152   VIOLATED 76
+//!   client, T1 3, TR = SYNC = 11      HOLDS          HOLDS          HOLDS          HOLDS
+//!   client, T1 2, TR = SYNC = 7       VIOLATED 1     VIOLATED 1     VIOLATED 1     VIOLATED 1
+//!   baseline, TR 9, SYNC 14, p2       VIOLATED 528   VIOLATED 186   VIOLATED 186   VIOLATED 35
+//!   --model spin, 50 executions       HOLDS          HOLDS          HOLDS          HOLDS
+//! now to bound: the violating runs of (2) and (4) are half (the loss branch
+//! of Done repeated each of them: R parked at its assert, S still sent it),
+//! the client ones and the spin model's executions are the same, and the
+//! baseline's fall to 35 for the reason BOUND gives (116 of its 186 came
+//! after the bound, (186 - 116) / 2).
 //! Counts, old to now: the executions explored (completed + blocked) fall 2.8x
 //! to 3.2x in the timed cells (blocked 3.3x to 3.8x: no drains, no summaries,
 //! no passed-over arrivals), completed ones rise 1.2x to 2.4x, user CPU falls
@@ -279,25 +308,23 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use traceforge::monitor_types::*;
 use traceforge::thread::{self, ThreadId};
 use traceforge::{Config, ConsType, Stats, WaitTime};
-use traceforge_macros::monitor;
 
 // =====================================================================
 // Messages
 // =====================================================================
 
-/// `pub` because the client monitor's generated message enum wraps it.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Msg {
+enum Msg {
     /// Bootstrap from main, SPIN MODEL ONLY (untimed, transparent for
     /// timing). The DKRT model has none: R is spawned first and S last, so S
     /// captures R's id, and R learns S's from the `from` of the frames.
     Init { peer: ThreadId },
     /// Channel K, S -> R: F!(b1, bN, ab). `file` and `chunk` are ghost data
-    /// for the observations; no protocol decision reads them. `from` is S's
-    /// own address, the reply address of the ack (as in 3PC's Prepare).
+    /// for the observations; no protocol decision reads them (R's bound reads
+    /// `file`, see BOUND). `from` is S's own address, the reply address of the
+    /// ack (as in 3PC's Prepare).
     Frame { b1: bool, bn: bool, ab: bool, file: u32, chunk: u32, from: ThreadId },
     /// Channel L, R -> S. DKRT's ack carries no bit; `file` and `chunk` are
     /// ghost data (which frame R answered), read only by the observations.
@@ -310,8 +337,9 @@ pub enum Msg {
     /// Property (4) monitor: S at x = SYNC in state error, zero transit.
     /// `file` (ghost) is the file S just gave up.
     Probe { file: u32 },
-    /// S -> R after the last file: stop.
-    Done,
+    /// Property client: S -> R at the instant SC enters ok, zero transit.
+    /// Sent only when the client property is judged (see `client_check`).
+    SoutOk,
     /// DKRT App. C (Promela) model only: loss notification from a line to S,
     /// the SyncWait double handshake, and the end of the run.
     ChunkTimeout,
@@ -361,6 +389,8 @@ struct ReceiverObs {
     p2_tr_side: bool,
     p2_sync_side: bool,
     p4: bool,
+    /// The client property was found to fail at R (S's I_OK with RC in nok).
+    client: bool,
     /// The last indication the receiving client got.
     last_rout: Option<Rout>,
     frames: u32,
@@ -476,9 +506,9 @@ impl Params {
 }
 
 // =====================================================================
-// Counters. (2) and (4) are counted by R at the step where they fail (once
-// per run); the others by the monitor's on_stop, over the runs whose two
-// observations it saw.
+// Counters. (2), (4) and the client property are counted by R at the step
+// where they fail (once per run); the others by main's `judge`, over the runs
+// in which both processes ended.
 // =====================================================================
 
 static JUDGED: AtomicUsize = AtomicUsize::new(0);
@@ -528,7 +558,8 @@ fn count(flag: bool, c: &AtomicUsize) {
 // Sender S (Fig. 1 / Fig. 4) with its client SC
 // =====================================================================
 
-fn sender(p: Params, receiver: ThreadId) {
+/// Returns its observation: main reads it through `join` (no message).
+fn sender(p: Params, receiver: ThreadId) -> SenderObs {
     let me = thread::current().id();
     let mut obs = SenderObs::default();
     // Fig. 1: ab := 0 initially.
@@ -592,6 +623,9 @@ fn sender(p: Params, receiver: ThreadId) {
                 }
                 obs.ok += 1; // Sout I_OK
                 obs.last_sout = Some(Sout::Ok);
+                if p.property.checks_client(p.files) {
+                    traceforge::send_msg_timed(receiver, Msg::SoutOk, 0, 0);
+                }
                 break false;
             }
             // x == T1, rc == MAX: I_DK if i == n else I_NOK, x := 0, error.
@@ -615,12 +649,7 @@ fn sender(p: Params, receiver: ThreadId) {
         }
         failed_before |= failed;
     }
-    // Harness: after the last file, on the same FIFO channel as every frame.
-    // If it is lost R keeps waiting; the twin execution where it arrives is
-    // judged.
-    traceforge::send_msg_timed(receiver, Msg::Done, p.td(), p.td());
-    // Observation only: read by the monitor's on_stop.
-    traceforge::publish(obs);
+    obs
 }
 
 // =====================================================================
@@ -648,11 +677,14 @@ struct RState {
     /// Which ghost properties are asserted where they fail (the others are
     /// only counted).
     property: Property,
+    files: u32,
+    /// S's I_OK has reached R (property client).
+    sout_ok: bool,
     obs: ReceiverObs,
 }
 
 impl RState {
-    fn new(property: Property) -> Self {
+    fn new(property: Property, files: u32) -> Self {
         Self {
             loc: RLoc::NewFile,
             exp_ab: false,
@@ -662,7 +694,23 @@ impl RState {
             seen_any: false,
             last_reported_file: None,
             property,
+            files,
+            sout_ok: false,
             obs: ReceiverObs::default(),
+        }
+    }
+
+    /// Property client, asserted where it fails: SC in ok (S's SoutOk has
+    /// arrived) and RC in nok, checked at the SoutOk and at every z = TR. A
+    /// lost or expired SoutOk can only hide a violation in its run, as a lost
+    /// Probe does (its twin with the SoutOk read is explored).
+    fn client_check(&mut self) {
+        if self.sout_ok && self.obs.last_rout == Some(Rout::Nok) {
+            count(!self.obs.client, &CLIENT_RUNS);
+            self.obs.client = true;
+            if self.property.checks_client(self.files) {
+                traceforge::assert(false);
+            }
         }
     }
 
@@ -748,6 +796,7 @@ impl RState {
             self.obs.last_rout = Some(Rout::Nok);
         }
         self.loc = RLoc::NewFile;
+        self.client_check();
     }
 
     fn probe(&mut self, file: u32) {
@@ -767,6 +816,12 @@ impl RState {
 
     fn ack(&self) -> Msg {
         Msg::Ack { file: self.last_file, chunk: self.last_chunk }
+    }
+
+    /// R's bound (see BOUND in the header): the last frame K delivered is
+    /// the last chunk (bN) of the last of the `files` files.
+    fn took_last_chunk(&self, files: u32) -> bool {
+        self.rbn && self.last_file + 1 == files
     }
 }
 
@@ -820,39 +875,35 @@ impl Receiver {
     }
 }
 
-fn receiver(p: Params) {
+/// R serves the F files and ends at the timeout (z = TR) that follows the
+/// last chunk of the last file (see BOUND in the header); in a run that loses
+/// nothing every frame and every Timer it armed is read, so it ends there,
+/// with no message to stop it. A run that loses a frame it needs (or its last
+/// Timer) leaves R at this receive: that run is blocked. Returns its
+/// observation, which main reads through `join`.
+fn receiver(p: Params) -> ReceiverObs {
     let me = thread::current().id();
-    let mut r = Receiver { me, sender: None, p, st: RState::new(p.property), epoch: 0 };
+    let mut r = Receiver { me, sender: None, p, st: RState::new(p.property, p.files), epoch: 0 };
     loop {
         match traceforge::recv_msg_block_timed::<Msg>() {
             Msg::Frame { b1, bn, ab, file, chunk, from } => r.frame(b1, bn, ab, file, chunk, from),
             Msg::Timer { epoch } => {
                 if epoch == r.epoch && r.st.loc == RLoc::Idle {
                     r.timeout();
+                    if r.st.took_last_chunk(p.files) {
+                        break;
+                    }
                 }
             }
             Msg::Probe { file } => r.st.probe(file),
-            Msg::Done => break,
+            Msg::SoutOk => {
+                r.st.sout_ok = true;
+                r.st.client_check();
+            }
             m => panic!("receiver: unexpected {m:?}"),
         }
     }
-    // Nothing else can come on the S -> R channel after Done (FIFO), so R's
-    // remaining DKRT behaviour is its pending timeout (idle has invariant
-    // z <= TR): let it happen, since its I_NOK is a client indication. If
-    // that timer was lost, R waits here for ever (a run in which R has no
-    // clock; its client indication is then never given).
-    while r.st.loc == RLoc::Idle {
-        match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == me) {
-            Msg::Timer { epoch } => {
-                if epoch == r.epoch {
-                    r.timeout();
-                }
-            }
-            m => panic!("receiver after Done: unexpected {m:?}"),
-        }
-    }
-    // Observation only: read by the monitor's on_stop.
-    traceforge::publish(r.st.obs);
+    r.st.obs
 }
 
 // =====================================================================
@@ -865,7 +916,7 @@ fn receiver(p: Params) {
 // a double SyncWait handshake before a new file starts (assumption (A2)).
 // DKRT searched it with Spin (bitstate) and verified an optimized form exhaustively.
 
-fn spin_sender(p: Params, main_tid: ThreadId) {
+fn spin_sender(p: Params, main_tid: ThreadId) -> SenderObs {
     let (line_k, receiver) = match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
         Msg::Init { peer } => match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
             Msg::Init { peer: r } => (peer, r),
@@ -934,7 +985,7 @@ fn spin_sender(p: Params, main_tid: ThreadId) {
         failed_before |= failed;
     }
     traceforge::send_msg(line_k, Msg::Stop);
-    traceforge::publish(obs);
+    obs
 }
 
 /// Line_K (S -> R) or Line_L (R -> S): deliver, or lose and tell S.
@@ -963,7 +1014,7 @@ fn spin_line(main_tid: ThreadId) {
     }
 }
 
-fn spin_receiver(p: Params, main_tid: ThreadId) {
+fn spin_receiver(p: Params, main_tid: ThreadId) -> ReceiverObs {
     let (line_l, sender) = match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
         Msg::Init { peer } => match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s == main_tid) {
             Msg::Init { peer: s } => (peer, s),
@@ -971,7 +1022,7 @@ fn spin_receiver(p: Params, main_tid: ThreadId) {
         },
         m => panic!("spin receiver: expected Init, got {m:?}"),
     };
-    let mut st = RState::new(p.property);
+    let mut st = RState::new(p.property, p.files);
     loop {
         match traceforge::recv_tagged_msg_block_timed::<_, Msg>(move |s, _| s != main_tid) {
             Msg::Frame { b1, bn, ab, file, chunk, .. } => {
@@ -995,83 +1046,48 @@ fn spin_receiver(p: Params, main_tid: ThreadId) {
             m => panic!("spin receiver: unexpected {m:?}"),
         }
     }
-    traceforge::publish(st.obs);
+    st.obs
 }
 
 // =====================================================================
-// Harness: main spawns the processes; a monitor judges the client property
+// Harness: main spawns the processes and judges the client property
 // =====================================================================
 
-/// The client property relates S's and R's indications, so it has no single
-/// step to assert at. S and R `publish` their observations when they end,
-/// and this monitor's on_stop reads them once main has joined every process
-/// and terminated the monitor. The monitor accepts no message (its acceptor
-/// is a plain `fn` run on a Default instance, see three_pc_timed), so it
-/// adds no read to the exploration, and the verdict waits for no message
-/// that could be lost. It also tallies the counters that need both sides.
-#[monitor(Msg)]
-#[derive(Clone, Debug, Default)]
-struct ClientMonitor {
-    property: Option<Property>,
-    files: u32,
-}
-
-impl Acceptor<Msg> for ClientMonitor {
-    fn accept(&mut self, _who: ThreadId, _whom: ThreadId, _what: &Msg) -> bool {
-        false
-    }
-}
-
-impl Observer<Msg> for ClientMonitor {}
-
-impl Monitor for ClientMonitor {
-    fn on_stop(&mut self, end: &ExecutionEnd) -> MonitorResult {
-        // Judge only when main terminated the monitor, i.e. after it joined
-        // every process. The engine also calls on_stop when an execution
-        // ends with a thread waiting for a lost message (an Init, Done, a
-        // Timer, the Terminate itself); the observations are then
-        // incomplete, and the twin execution without that loss is judged.
-        if end.condition != EndCondition::MonitorTerminated {
-            return Ok(());
-        }
-        let so = end.get_published::<SenderObs>().into_values().next();
-        let ro = end.get_published::<ReceiverObs>().into_values().next();
-        let (Some(so), Some(ro)) = (so, ro) else {
-            return Ok(());
-        };
-        JUDGED.fetch_add(1, Ordering::Relaxed);
-        let client = client_violation(&so, &ro);
-        count(client, &CLIENT_RUNS);
-        count(so.nok + so.dk > 0, &FAILED_FILE_RUNS);
-        count(ro.timeouts > 0, &TIMEOUT_RUNS);
-        count(so.restart_after_fail, &RESTART_AFTER_FAIL_RUNS);
-        count(ro.first_safe_after_timeout > 0, &FIRST_SAFE_AFTER_TIMEOUT_RUNS);
-        count(ro.probes_nontrivial > 0, &PROBE_NONTRIVIAL_RUNS);
-        count(so.confused_acks > 0, &CONFUSED_RUNS);
-        let checks_client = self.property.map_or(false, |pr| pr.checks_client(self.files));
-        if checks_client && client {
-            ASSERT_FAIL_RUNS.fetch_add(1, Ordering::Relaxed);
-            return Err(format!(
-                "client: SC ended in {:?} and RC in {:?} for the same file",
-                so.last_sout, ro.last_rout
-            ));
-        }
-        Ok(())
+/// S and R return their observations when they end and main reads them
+/// through `join`, which is no message. A run in which a process cannot end
+/// (R waits for a frame or a Timer a run lost) is blocked at that join and is
+/// not judged here; the client property is asserted at R as well (see
+/// `client_check`), for it must also fail in those runs, where S ended in ok
+/// on a stale ack and R never got the last chunk. This also tallies the
+/// counters that need both sides.
+fn judge(p: &Params, so: &SenderObs, ro: &ReceiverObs) {
+    JUDGED.fetch_add(1, Ordering::Relaxed);
+    let client = client_violation(so, ro);
+    count(client, &CLIENT_RUNS);
+    count(so.nok + so.dk > 0, &FAILED_FILE_RUNS);
+    count(ro.timeouts > 0, &TIMEOUT_RUNS);
+    count(so.restart_after_fail, &RESTART_AFTER_FAIL_RUNS);
+    count(ro.first_safe_after_timeout > 0, &FIRST_SAFE_AFTER_TIMEOUT_RUNS);
+    count(ro.probes_nontrivial > 0, &PROBE_NONTRIVIAL_RUNS);
+    count(so.confused_acks > 0, &CONFUSED_RUNS);
+    if p.property.checks_client(p.files) && client {
+        // SC ended in ok and RC in nok (or the converse) for the same file.
+        ASSERT_FAIL_RUNS.fetch_add(1, Ordering::Relaxed);
+        traceforge::assert(false);
     }
 }
 
 fn run_once(p: Params) {
     let main_tid = thread::current().id();
-    // Spawned first, so it is registered before any protocol message exists.
-    let mon = start_monitor_client_monitor(ClientMonitor { property: Some(p.property), files: p.files });
-    match p.model {
+    let (so, ro) = match p.model {
         Model::Dkrt => {
             // No bootstrap message: R first, S last (S captures R's id).
             let r = thread::spawn(move || receiver(p));
             let rt = r.thread().id();
             let s = thread::spawn(move || sender(p, rt));
-            let _ = s.join();
-            let _ = r.join();
+            let so = s.join().unwrap();
+            let ro = r.join().unwrap();
+            (so, ro)
         }
         Model::Spin => {
             let s = thread::spawn(move || spin_sender(p, main_tid));
@@ -1083,17 +1099,15 @@ fn run_once(p: Params) {
                 traceforge::send_msg(to, Msg::Init { peer: a });
                 traceforge::send_msg(to, Msg::Init { peer: b });
             }
-            for h in [s, r, k, l] {
-                let _ = h.join();
-            }
+            let so = s.join().unwrap();
+            let ro = r.join().unwrap();
+            let _ = k.join();
+            let _ = l.join();
+            (so, ro)
         }
-    }
-    // Every process has ended: judge. Terminate is a message and may be
-    // lost; main then waits here, that execution goes unjudged, and its twin
-    // where Terminate arrives, identical up to this point, is judged.
-    terminate_monitor_client_monitor(mon.thread().id());
-    let verdict: MonitorResult = mon.join().unwrap();
-    traceforge::assert(verdict.is_ok());
+    };
+    // Every process has ended: judge.
+    judge(&p, &so, &ro);
 }
 
 fn build_config(mode: Mode, keep_going: bool, workers: usize) -> Config {
@@ -1166,7 +1180,7 @@ fn print_one(mode: Mode, p: &Params, stats: &Stats, dur: Duration) {
         if viol > 0 { "VIOLATED" } else { "HOLDS" },
     );
     if j == 0 && viol == 0 {
-        println!("WARNING: no execution reached the monitor's judgement and nothing failed: no data, not a hold.");
+        println!("WARNING: no execution reached the judgement and nothing failed: no data, not a hold.");
     }
     // The verdict comes from these counters, and the counters are raised by
     // PROGRAM code, which runs on every ending the search enumerates. Since
@@ -1208,6 +1222,17 @@ fn print_one(mode: Mode, p: &Params, stats: &Stats, dur: Duration) {
     }
     if p.model == Model::Dkrt && p.t1 <= 2 * p.td {
         println!("NOTE: T1 <= 2 TD: outside DKRT's one-place channel assumption; not comparable with their Fig. 4 model.");
+    }
+    if p.model == Model::Dkrt && mode == Mode::Baseline {
+        println!(
+            "NOTE: no clock: R's Timer can fire before a copy of the last chunk (or the Probe) still in transit, \
+             and R's bound (BOUND in the header) does not read it."
+        );
+    } else if p.model == Model::Dkrt && p.tr < p.max as u64 * p.t1 + p.td {
+        println!(
+            "NOTE: TR < MAX T1 + TD: a copy of the last chunk can reach R after the timeout its bound ends on \
+             (BOUND in the header); such runs are not read."
+        );
     }
 }
 

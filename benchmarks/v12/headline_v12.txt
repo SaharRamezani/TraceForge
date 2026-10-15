@@ -1,0 +1,18 @@
+abp      largest Must       ABP-file abp K=10 R=1 W=200 net=A[0,1] sd=0                          Must    811,270,077/          0/6093s(c16) | Mustard      236,194/         0/8.5s(c16) |     3,435x both 
+abp      largest reduction  ABP-file abp K=5 R=2 W=200 net=A[0,1] sd=0                           Must    264,784,815/          0/     4.8h | Mustard       56,022/         0/      22s |     4,726x both 
+brp      largest Must       BRP F=1 n=6 MAX=1 TD=1 T1=200 TR=403 SYNC=403 net=A (p2)             Must  1,260,206,952/ 39,940,668/2.3h(c16) | Mustard      398,145/         0/ 24s(c16) |     3,165x FLIP 
+brp      largest reduction  BRP F=1 n=2 MAX=5 TD=1 T1=200 TR=2003 SYNC=2003 net=A (p2)           Must    206,967,587/  1,446,477/2099s(c8) | Mustard       34,006/         0/ 3.3s(c8) |     6,086x FLIP 
+lease    largest Must       Lease C=2 R=6 net=A[0,1] sd=0 TTL=12000 PAUSE=11997                  Must    204,073,324/ 20,007,188/3334s(c16) | Mustard   22,802,036/         0/3049s(c16) |         9x FLIP 
+lease    largest reduction  Lease C=2 R=6 net=A[0,1] sd=0 TTL=12000 PAUSE=13000                  Must    204,073,324/ 20,007,188/3334s(c16) | Mustard          224/        16/0.3s(c16) |   911,042x both 
+lease_f  largest Must       Lease + fencing C=2 R=5 net=A[0,1] sd=0 TTL=12000 PAUSE=11998        Must     94,406,884/          0/     3.8h | Mustard    6,461,828/         0/     2.6h |        15x both 
+lease_f  largest reduction  Lease + fencing C=2 R=3 net=A[0,1] sd=0 TTL=12000 PAUSE=13000        Must        104,884/          0/      11s | Mustard          976/         0/     0.5s |       107x both 
+nisshi   largest Must       nisshi T=32 R=2 L=0 U=1 sd=0 W=30000 B=100 net=A (both)              Must     60,291,240/  2,123,872/2747s(c16) | Mustard      504,104/         0/393s(c16) |       120x FLIP 
+nisshi   largest reduction  nisshi T=2 R=5 L=0 U=1 sd=0 W=30000 B=100 net=A (both)               Must     58,985,415/  1,977,470/     3.1h | Mustard       29,348/         0/      28s |     2,010x FLIP 
+nrp      largest Must       NRP noopt R=4 M=3 H=1000 P=130 net=B[0,65] sd=0                      Must    314,788,770/ 31,083,976/2827s(c14) | Mustard    2,502,926/   221,668/149s(c14) |       126x both 
+nrp      largest reduction  NRP noopt R=4 M=3 H=1000 P=130 net=B[0,65] sd=0                      Must    314,788,770/ 31,083,976/2827s(c14) | Mustard    2,502,926/   221,668/149s(c14) |       126x both 
+retail   largest Must       Shop v2 C=2 N=2 R=5 S=20 D=29000 net=A[0,1] sd=0                     Must     15,012,496/ 14,754,448/    2263s | Mustard   10,253,688/ 9,995,640/     3.0h |         1x both 
+retail   largest reduction  Shop v2 C=3 N=2 R=2 S=20 D=29000 net=A[0,1] sd=0                     Must      1,026,848/  1,021,088/     128s | Mustard      546,072/   540,312/     341s |         2x both 
+swim     largest Must       SWIM N=3 R=7 timers=lan(Wp=500,Ws=4000) net=A[0,1] sd=0              Must    633,567,018/603,567,018/6129s(c16) | Mustard   39,478,033/36,732,890/1850s(c16) |        16x both 
+swim     largest reduction  SWIM N=3 R=7 timers=lan(Wp=500,Ws=4000) net=A[0,1] sd=0              Must    633,567,018/603,567,018/6129s(c16) | Mustard   39,478,033/36,732,890/1850s(c16) |        16x both 
+yarn     largest Must       YARN K=3 QS=4 DD=8 U=0 H=6 miss net=A-C                              Must    982,026,375/          0/2.8h(c16) | Mustard      100,833/         0/5.5s(c16) |     9,739x both 
+yarn     largest reduction  YARN K=2 QS=3 DD=8 U=0 H=11 miss net=A-C                             Must    793,245,760/  1,108,529/2.3h(c16) | Mustard       55,555/     1,448/3.8s(c16) |    14,279x both 

@@ -1,0 +1,16 @@
+% v11 rows (model units, 2026-10-14, one core) for the three protocols with no citable real-system numbers: sensor network, Chandra--Toueg, spanning tree.
+% Not part of the v12 regime campaign; the decision to keep, drop, or footnote Chandra--Toueg is still open (see CAVEATS.md).
+    \multicolumn{10}{l}{\emph{Sensor network} ($S$ sensors, $R$ check rounds, sensor period)} \\
+    \quad $S{=}1,R{=}2$ & 1 & 1 & 0 & 6\,603\,503 & 1\,619\,860 & 556 & 7\,228 & 1\,628 & 5.5 \\
+    \quad $S{=}2,R{=}1$, period $5U$ & 1 & 1 & 0 & 86\,101\,163 & 14\,707\,244 & 6\,278$^\dagger$ & 95\,215 & 16\,740 & 89 \\
+    \quad $S{=}1,R{=}3$ & 1 & 1 & 0 & -- & -- & $>$6\,055 & 198\,326 & 38\,710 & 276 \\
+    \midrule
+    \multicolumn{10}{l}{\emph{Chandra--Toueg} ($\Delta,\Phi$, timeout $to$, horizon $H$)} \\
+    \quad $\Delta{=}2,\Phi{=}4,to{=}13,H{=}18$ & 0 & 1 & 0 & 19\,906\,760 & 6\,368 & 986$^\dagger$ & 7\,017\,219 & 764 & 5\,668$^\dagger$ \\
+    \quad $\Delta{=}2,\Phi{=}2,to{=}7,H{=}19$ & 0 & 1 & 0 & 20\,838\,014 & 109\,448 & 1\,035$^\dagger$ & 4\,779\,384 & 8\,674 & 3\,796$^\dagger$ \\
+    \quad $\Delta{=}2,\Phi{=}4,to{=}13,H{=}19$ & 0 & 1 & 0 & 25\,463\,159 & 6\,368 & 1\,286$^\dagger$ & -- & -- & $>$7\,163 \\
+    \midrule
+    \multicolumn{10}{l}{\emph{Spanning tree} ($R$ root hellos, forward delay $F_d$)} \\
+    \quad lost hellos, $R{=}13,F_d{=}23$ & 0 & 1 & 0 & 10\,072\,126 & 1\,594\,323 & 683 & 2\,975\,906 & 12\,288 & 3\,844$^\dagger$ \\
+    \quad lost hellos, $R{=}13,F_d{=}24$ (vacuous) & 0 & 1 & 0 & 8\,485\,995 & 0 & 549 & 2\,971\,810 & 0 & 4\,168$^\dagger$ \\
+    \quad lost hellos, $R{=}15,F_d{=}28$ & 0 & 1 & 0 & 86\,062\,937 & 0 & 5\,984$^\dagger$ & -- & -- & $>$6\,052 \\

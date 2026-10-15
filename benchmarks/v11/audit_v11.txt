@@ -1,0 +1,6 @@
+results rows 1363, finished with TFSTATS 1247
+timing quality: {'clean': 1245, 'sibling hyper-thread busy 2% on average': 2}
+DNF rows 116; other non-finished: {}
+brain05 log flags (Large thread size / panicked): none
+brain10 log flags (Large thread size / panicked): none
+cells whose repetitions disagree on counts: none

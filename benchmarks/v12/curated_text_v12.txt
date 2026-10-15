@@ -1,0 +1,107 @@
+lease    Lease C=3 R=3 net=A[0,1] sd=0 TTL=12000 PAUSE=11997                    Must    49,206,872/ 11,603,400/       7627s | Mustard    5,680,040/         0/       8139s |       9x FLIP 
+lease    Lease C=3 R=3 net=A[0,1] sd=0 TTL=12000 PAUSE=11998                    Must    49,206,872/ 11,603,400/       7627s | Mustard    6,068,016/   330,744/       8711s |       8x both 
+lease    Lease C=4 R=2 net=A[0,1] sd=0 TTL=12000 PAUSE=11997                    Must    99,628,848/ 37,607,328/      14628s | Mustard   11,122,128/         0/      14243s |       9x FLIP 
+lease    Lease C=4 R=2 net=A[0,1] sd=0 TTL=12000 PAUSE=11998                    Must    99,628,848/ 37,607,328/      14628s | Mustard   11,787,624/   634,752/      15075s |       8x both 
+lease    Lease C=6 R=1 net=A[0,1] sd=0 TTL=12000 PAUSE=11997                    Must    85,157,536/ 51,560,640/      11258s | Mustard   13,504,576/         0/      12513s |       6x FLIP 
+lease    Lease C=6 R=1 net=A[0,1] sd=0 TTL=12000 PAUSE=11998                    Must    85,157,536/ 51,560,640/      11258s | Mustard   14,142,136/   637,560/      12974s |       6x both 
+lease    Lease C=2 R=6 net=A[0,1] sd=0 TTL=12000 PAUSE=11997                    Must   204,073,324/ 20,007,188/  3334s(c16) | Mustard   22,802,036/         0/  3049s(c16) |       9x FLIP 
+lease    Lease C=2 R=6 net=A[0,1] sd=0 TTL=12000 PAUSE=11998                    Must   204,073,324/ 20,007,188/  3334s(c16) | Mustard   24,589,098/ 1,108,432/   6650s(c8) |       8x both 
+lease    Lease C=2 R=5 net=C[0,200] sd=0 TTL=12000 PAUSE=11599                  Must    11,337,388/  1,111,508/       1756s | Mustard    1,956,698/         0/       2901s |       6x FLIP 
+lease    Lease C=2 R=5 net=C[0,200] sd=0 TTL=12000 PAUSE=11600                  Must    11,337,388/  1,111,508/       1756s | Mustard    2,049,066/    92,368/       3008s |       6x both 
+lease    Lease C=2 R=5 net=D[0,2500] sd=0 TTL=12000 PAUSE=6999                  Must    11,337,388/  1,111,508/       1756s | Mustard    1,956,698/         0/       3000s |       6x FLIP 
+lease    Lease C=2 R=5 net=D[0,2500] sd=0 TTL=12000 PAUSE=7000                  Must    11,337,388/  1,111,508/       1756s | Mustard    2,049,066/    92,368/       3144s |       6x both 
+lease    Lease C=2 R=6 net=D[0,2500] sd=0 TTL=12000 PAUSE=6999                  Must   204,073,324/ 20,007,188/  3334s(c16) | Mustard   23,480,666/         0/  5560s(c16) |       9x FLIP 
+lease    Lease C=2 R=6 net=D[0,2500] sd=0 TTL=12000 PAUSE=7000                  Must   204,073,324/ 20,007,188/  3334s(c16) | Mustard            -/         -/  queued/run |        - 
+lease    Lease C=3 R=3 net=A[0,1] sd=1 TTL=12000 PAUSE=11996                    Must    49,206,872/ 11,603,400/       7627s | Mustard    5,737,272/         0/       8000s |       9x FLIP 
+lease    Lease C=3 R=3 net=A[0,1] sd=1 TTL=12000 PAUSE=11997                    Must    49,206,872/ 11,603,400/       7627s | Mustard    6,068,016/   330,744/       8522s |       8x both 
+lease    Lease C=2 R=5 net=A[0,1] sd=1 TTL=12000 PAUSE=11996                    Must    11,337,388/  1,111,508/       1763s | Mustard    1,956,698/         0/       2861s |       6x FLIP 
+lease    Lease C=2 R=5 net=A[0,1] sd=1 TTL=12000 PAUSE=11997                    Must    11,337,388/  1,111,508/       1763s | Mustard    2,049,066/    92,368/       3066s |       6x both 
+lease    Lease C=2 R=5 net=D[0,2500] sd=2500 TTL=12000 PAUSE=4499               Must    11,337,388/  1,111,508/       1763s | Mustard   10,633,430/         0/      14373s |       1x FLIP 
+lease    Lease C=2 R=5 net=D[0,2500] sd=2500 TTL=12000 PAUSE=4500               Must    11,337,388/  1,111,508/       1763s | Mustard   11,047,158/   413,728/      15230s |       1x both 
+lease    Lease C=2 R=5 net=A[0,1] sd=0 TTL=60000 PAUSE=59998                    Must    11,337,388/  1,111,508/       1763s | Mustard    2,049,066/    92,368/       3017s |       6x both 
+lease    Lease C=2 R=3 net=E[0,90000] sd=0 TTL=12000 PAUSE=200                  Must        34,972/      3,428/        3.8s | Mustard       37,556/     3,580/         21s |       1x both 
+lease_f  Lease + fencing C=2 R=5 net=A[0,1] sd=0 TTL=12000 PAUSE=11998          Must    94,406,884/          0/      13660s | Mustard    6,461,828/         0/       9471s |      15x both 
+lease_f  Lease + fencing C=5 R=1 net=A[0,1] sd=0 TTL=12000 PAUSE=11998          Must    13,012,592/          0/       1356s | Mustard      577,328/         0/        415s |      23x both 
+lease_f  Lease + fencing C=5 R=1 net=D[0,2500] sd=0 TTL=12000 PAUSE=7000        Must    13,012,592/          0/       1356s | Mustard      577,328/         0/        411s |      23x both 
+swim     SWIM N=3 R=7 timers=lan(Wp=500,Ws=4000) net=A[0,1] sd=0                Must   633,567,018/603,567,018/  6129s(c16) | Mustard   39,478,033/36,732,890/  1850s(c16) |      16x both 
+swim     SWIM N=11 R=1 timers=lan(Wp=500,Ws=4000) net=A[0,1] sd=0               Must    37,939,862/ 37,290,312/       5553s | Mustard   23,320,437/22,769,302/      12600s |       2x both 
+swim     SWIM N=6 R=2 timers=lan(Wp=500,Ws=4000) net=A[0,1] sd=0                Must    14,228,178/ 13,870,962/       1572s | Mustard    5,442,270/ 5,247,432/       2514s |       3x both 
+swim     SWIM N=6 R=2 timers=wan(Wp=3000,Ws=30000) net=C[0,200] sd=0            Must    14,228,178/ 13,870,962/       1572s | Mustard    5,442,270/ 5,247,432/       2516s |       3x both 
+swim     SWIM N=6 R=2 timers=local(Wp=200,Ws=3000) net=D[0,2500] sd=0           Must    14,228,178/ 13,870,962/       1572s | Mustard   21,953,691/20,824,095/       8440s |       1x both 
+swim     SWIM N=3 R=5 timers=local(Wp=200,Ws=3000) net=D[0,2500] sd=0           Must     3,517,554/  3,217,554/        297s | Mustard    6,073,335/ 4,647,222/       2708s |       1x both 
+nrp      NRP nrp R=4 M=3 H=1000 P=2 net=A[0,1] sd=0                             Must   118,424,493/  3,538,558/       9251s | Mustard    1,492,721/    33,704/       1296s |      79x both 
+nrp      NRP noopt R=4 M=3 H=1000 P=2 net=A[0,1] sd=0                           Must   314,788,770/ 31,083,976/  2827s(c14) | Mustard    2,502,926/   221,668/   158s(c14) |     126x both 
+nrp      NRP leasing R=4 M=3 H=1000 P=2 net=A[0,1] sd=0                         Must   279,661,585/          0/   3192s(c8) | Mustard    2,257,525/         0/    236s(c8) |     124x both 
+nrp      NRP noopt R=4 M=3 H=10000 P=5000 net=D[0,2500] sd=0                    Must   314,788,770/ 31,083,976/  2827s(c14) | Mustard    6,484,980/   419,466/   459s(c14) |      49x both 
+nrp      NRP nrp R=4 M=3 H=10000 P=5000 net=D[0,2500] sd=0                      Must   118,424,493/  3,538,558/       9251s | Mustard    4,243,153/    64,314/       3721s |      28x both 
+nrp      NRP nrp R=4 M=3 H=1000 P=400 net=C[0,200] sd=0                         Must   118,424,493/  3,538,558/       9251s | Mustard    3,918,481/    64,314/       3312s |      30x both 
+nrp      NRP leasing R=4 M=3 H=10000 P=5000 net=D[0,2500] sd=0                  Must   279,661,585/          0/   3192s(c8) | Mustard    6,019,470/         0/    680s(c8) |      46x both 
+nrp      NRP nrp R=5 M=3 H=1000 P=2 net=A[0,1] sd=0                             Must             -/          -/  queued/run | Mustard  125,536,980/ 4,896,854/ 10460s(c16) |        - 
+nisshi   nisshi T=16 R=2 L=0 U=1 sd=0 W=30000 B=100 net=A (both)                Must     3,289,304/    168,880/       1145s | Mustard       71,192/         0/        244s |      46x FLIP 
+nisshi   nisshi T=32 R=2 L=0 U=1 sd=0 W=30000 B=100 net=A (both)                Must    60,291,240/  2,123,872/  2747s(c16) | Mustard      504,104/         0/   393s(c16) |     120x FLIP 
+nisshi   nisshi T=8 R=4 L=0 U=1 sd=0 W=30000 B=100 net=A (both)                 Must             -/          -/  >13478 (DN | Mustard      759,286/         0/       1629s |        - 
+nisshi   nisshi T=2 R=5 L=0 U=1 sd=0 W=30000 B=100 net=A (both)                 Must    58,985,415/  1,977,470/      11068s | Mustard       29,348/         0/         28s |   2,010x FLIP 
+nisshi   nisshi T=32 R=2 L=0 U=200 sd=0 W=30000 B=100 net=C (both)              Must    60,291,240/  2,123,872/  2747s(c16) | Mustard      504,104/         0/       5505s |     120x FLIP 
+nisshi   nisshi T=32 R=2 L=0 U=2500 sd=0 W=30000 B=100 net=D (both)             Must    60,291,240/  2,123,872/  2747s(c16) | Mustard      504,104/         0/       5392s |     120x FLIP 
+nisshi   nisshi T=2 R=8 L=0 U=1 sd=0 W=30000 B=100 net=A (both)                 Must             -/          -/  queued/run | Mustard    1,427,024/         0/       1954s |        - 
+nisshi   nisshi T=2 R=9 L=0 U=1 sd=0 W=30000 B=100 net=A (both)                 Must             -/          -/  queued/run | Mustard            -/         -/  >7734 (DNF |        - 
+nisshi   nisshi T=2 R=10 L=0 U=1 sd=0 W=30000 B=100 net=A (both)                Must             -/          -/  queued/run | Mustard   17,537,560/         0/  4843s(c16) |        - 
+nisshi   nisshi T=6 R=3 L=0 U=90000 sd=0 W=30000 B=100 net=E (both)             Must     4,007,641/    288,014/        924s | Mustard    2,416,521/   131,182/       3917s |       2x both 
+nisshi   nisshi T=8 R=2 L=0 U=90000 sd=0 W=30000 B=100 fix=epoch-bump net=E (bo Must       734,560/          0/        177s | Mustard      734,560/         0/       1350s |       1x both 
+abp      ABP-file abp K=4 R=2 W=200 net=A[0,1] sd=0                             Must     6,315,296/          0/        366s | Mustard        8,002/         0/        2.3s |     789x both 
+abp      ABP-file abp K=5 R=2 W=200 net=A[0,1] sd=0                             Must   264,784,815/          0/      17163s | Mustard       56,022/         0/         22s |   4,726x both 
+abp      ABP-file abp K=9 R=1 W=200 net=A[0,1] sd=0                             Must   118,362,706/          0/       8916s | Mustard       78,730/         0/         42s |   1,503x both 
+abp      ABP-file abp K=2 R=9 W=200 net=A[0,1] sd=0                             Must             -/          -/  queued/run | Mustard    3,141,634/         0/       2543s |        - 
+abp      ABP-file abp K=13 R=1 W=200 net=A[0,1] sd=0                            Must             -/          -/  queued/run | Mustard    6,377,290/         0/       5564s |        - 
+abp      ABP-file abp K=4 R=2 W=1000 net=C[0,200] sd=0                          Must     6,315,296/          0/        364s | Mustard        8,002/         0/        2.3s |     789x both 
+abp      ABP-file abp K=3 R=3 W=1000 net=D[0,2500] sd=0                         Must    20,391,072/          0/       1109s | Mustard   20,184,036/         0/      10283s |       1x both 
+par      ABP-file par K=5 R=2 W=2 net=A[0,1] sd=0                               Must    69,529,579/  3,109,929/       4379s | Mustard    1,955,414/    60,702/        840s |      36x both 
+par      ABP-file par K=5 R=2 W=3 net=A[0,1] sd=0                               Must    69,529,579/  3,109,929/       4379s | Mustard       56,022/         0/         21s |   1,241x FLIP 
+par      ABP-file par K=5 R=2 W=200 net=A[0,1] sd=0                             Must    69,529,579/  3,109,929/       4379s | Mustard       56,022/         0/         22s |   1,241x FLIP 
+par      ABP-file par K=4 R=3 W=200 net=A[0,1] sd=0                             Must   308,419,431/  6,150,740/      19416s | Mustard      159,106/         0/         67s |   1,938x FLIP 
+par      ABP-file par K=8 R=1 W=200 net=A[0,1] sd=0                             Must    31,925,127/  2,789,814/       2202s | Mustard       26,242/         0/         11s |   1,217x FLIP 
+par      ABP-file par K=6 R=1 W=400 net=C[0,200] sd=0                           Must       496,447/     35,874/         27s | Mustard      230,836/    16,999/         93s |       2x both 
+par      ABP-file par K=6 R=1 W=401 net=C[0,200] sd=0                           Must       496,447/     35,874/         27s | Mustard        2,914/         0/        0.8s |     170x FLIP 
+par      ABP-file par K=6 R=1 W=5000 net=D[0,2500] sd=0                         Must       496,447/     35,874/         27s | Mustard      230,836/    16,999/         93s |       2x both 
+par      ABP-file par K=6 R=1 W=5001 net=D[0,2500] sd=0                         Must       496,447/     35,874/         27s | Mustard        2,914/         0/        0.8s |     170x FLIP 
+par      ABP-file par K=8 R=1 W=200 net=C[0,200] sd=0                           Must    31,925,127/  2,789,814/   605s(c16) | Mustard   26,183,889/ 2,338,442/  2178s(c16) |       1x both 
+par      ABP-file par K=8 R=1 W=1000 net=C[0,200] sd=0                          Must    31,925,127/  2,789,814/       2202s | Mustard       26,242/         0/         11s |   1,217x FLIP 
+par      ABP-file par K=2 R=9 W=200 net=A[0,1] sd=0                             Must             -/          -/  queued/run | Mustard    3,141,634/         0/       2544s |        - 
+par      ABP-file par K=2 R=10 W=200 net=A[0,1] sd=0                            Must             -/          -/  queued/run | Mustard   12,574,722/         0/      11962s |        - 
+par      ABP-file par K=2 R=11 W=200 net=A[0,1] sd=0                            Must             -/          -/  queued/run | Mustard   50,315,266/         0/  4466s(c16) |        - 
+par      ABP-file par K=13 R=1 W=200 net=A[0,1] sd=0                            Must             -/          -/  queued/run | Mustard    6,377,290/         0/       5498s |        - 
+par      ABP-file par K=14 R=1 W=200 net=A[0,1] sd=0                            Must             -/          -/  queued/run | Mustard   19,131,874/         0/  1451s(c16) |        - 
+par      ABP-file par K=15 R=1 W=200 net=A[0,1] sd=0                            Must             -/          -/  queued/run | Mustard   57,395,626/         0/  4238s(c16) |        - 
+par      ABP-file par K=8 R=1 W=1000 net=D[0,2500] sd=0                         Must    31,925,127/  2,789,814/   605s(c16) | Mustard   31,925,127/ 2,789,814/  5609s(c16) |       1x both 
+brp      BRP F=1 n=3 MAX=2 TD=1 T1=1000 TR=4003 SYNC=4003 net=A (p2)            Must     3,311,730/     92,574/        182s | Mustard        7,968/         0/        4.2s |     416x FLIP 
+brp      BRP F=1 n=3 MAX=2 TD=1 T1=1000 TR=4003 SYNC=4003 net=A (p4)            Must    17,761,263/  6,908,822/       1271s | Mustard       12,191/     2,094/        8.4s |   1,457x both 
+brp      BRP F=1 n=5 MAX=1 TD=1 T1=200 TR=403 SYNC=403 net=A (p2)               Must    29,053,689/    959,143/       1966s | Mustard       47,749/         0/         35s |     608x FLIP 
+brp      BRP F=1 n=6 MAX=1 TD=1 T1=200 TR=403 SYNC=403 net=A (p2)               Must 1,260,206,952/ 39,940,668/  8172s(c16) | Mustard      398,145/         0/    24s(c16) |   3,165x FLIP 
+brp      BRP F=1 n=7 MAX=1 TD=1 T1=200 TR=403 SYNC=403 net=A (p2)               Must             -/          -/  queued/run | Mustard    3,317,887/         0/       4257s |        - 
+brp      BRP F=1 n=8 MAX=1 TD=1 T1=200 TR=403 SYNC=403 net=A (p2)               Must             -/          -/  queued/run | Mustard   27,646,841/         0/  2704s(c16) |        - 
+brp      BRP F=1 n=2 MAX=5 TD=1 T1=200 TR=2003 SYNC=2003 net=A (p2)             Must   206,967,587/  1,446,477/   2099s(c8) | Mustard       34,006/         0/    3.3s(c8) |   6,086x FLIP 
+brp      BRP F=1 n=2 MAX=8 TD=1 T1=200 TR=3203 SYNC=3203 net=A (p2)             Must             -/          -/  queued/run | Mustard    2,221,702/         0/       3060s |        - 
+brp      BRP F=1 n=2 MAX=9 TD=1 T1=200 TR=3603 SYNC=3603 net=A (p2)             Must             -/          -/  queued/run | Mustard    8,899,846/         0/      14342s |        - 
+brp      BRP F=1 n=3 MAX=2 TD=200 T1=200 TR=1400 SYNC=1400 net=C (p2)           Must     3,311,730/     92,574/        182s | Mustard      931,860/         0/        482s |       4x FLIP 
+brp      BRP F=1 n=3 MAX=2 TD=200 T1=200 TR=1400 SYNC=1400 net=C (p4)           Must    17,761,263/  6,908,822/       1271s | Mustard    1,312,615/   197,460/       1154s |      14x both 
+brp      BRP F=1 n=2 MAX=5 TD=2500 T1=1000 TR=17500 SYNC=17500 net=D (p2)       Must   206,967,587/  1,446,477/  1674s(c16) | Mustard   25,088,242/         0/  3224s(c16) |       8x FLIP 
+brp      BRP F=3 n=2 MAX=1 TD=200 T1=1000 TR=2600 SYNC=2600 net=C (p2)          Must             -/          -/  >11285 (DN | Mustard    3,244,777/         0/       3310s |        - 
+retail   Shop v2 C=2 N=2 R=4 S=20 D=29000 net=A[0,1] sd=0                       Must     1,038,352/  1,020,432/        141s | Mustard      709,432/   691,512/        580s |       1x both 
+retail   Shop v2 C=3 N=3 R=2 S=20 D=29000 net=B[0,65] sd=0                      Must     1,564,672/  1,558,912/        212s | Mustard      861,328/   855,568/        561s |       2x both 
+retail   Shop v2 C=3 N=3 R=2 S=20 D=29000 net=E[0,90000] sd=0                   Must     1,564,672/  1,558,912/        207s | Mustard    1,564,672/ 1,558,912/        858s |       1x both 
+yarn     YARN K=2 QS=3 DD=8 U=0 H=9 miss net=A-C                                Must    31,933,996/     45,689/       3164s | Mustard       14,385/       372/         11s |   2,220x both 
+yarn     YARN K=2 QS=3 DD=8 U=3 H=9 miss net=D                                  Must    31,933,996/     45,689/       3164s | Mustard       87,508/     5,077/         64s |     365x both 
+yarn     YARN K=2 QS=3 DD=8 U=0 H=10 late-report net=A-C                        Must   160,091,241/    496,450/   2508s(c8) | Mustard       29,515/         0/    3.8s(c8) |   5,424x FLIP 
+yarn     YARN K=2 QS=3 DD=8 U=0 H=10 miss net=A-C                               Must   159,156,296/    223,993/      17050s | Mustard       28,363/       732/         23s |   5,611x both 
+yarn     YARN K=2 QS=3 DD=8 U=0 H=10 preempt net=A-C                            Must   159,517,787/    158,922/   3140s(c7) | Mustard       29,043/       160/    3.5s(c7) |   5,492x both 
+yarn     YARN K=2 QS=3 DD=8 U=0 H=11 miss net=A-C                               Must   793,245,760/  1,108,529/  8185s(c16) | Mustard       55,555/     1,448/   3.8s(c16) |  14,279x both 
+yarn     YARN K=2 QS=3 DD=8 U=3 H=11 miss net=D                                 Must   793,245,760/  1,108,529/  8185s(c16) | Mustard      597,360/    30,349/    41s(c16) |   1,328x both 
+yarn     YARN K=2 QS=3 DD=8 U=3 H=15 miss net=D                                 Must             -/          -/  queued/run | Mustard   27,585,108/ 1,411,133/  2758s(c16) |        - 
+yarn     YARN K=2 QS=3 DD=8 U=0 H=17 miss net=A-C                               Must             -/          -/  queued/run | Mustard    3,081,303/    90,344/       5847s |        - 
+yarn     YARN K=2 QS=3 DD=8 U=0 H=18 miss net=A-C                               Must             -/          -/  queued/run | Mustard    6,004,023/   175,428/   839s(c16) |        - 
+yarn     YARN K=2 QS=3 DD=8 U=0 H=19 miss net=A-C                               Must             -/          -/  queued/run | Mustard   11,700,581/   343,368/  1742s(c16) |        - 
+yarn     YARN K=4 QS=5 DD=8 U=0 H=5 miss net=A-C                                Must             -/          -/  >10007 (DN | Mustard    1,988,993/         0/       1941s |        - 
+yarn     YARN K=4 QS=5 DD=8 U=0 H=6 miss net=A-C                                Must             -/          -/  queued/run | Mustard   14,731,889/         0/      17537s |        - 
+yarn     YARN K=1 QS=2 DD=7 U=0 H=24 preempt net=A-C                            Must    58,047,984/  1,286,129/       7389s | Mustard        6,391/       385/         11s |   9,083x both 
+yarn     YARN K=1 QS=2 DD=7 U=0 H=48 preempt net=A-C                            Must             -/          -/  queued/run | Mustard    1,072,159/    66,997/       7466s |        - 
+yarn     YARN K=1 QS=2 DD=7 U=0 H=52 preempt net=A-C                            Must             -/          -/  queued/run | Mustard    2,506,757/   156,681/  1342s(c16) |        - 

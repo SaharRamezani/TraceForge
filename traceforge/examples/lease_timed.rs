@@ -16,7 +16,8 @@
 //! pausing holder, all other clients never pause)
 //!
 //! Threads are long-lived (the three_pc_timed idiom): each is spawned
-//! once and loops over R rounds internally. Every round:
+//! once and loops over R rounds internally (the Storage over the C*R
+//! writes of the run). No thread is a daemon. Every round:
 //!
 //!   LockService ---- RoundStart{r} ----> every client
 //!   client i    ---- Acquire{i,r} ----> LockService    (tag ACQ)
@@ -50,7 +51,11 @@
 //! Release tag encodes the token (rel_tag), so a stale Release from an
 //! expired ex-holder, which stays in the mailbox forever, can never be
 //! confused for the current holder's Release, in any round. The
-//! Storage receives exactly C*R writes and always acks. RoundStart r+1
+//! Storage receives exactly C*R writes and always acks, then returns:
+//! every client writes once per round after its Grant (the pauser too,
+//! with an expired lease), so C*R is what a run with no lost or
+//! expired message delivers, and a thread ends blocked at a receive
+//! only because a message it needs was lost or expired. RoundStart r+1
 //! is broadcast only after every round-r lease is resolved, so rounds
 //! never overlap at the service; a round at the service is the direct
 //! analog of a 3PC round at the coordinator.
@@ -412,10 +417,13 @@ fn client(storage_tid: ThreadId, pause: u64, rounds: u32) {
 // Storage
 // =====================================================================
 
-fn storage(fencing: bool) {
+fn storage(fencing: bool, writes: u32) {
     let mut last_applied: u64 = 0;
-    loop {
-        // A reactor daemon: the run ends when no client can move.
+    // `writes` = C*R: every client writes exactly once per round, after
+    // reading its Grant (the pauser too, even when its lease expired),
+    // so a run in which no message is lost or expired delivers exactly
+    // this many writes. The Storage then returns.
+    for _ in 0..writes {
         let w: WMsg = traceforge::recv_msg_block_timed();
         if fencing && w.token < last_applied {
             // Fencing check: reject stale tokens. (Tokens are unique,
@@ -507,11 +515,13 @@ fn run(
     STALE_APPLIED.store(0, Ordering::Relaxed);
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
-        // No bootstrap message. Spawn order: the storage (a daemon reactor),
-        // then the clients (they capture its id), then the service last
-        // (it captures the client ids). The clients learn the service's
+        // No bootstrap message. Spawn order: the storage (an ordinary
+        // thread bounded to the C*R writes of a loss-free run), then the
+        // clients (they capture its id), then the service last (it
+        // captures the client ids). The clients learn the service's
         // address from the RoundStart they wait for.
-        let storage_tid = thread::spawn_daemon(move || storage(fencing)).thread().id();
+        let writes = num_clients * rounds;
+        let storage_tid = thread::spawn(move || storage(fencing, writes)).thread().id();
         let mut clients = Vec::new();
         for i in 0..num_clients {
             let pause = if i == 0 { b.pause } else { 0 };

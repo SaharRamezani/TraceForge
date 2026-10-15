@@ -1,0 +1,3 @@
+main rows lines 124 full rows lines 170
+125 lines; 1 patterns without a finished cell:
+    ^nisshi T=2 R=(8|9|10) L=0 U=1 sd=0 W=30000 B=100 net=A \(both\)$  (not finished: nisshi T=2 R=9 L=0 U=1 sd=0 W=30000 B=100 net=A (both))

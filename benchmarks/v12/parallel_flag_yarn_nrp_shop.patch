@@ -1,0 +1,180 @@
+--- a/traceforge/examples/yarn_scheduler_timed.rs
++++ b/traceforge/examples/yarn_scheduler_timed.rs
+@@ -951,10 +951,25 @@
+     rm.max(am)
+ }
+ 
++
++/// Exploration strategy chosen on the command line (`--parallel`): `none`
++/// (single-threaded, the default), `shared` (the shared work-queue pool,
++/// count-identical to sequential exploration) or `partitioned`.
++static PARALLEL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
++
++fn apply_parallel(builder: traceforge::ConfigBuilder) -> traceforge::ConfigBuilder {
++    match PARALLEL.get().map(|s| s.as_str()).unwrap_or("none") {
++        "none" => builder,
++        "shared" => builder.with_parallel(true),
++        "partitioned" => builder.with_partitioned_parallelization(true),
++        other => cli_bail(&format!("invalid --parallel: {other} (expected none|shared|partitioned)")),
++    }
++}
++
+ fn build_config(mode: Mode, p: Params, keep_going: bool) -> Config {
+-    let mut builder = Config::builder().with_all_sends_lossy()
++    let mut builder = apply_parallel(Config::builder().with_all_sends_lossy()
+         .with_progress_report(usize::MAX)
+-        .with_thread_threshold(THREAD_EVENT_LIMIT);
++        .with_thread_threshold(THREAD_EVENT_LIMIT));
+     if keep_going {
+         builder = builder.with_keep_going_after_error(true);
+     }
+@@ -1211,6 +1226,7 @@
+     sd: u64,
+     property: Property,
+     keep_going: bool,
++    parallel: String,
+ }
+ 
+ fn next_val(args: &mut std::env::Args, flag: &str) -> String {
+@@ -1238,6 +1254,7 @@
+         sd: 0,
+         property: Property::Miss,
+         keep_going: false,
++        parallel: String::from("none"),
+     };
+     let mut args = std::env::args();
+     args.next();
+@@ -1283,6 +1300,7 @@
+                 };
+             }
+             "--keep-going" => a.keep_going = true,
++            "--parallel" => a.parallel = next_val(&mut args, "--parallel"),
+             "--help" | "-h" => {
+                 eprintln!(
+                     "Usage: yarn_scheduler_timed [--mode baseline|timed|compare] [--ams K] \
+@@ -1309,6 +1327,7 @@
+ 
+ fn main() {
+     let a = parse_args();
++    PARALLEL.set(a.parallel.clone()).expect("PARALLEL set once");
+     if a.ams < 1 || a.ams > 4 {
+         cli_bail("--ams must be in 1..=4");
+     }
+--- a/traceforge/examples/nrp_failure_detector_timed.rs
++++ b/traceforge/examples/nrp_failure_detector_timed.rs
+@@ -1075,8 +1075,23 @@
+ // Verifier setup
+ // =====================================================================
+ 
++
++/// Exploration strategy chosen on the command line (`--parallel`): `none`
++/// (single-threaded, the default), `shared` (the shared work-queue pool,
++/// count-identical to sequential exploration) or `partitioned`.
++static PARALLEL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
++
++fn apply_parallel(builder: traceforge::ConfigBuilder) -> traceforge::ConfigBuilder {
++    match PARALLEL.get().map(|s| s.as_str()).unwrap_or("none") {
++        "none" => builder,
++        "shared" => builder.with_parallel(true),
++        "partitioned" => builder.with_partitioned_parallelization(true),
++        other => cli_bail(&format!("invalid --parallel: {other} (expected none|shared|partitioned)")),
++    }
++}
++
+ fn build_config(mode: Mode, p: &Params, keep_going: bool) -> Config {
+-    let mut builder = Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX);
++    let mut builder = apply_parallel(Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX));
+     if keep_going {
+         builder = builder.with_keep_going_after_error(true);
+     }
+@@ -1268,6 +1283,7 @@
+     pt_ratio: f64,
+     promote_rule: PromoteRule,
+     keep_going: bool,
++    parallel: String,
+ }
+ 
+ fn next_val(args: &mut std::env::Args, flag: &str) -> String {
+@@ -1301,6 +1317,7 @@
+         pt_ratio: DEFAULT_PT_RATIO,
+         promote_rule: PromoteRule::Takeover,
+         keep_going: false,
++        parallel: String::from("none"),
+     };
+     let mut args = std::env::args();
+     args.next();
+@@ -1343,6 +1360,7 @@
+                 }
+             }
+             "--keep-going" => a.keep_going = true,
++            "--parallel" => a.parallel = next_val(&mut args, "--parallel"),
+             "--help" | "-h" => {
+                 eprintln!(
+                     "Usage: nrp_failure_detector_timed [--mode baseline|timed] \
+@@ -1440,6 +1458,7 @@
+ 
+ fn main() {
+     let a = parse_args();
++    PARALLEL.set(a.parallel.clone()).expect("PARALLEL set once");
+     let p = params_from(&a);
+     let (mode, label) = match a.mode.as_str() {
+         "baseline" => (Mode::Baseline, "baseline"),
+--- a/traceforge/examples/retail_saga_timed.rs
++++ b/traceforge/examples/retail_saga_timed.rs
+@@ -1094,8 +1094,23 @@
+ // Verifier setup
+ // =====================================================================
+ 
++
++/// Exploration strategy chosen on the command line (`--parallel`): `none`
++/// (single-threaded, the default), `shared` (the shared work-queue pool,
++/// count-identical to sequential exploration) or `partitioned`.
++static PARALLEL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
++
++fn apply_parallel(builder: traceforge::ConfigBuilder) -> traceforge::ConfigBuilder {
++    match PARALLEL.get().map(|s| s.as_str()).unwrap_or("none") {
++        "none" => builder,
++        "shared" => builder.with_parallel(true),
++        "partitioned" => builder.with_partitioned_parallelization(true),
++        other => cli_bail(&format!("invalid --parallel: {other} (expected none|shared|partitioned)")),
++    }
++}
++
+ fn build_config(mode: Mode, b: Bounds, keep_going: bool) -> Config {
+-    let mut builder = Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX);
++    let mut builder = apply_parallel(Config::builder().with_all_sends_lossy().with_progress_report(usize::MAX));
+     if keep_going {
+         builder = builder.with_keep_going_after_error(true);
+     }
+@@ -1365,6 +1380,7 @@
+     sd_ratio: f64,
+     deadline_ratio: Option<f64>,
+     keep_going: bool,
++    parallel: String,
+ }
+ 
+ fn next_val(args: &mut std::env::Args, flag: &str) -> String {
+@@ -1396,6 +1412,7 @@
+         sd_ratio: DEFAULT_SD_RATIO,
+         deadline_ratio: None,
+         keep_going: false,
++        parallel: String::from("none"),
+     };
+     let mut args = std::env::args();
+     args.next();
+@@ -1438,6 +1455,7 @@
+                     Some(parse_num(next_val(&mut args, "--deadline-ratio"), "--deadline-ratio"))
+             }
+             "--keep-going" => a.keep_going = true,
++            "--parallel" => a.parallel = next_val(&mut args, "--parallel"),
+             "--help" | "-h" => {
+                 eprintln!(
+                     "Usage: retail_saga_timed [--mode baseline|timed|compare] \
+@@ -1462,6 +1480,7 @@
+ 
+ fn main() {
+     let a = parse_args();
++    PARALLEL.set(a.parallel.clone()).expect("PARALLEL set once");
+     let mut s = a.setup;
+     s.order_services = a.order_services.unwrap_or(match s.variant {
+         // Section 2 (Listing 2.5) has exactly one order service.

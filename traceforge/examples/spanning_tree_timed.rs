@@ -119,13 +119,18 @@
 //! id through its spawn closure), then A (which gets B's id and, in
 //! link-up, C's), and every receive selects by tag alone. Every bridge
 //! clock therefore starts at 0: the instant the cable comes up (link-up)
-//! or the start of observation (lost-hellos). A bridge that only reacts
-//! is a daemon thread with a blocking receive: B in both stories (a loop
-//! that never returns) and C in link-up (its first wait is blocking). A
-//! daemon that waits for ever does not make an execution blocked. The
-//! bridges that drive a run are ordinary threads and end by themselves:
-//! A, which sleeps and sends R hellos, and C in lost-hellos, which waits
-//! only finite times. `main` joins only those.
+//! or the start of observation (lost-hellos). Every bridge is an ordinary
+//! thread, and each ends by itself in a run in which no message it needs
+//! is lost or expired. A sleeps and sends R hellos. B only reacts, with R
+//! blocking receives, one per hello of the bounded root, and relays each
+//! (the root sends it exactly R, so a run without loss feeds it all R). C
+//! in link-up has no loop: a first blocking receive for the news or the
+//! notice and, after the news, one finite wait for the notice. C in
+//! lost-hellos waits only finite times. Apart from a failed assertion, a
+//! bridge therefore ends blocked only because a message it waits for was
+//! lost or expired (a root hello on its way to B, or, in link-up, the
+//! news and the notice together on their way to C). `main` joins A, and
+//! C in lost-hellos.
 //! Each point-to-point LAN is a direct channel between its two bridges;
 //! only the channels that carry news in the story exist.
 //!
@@ -203,7 +208,9 @@
 //! The root is bounded to R hellos (`--rounds`). A bounded root that has
 //! fallen silent must never be what closes a loop, and no message may
 //! announce the end of a run (it could be lost, and its loss would
-//! fabricate a loop). The bound is therefore local arithmetic.
+//! fabricate a loop). The bound is therefore local arithmetic. B is bounded
+//! on the same R: the root sends it exactly R hellos, so B ends after R
+//! receives and no hello it could still have read is cut off.
 //!
 //!   * link-up: the check happens at `Fd`, so the root must send every
 //!     hello the real root sends up to `Fd`, those at `P + i*H <= Fd`:
@@ -319,12 +326,13 @@
 //!     other: a dropped one left a bridge waiting for ever, and an Init
 //!     took up to U to arrive, so a bridge could start up to U late (in
 //!     the old link-up witness under Results, B and C read theirs at time
-//!     1). Ids now go through the spawn closures, reactive bridges are
-//!     daemons, and the end of a run is local arithmetic (see "The bound
-//!     of the run").
+//!     1). Ids now go through the spawn closures, B ends after the R
+//!     hellos the root sends, and the end of a run is local arithmetic
+//!     (see "The bound of the run").
 //!
 //! What is left that no bridge would do is the one probe of the link-up
-//! property and, in lost-hellos, the subtraction that bounds C's run.
+//! property, in lost-hellos the subtraction that bounds C's run, and B's
+//! count of R receives.
 //!
 //! ## Properties checked
 //!
@@ -451,15 +459,20 @@
 //! ("link-up MA 2" is `--max-age-ratio 2`, i.e. MA=2 Bd=4 Fd=6. The two
 //! vacuous holds print the NOTE of "The bound of the run".)
 //!
-//! Reading the new rows. Nothing can block in this version (A, and C in
-//! lost-hellos, never wait for ever; B, and C in link-up, are daemons), and
-//! under --keep-going a violating run is filed under execs as well,
-//! because C ends right after its failed assertion. So every explored
-//! ending is a complete execution, blocked is 0, and violations counts
-//! executions: in every cell it equals the engine's own count of failed
-//! assertions (one `task-N` line each, which in timed mode the engine
-//! prints only for an execution it certified), and no ending was judged
-//! timeline-impossible (the printed `impossible=` is 0 in every cell).
+//! Reading the new rows. They were measured when a reactive bridge left
+//! waiting for ever did not make an execution blocked, and with a violating
+//! run filed under execs as well (C ends right after its failed
+//! assertion). So the execs column counts every explored ending, blocked
+//! is 0, and violations counts executions: in every cell it equals the
+//! engine's own count of failed assertions (one `task-N` line each, which
+//! in timed mode the engine prints only for an execution it certified),
+//! and no ending was judged timeline-impossible (the printed `impossible=`
+//! is 0 in every cell). With every bridge an ordinary thread the same
+//! endings are split between the columns: execs + blocked of the current
+//! binary is the execs column here, `execs` keeps the endings in which
+//! every bridge ended and no assertion failed, and `blocked` holds the
+//! violating ones (TFSTATS `violating`) and those in which a message was
+//! lost or expired (see "Threads").
 //!
 //! What the first-arrival rule changed. It orders the reads of a receive
 //! that can take messages of two senders, and C's first receive in
@@ -526,8 +539,8 @@
 //! may also simply not be read in time (729 = 3^6).
 //!
 //! Further cells, new binary, the flags added to the command above; `v of
-//! n` = violating executions of all executions explored, timed / baseline
-//! (blocked = 0 and impossible = 0 in each; every FIRE confirmed by exit
+//! n` = violating executions of all executions explored (execs + blocked),
+//! timed / baseline (impossible = 0 in each; every FIRE confirmed by exit
 //! 101 without --keep-going). link-up:
 //!   --max-age-ratio 5 (R 7): 1,522 of 4,924 / 4,246 of 8,492. The old
 //!       binary holds this cell at its R = 1 and FIREs with --rounds 7
@@ -854,13 +867,14 @@ fn root_link_up(b: Bounds, rounds: u32, b_tid: ThreadId, c_tid: ThreadId) {
 /// Bridge B. Settled before the cable: root link B-C at distance 2, with
 /// C Designated on B-C. A's hello on A-B makes A-B its root link
 /// (distance 1) and B Designated on B-C, so B relays at once.
-/// Purely reactive, so a daemon: a blocking receive loop that never
-/// returns.
-fn bridge_b_link_up(c_tid: ThreadId) {
+/// Purely reactive: one blocking receive per hello, `rounds` of them, which
+/// is every hello the bounded root sends, and then it ends. If one of them
+/// is lost, B is left blocked at the receive that would have read it.
+fn bridge_b_link_up(c_tid: ThreadId, rounds: u32) {
     // What B last heard on B-C from C before the change.
     let heard_on_bc = Hello { root: ID_A, cost: 1, sender: ID_C, age: 0 };
     let mut dist: u32 = 2;
-    loop {
+    for _ in 0..rounds {
         match traceforge::recv_tagged_msg_block_timed::<_, Msg>(|_s, t| t == Some(TAG_ROOT_HELLO)) {
             Msg::Hello(h) => {
                 // Distance = 1 + best distance heard from a Designated
@@ -885,9 +899,10 @@ fn bridge_b_link_up(c_tid: ThreadId) {
 }
 
 /// Bridge C. Root link C-A at distance 1, Designated on B-C (so its B-C
-/// end forwards) until B's hello arrives. Reactive, so a daemon: if the
-/// news and the notice are both lost it waits for ever in its first
-/// receive, which is no blocked execution.
+/// end forwards) until B's hello arrives. Reactive, with no loop: a first
+/// blocking receive for the news or the notice, then after the news one
+/// finite wait for the notice, and it ends. If the news and the notice are
+/// both lost, C is left blocked in its first receive.
 fn bridge_c_link_up(b: Bounds) {
     let my_root = ID_A;
     let my_dist: u32 = 1;
@@ -965,10 +980,11 @@ fn root_steady(b: Bounds, rounds: u32, b_tid: ThreadId) {
 }
 
 /// Bridge B, Designated on B-C: relays every root hello it reads at once.
-/// Purely reactive, so a daemon: a blocking receive loop that never
-/// returns.
-fn bridge_b_steady(c_tid: ThreadId) {
-    loop {
+/// Purely reactive: one blocking receive per hello, `rounds` of them, which
+/// is every hello the bounded root sends, and then it ends. If one of them
+/// is lost, B is left blocked at the receive that would have read it.
+fn bridge_b_steady(c_tid: ThreadId, rounds: u32) {
+    for _ in 0..rounds {
         match traceforge::recv_tagged_msg_block_timed::<_, Msg>(|_s, t| t == Some(TAG_ROOT_HELLO)) {
             Msg::Hello(h) => {
                 traceforge::send_tagged_msg(
@@ -1128,13 +1144,14 @@ fn run(
     let start = Instant::now();
     // No bootstrap message: ids go through the spawn closures, so every
     // bridge clock starts at 0. Spawn order C, B, A: B needs C's id, A
-    // needs B's (and C's for the notice). Reactive bridges are daemons;
-    // main joins only the threads that always end.
+    // needs B's (and C's for the notice). Every bridge is an ordinary
+    // thread that ends by itself when no message is lost (B after the R
+    // hellos the root sends); main joins A, and C in lost-hellos.
     let stats = traceforge::verify(cfg, move || match scenario {
         Scenario::LinkUp => {
-            let hc = thread::spawn_daemon(move || bridge_c_link_up(b));
+            let hc = thread::spawn(move || bridge_c_link_up(b));
             let c_tid = hc.thread().id();
-            let hb = thread::spawn_daemon(move || bridge_b_link_up(c_tid));
+            let hb = thread::spawn(move || bridge_b_link_up(c_tid, rounds));
             let b_tid = hb.thread().id();
             let ha = thread::spawn(move || root_link_up(b, rounds, b_tid, c_tid));
             let _ = ha.join();
@@ -1142,7 +1159,7 @@ fn run(
         Scenario::LostHellos => {
             let hc = thread::spawn(move || bridge_c_steady(b, rounds));
             let c_tid = hc.thread().id();
-            let hb = thread::spawn_daemon(move || bridge_b_steady(c_tid));
+            let hb = thread::spawn(move || bridge_b_steady(c_tid, rounds));
             let b_tid = hb.thread().id();
             let ha = thread::spawn(move || root_steady(b, rounds, b_tid));
             let _ = ha.join();

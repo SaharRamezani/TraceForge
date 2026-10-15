@@ -1,0 +1,3 @@
+315 identical commands finished on both machines; counts identical in 315; differing 0
+wall ratio brain10/brain05 over 172 pairs with >= 5 s: median 1.024, min 0.858, max 1.124
+   quartiles: [0.968, 1.0, 1.024, 1.044, 1.079]

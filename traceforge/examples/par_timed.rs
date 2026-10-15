@@ -84,12 +84,22 @@
 //!   these bounds.
 //! * The assertion needs 4 messages to fail (message 2 lost and its place
 //!   taken by message 4), so K >= 4 is needed for a FIRE.
-//! * No harness message. The receiver is a daemon reactor spawned before
-//!   the sender, which captures its id; the receiver learns the sender's
-//!   address from the `from` of the frames. Until 2026-10-14 main sent an
-//!   Init to each and the sender a Done to the receiver; they were lossy
-//!   sends that only added blocked executions (and counted each violating
-//!   execution twice, once per fate of the Done).
+//! * No harness message, no daemon. The receiver is an ordinary thread
+//!   spawned before the sender, which captures its id; the receiver learns
+//!   the sender's address from the `from` of the frames. It is bounded on
+//!   deliveries, not on frames received: it returns after accepting K new
+//!   frames (the `rsn == esn` branch, after the MSGerr discard) and
+//!   acknowledging the last one. Unless a frame is lost, discarded or
+//!   expired, or the sender gives up, it terminates; a receiver left
+//!   waiting means one of these. Copies of message K that arrive after it
+//!   has returned are no longer acknowledged: a sender whose last ack was
+//!   lost gives up (gave_up) where the listing's receiver, which loops for
+//!   ever, would ack again. P1 fires only on a delivery and there are at
+//!   most K of them (accepted frames come from distinct, increasing
+//!   messages), so no violation depends on that tail. Until 2026-10-14
+//!   main sent an Init to each and the sender a Done to the receiver; they
+//!   were lossy sends that only added blocked executions (and counted each
+//!   violating execution twice, once per fate of the Done).
 //!
 //! Integer time: the listing is a discrete-time model, and TraceForge's
 //! timed engine uses integer instants, so the two share one time domain.
@@ -304,7 +314,10 @@ fn sender(p: Params, receiver: ThreadId) {
 fn receiver(p: Params) {
     let mut me: u8 = 1;
     let mut esn: u8 = 0;
-    loop {
+    // Bounded on deliveries (new frames accepted), not on frames received:
+    // retransmissions vary, the K deliveries of a run without loss do not.
+    let mut deliveries: u32 = 0;
+    while deliveries < p.messages {
         // W_f: B?mr,rsn
         let (mr, rsn, sender) = match traceforge::recv_msg_block_timed::<SMsg>() {
             SMsg::Frame { mt, sn, from } => (mt, sn, from),
@@ -326,6 +339,7 @@ fn receiver(p: Params) {
             }
             esn = 1 - esn;
             me = (me + 1) % MAX;
+            deliveries += 1;
         } else {
             DUPLICATES.fetch_add(1, Ordering::Relaxed);
         }
@@ -371,10 +385,11 @@ fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
     reset_counts();
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
-        // No bootstrap or release message: the receiver is a daemon reactor,
-        // spawned first; the sender is spawned last and captures its id. The
-        // receiver learns the sender's address from the frames.
-        let r = thread::spawn_daemon(move || receiver(p)).thread().id();
+        // No bootstrap or release message: the receiver is spawned first and
+        // ends after its K-th delivery; the sender is spawned last and
+        // captures its id. The receiver learns the sender's address from the
+        // frames.
+        let r = thread::spawn(move || receiver(p)).thread().id();
         let s = thread::spawn(move || sender(p, r));
         let _ = s.join();
     });

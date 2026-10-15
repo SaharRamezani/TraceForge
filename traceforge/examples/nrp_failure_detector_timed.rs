@@ -120,9 +120,10 @@
 //!
 //! ## How the protocol maps onto TraceForge
 //!
-//! Three threads, all daemons: reactive actors that never return, each a
-//! loop over ONE blocking timed receive that dispatches on the message,
-//! like a Rebeca message server. DCN1 and DCN2 run the node code of
+//! Three threads, none a daemon: reactive actors, each a loop over ONE
+//! blocking timed receive that dispatches on the message, like a Rebeca
+//! message server, and each leaving its loop on a bound of its own (see
+//! Termination). DCN1 and DCN2 run the node code of
 //! NRPFD.rebeca / LeasingNRPFD.rebeca. SW is the DCN1-side switch pair
 //! A1 + B1: the initial NRP (A1), the second NRP candidate (B1), forwarding
 //! and, for the leasing variant, the per-switch lease memory (`primary`,
@@ -159,29 +160,29 @@
 //! earlier one expire unread; that is not a behaviour of the semantics any
 //! more.) Handlers take no time and an actor does nothing but wait and
 //! handle, so a message that is not dropped is read at its arrival instant
-//! (with sd > 0, within sd of it) until the run ends: the only way a message
-//! is never read is that its send is dropped. This holds for pings,
-//! answers, heartbeats and new_NRP, and for the two timers as well, which
+//! (with sd > 0, within sd of it) unless its receiver has left its loop (see
+//! Termination): the only way a message that a thread waits for is never
+//! read is that its send is dropped. This holds for pings, answers,
+//! heartbeats and new_NRP, and for the two timers as well, which
 //! are lossy self-sends: a DCN whose Tick is dropped stops for good and
 //! keeps its role (each tick arms the next), one whose PingTimeout is
 //! dropped skips that round's decision. Those stopped clocks are among the
 //! explored executions.
 //!
-//! The run is bounded by a count, not by a message: each DCN handles R
-//! ticks (rounds 0..R-1) and arms nothing after the last one. When no
-//! message is left to read every actor sits in its receive and the
-//! execution is complete (daemons need not terminate). The bound cannot
-//! cause a FIRE. DCN2 decides for the last time at its last ping timer, at
-//! most at t2 + (R - 1)H + P (t2 its first tick). A longer run could show
-//! DCN1 in another role at t1 + R*H + P at the earliest: only a ping timer
-//! makes DCN1 step down, and that is the ping timer of the first round
-//! this run does not have. Since t2 - t1 = phase < H, the first instant is
-//! before the second, and whatever DCN1 would send in the missing rounds
-//! may be lost in the longer run too: every violating execution here is a
-//! prefix of a violating execution of every longer run. With sd > 0 a
-//! timer may be read up to sd late and the condition becomes
-//! phase + (R + 1)sd < H, which the CLI enforces. A hold, on the other
-//! hand, speaks for R rounds and nothing beyond.
+//! The run is bounded by a count, not by silence: each DCN handles R
+//! ticks (rounds 0..R-1) and arms nothing after the last one, and leaves its
+//! loop once it has read everything it armed or sent (see Termination). The
+//! bound cannot cause a FIRE. DCN2 decides for the last time at its last
+//! ping timer, at most at t2 + (R - 1)H + P (t2 its first tick). A longer
+//! run could show DCN1 in another role at t1 + R*H + P at the earliest:
+//! only a ping timer makes DCN1 step down, and that is the ping timer of
+//! the first round this run does not have. Since t2 - t1 = phase < H, the
+//! first instant is before the second, and whatever DCN1 would send in the
+//! missing rounds may be lost in the longer run too: every violating
+//! execution here is a prefix of a violating execution of every longer
+//! run. With sd > 0 a timer may be read up to sd late and the condition
+//! becomes phase + (R + 1)sd < H, which the CLI enforces. A hold, on the
+//! other hand, speaks for R rounds and nothing beyond.
 //!
 //! ## Deviations from the paper (deliberate)
 //!
@@ -304,8 +305,9 @@
 //! no sequence number, no drain, no Done, no Init, no EndOfRun, no monitor,
 //! no report and no scripted failure. Nothing is filtered and nothing is
 //! judged at the end of the run. What is left besides the protocol is one
-//! zero-transit probe (next section) and the outcome counters, which are
-//! observation only and are raised where their event happens.
+//! zero-transit probe (next section), two messages that only end the loops
+//! (Termination) and the outcome counters, which are observation only and
+//! are raised where their event happens.
 //!
 //! ## Property checked
 //!
@@ -332,23 +334,57 @@
 //! after every message that arrived before it, so a step-down that arrived
 //! before the promotion but is handled after it goes unseen. A violation
 //! can therefore be missed, never invented: a DCN1 that is PRIMARY when it
-//! reads the probe has been PRIMARY all along. The probe is the only
-//! message that is not protocol, and nothing else is judged: no collector,
-//! no report, no end-of-run check.
+//! reads the probe has been PRIMARY all along. DCN1 is there to read every
+//! probe: it leaves its loop only after DCN2's Finished, which follows the
+//! probe on the same channel (Termination). The probe is the only message
+//! that is judged, and nothing else is: no collector, no report, no
+//! end-of-run check.
 //!
-//! Reading the output. `execs` counts complete executions; `blocked` those
-//! that ended at the failed assertion (with --keep-going; nothing else
-//! blocks, because every actor is a daemon); `impossible` endings that
-//! admit no timeline. The other fields are event counts over all explored
-//! endings, raised by program code where the event happens (`dual` just
-//! before the assertion), so with `impossible` > 0 a non-zero `dual` is an
-//! upper bound and the binary says so. The verdict is the engine's: a run
-//! WITHOUT --keep-going that exits 101, in timed mode after printing the
-//! execution graph and a certified witness timeline. A hold with no
+//! Reading the output. `execs` counts complete executions, in which every
+//! thread terminated; `blocked` those in which a thread waits for ever for
+//! a message that was lost (see Termination), the ones that ended at the
+//! failed assertion (with --keep-going) among them; `impossible` endings
+//! that admit no timeline. The other fields are event counts over all
+//! explored endings, raised by program code where the event happens (`dual`
+//! just before the assertion), so with `impossible` > 0 a non-zero `dual`
+//! is an upper bound and the binary says so. The verdict is the engine's: a
+//! run WITHOUT --keep-going that exits 101, in timed mode after printing
+//! the execution graph and a certified witness timeline. A hold with no
 //! promotion, no takeover ping and no shortcut is a run too short for the
 //! backup to decide, and a leasing hold with lease_chances = 0 is one in
 //! which the lease could never have granted the role; the binary warns in
 //! both cases.
+//!
+//! ## Termination (since 2026-10-14)
+//!
+//! No thread is a daemon: each leaves its loop on a count of what it is
+//! owed, never on time and never on silence. A run in which no message is
+//! lost ends with all three threads terminated, and a thread ends blocked
+//! only because a message it still waits for was lost.
+//!   * A DCN leaves once its R-th Tick has been read and every PingTimeout
+//!     it armed and every PingReply to a ping it sent has been read. A lost
+//!     ping, answer or timer is therefore a DCN that waits for ever.
+//!   * DCN2 may promote at any of its ticks and ping timers, up to its last,
+//!     and DCN1 cannot see when that is. So DCN2, when it leaves, sends DCN1
+//!     one `Finished` (after any Promoted: one channel keeps send order),
+//!     and DCN1 leaves only when it has read it as well as everything it is
+//!     owed itself.
+//!   * SW cannot be bounded by a count: DCN1 sends it `Stop` when it leaves,
+//!     and SW leaves on reading it. By then no ping is outstanding (both
+//!     DCNs read every answer before leaving), everything DCN1 sent SW came
+//!     before `Stop` on its channel, and DCN2 has left. What SW may leave
+//!     unread, a heartbeat or new_NRP bound for DCN2 and, in the leasing
+//!     variant, DCN2's new_NRPBack, could only change an answer to a later
+//!     ping, and there is none.
+//! `Finished` and `Stop` are plain sends, lossy like every send, marked
+//! HARNESS in the code; nothing is judged on them. Their cost is executions:
+//! one that reaches `Finished` is explored in two ways (lost, delivered),
+//! one that also reaches `Stop` in three (`Finished` lost; delivered and
+//! `Stop` lost; both delivered), and a DCN parked at the failed assertion
+//! sends nothing. Where nothing fixes the arrival of `Finished` (baseline
+//! mode, or timed with L < U or sd > 0) DCN1 can in addition read it at
+//! several places among its other reads, which multiplies the delivered
+//! cases once more.
 //!
 //! ## CLI parameters (ratios are over U, like swim_timed)
 //!
@@ -424,6 +460,37 @@
 //! version noopt and leasing at R = 2 give the same counts as nrp at R = 2,
 //! 957 timed and 3,353 baseline. The first-arrival rule is a rule of the
 //! clock, so the baseline counts are not affected by it.)
+//!
+//! Bounded threads (2026-10-14, see Termination). Every execs / blocked / dual
+//! count above, and the Cost paragraph below, was measured with the daemon
+//! version of this file. The bounded version explores the same protocol
+//! behaviours (in each cell listed here the two controllers read the same
+//! messages in the same order, the violating ones included) and counts each
+//! execution once more for every way its termination messages can be lost
+//! or delivered; `blocked` is now every execution in which a thread waits
+//! for a lost message. With --keep-going, execs / blocked / violating:
+//!
+//!   mode      variant  R  daemons                       bounded
+//!   timed     nrp      1  38 / 0 / 0                     9 / 57 / 0
+//!   timed     nrp      2  957 / 0 / 0                    81 / 1,276 / 0
+//!   timed     nrp      3  24,642 / 1,078 / 1,078         729 / 31,773 / 2,156
+//!   timed     noopt    3  35,943 / 2,436 / 2,436         729 / 45,946 / 4,872
+//!   timed     leasing  3  35,751 / 0 / 0                 729 / 40,690 / 0
+//!   baseline  nrp      1  53 / 0 / 0                     56 / 137 / 0
+//!   baseline  nrp      2  3,353 / 0 / 0                  2,660 / 9,251 / 0
+//!   baseline  nrp      3  560,331 / 55,431 / 55,431      242,855 / 1,327,590 / 110,862
+//!
+//! Timed nrp at R = 3: of the 25,720 executions of the daemon version, 19,667
+//! lose a message that DCN2 waits for (they stay one), 5,324 reach Finished
+//! (two, the 1,078 violating ones among them: DCN1 is parked at the failed
+//! assertion and sends nothing more) and 729 reach Stop as well (three):
+//! 32,502 in all, the violating ones exactly twice. The 729 complete
+//! executions are the fates of the six heartbeats (lost on one leg, lost on
+//! the other, delivered: 3^6). In baseline mode DCN1 can read Finished at
+//! any place among its other reads, so a delivered case is multiplied by
+//! the number of places (R = 3: the 142,061 non-violating executions that
+//! reach Finished and not Stop give 413,542, the 76,623 that reach Stop give
+//! 242,855 with Stop lost and as many with Stop delivered).
 //!
 //! What changed, and why. In the old version exactly one execution reached
 //! the judgement in each timed cell, the one in which nothing is lost and
@@ -648,9 +715,17 @@ enum Body {
     /// DCN2 -> SW (leasing): new_NRPBack, the NRP records the new primary.
     NewNrpBack { net: usize },
     /// DCN2 -> DCN1, zero transit, sent at the instant DCN2 becomes PRIMARY:
-    /// the NoDualPrimary probe (the only message that is not protocol, see
-    /// Property checked).
+    /// the NoDualPrimary probe (the only message that is judged, see Property
+    /// checked).
     Promoted,
+    /// HARNESS: DCN2 -> DCN1, sent when DCN2 leaves its loop, after any
+    /// Promoted on the same channel. DCN1 leaves its loop only after reading
+    /// it, so that DCN1 is still there for every probe DCN2 can send (see
+    /// Termination).
+    Finished,
+    /// HARNESS: DCN1 -> SW, sent when DCN1 leaves its loop; SW leaves its loop
+    /// on reading it (see Termination).
+    Stop,
 }
 
 /// Every message: sender (DCN1, DCN2 or SW; the NRP's lease memory compares
@@ -727,7 +802,8 @@ fn recv() -> (usize, Body) {
 // Controller node (DCN1 starts PRIMARY, DCN2 starts BACKUP)
 // =====================================================================
 
-/// One controller, a daemon: one blocking receive loop for ever. `sw` is the
+/// One controller: one blocking receive loop, left once everything this
+/// controller armed or sent has been read (see Termination). `sw` is the
 /// switch pair, `peer` the other controller (DCN1 sends its heartbeats to
 /// DCN2, DCN2 sends its Promoted probe to DCN1).
 fn dcn(node: usize, p: Params, sw: ThreadId, peer: ThreadId) {
@@ -749,17 +825,32 @@ fn dcn(node: usize, p: Params, sw: ThreadId, peer: ThreadId) {
     let max = p.max_missed;
     // pingNRP: the packet names the thread to answer.
     let ping = |net: usize| Body::Ping { net, reply_to: me };
+    // What ends the loop (Termination): counts of what this controller is
+    // owed, not time. The Ticks still to be read, the PingTimeouts it armed
+    // and the PingReplies to the pings it sent (two per ping), and, for
+    // DCN1, DCN2's Finished.
+    let mut ticks_left = p.rounds;
+    let mut owed: u32 = 0;
+    let mut peer_finished = node != DCN1;
 
     send(&p, node, me, Leg::Exact(p.first_tick(node)), Body::Tick { k: 0 });
 
-    loop {
+    while ticks_left > 0 || owed > 0 || !peer_finished {
         let (from, body) = recv();
+        // Settle what this message was owed.
+        match body {
+            Body::Tick { .. } => ticks_left -= 1,
+            Body::PingTimeout | Body::PingReply { .. } => owed -= 1,
+            Body::Finished => peer_finished = true,
+            _ => {}
+        }
         match body {
             Body::Tick { k } => {
                 match role {
                     Role::Primary if node == DCN1 => {
                         // runMe, PRIMARY: ping the NRP, arm ping_timed_out.
                         ping_pending = true;
+                        owed += 2;
                         send(&p, node, sw, net_leg, ping(nrp_net));
                         send(&p, node, me, Leg::Exact(p.p), Body::PingTimeout);
                     }
@@ -784,6 +875,7 @@ fn dcn(node: usize, p: Params, sw: ThreadId, peer: ThreadId) {
                                 clamp(&mut missed, max);
                                 ping_pending = true;
                                 takeover_ping = true;
+                                owed += 2;
                                 TAKEOVER_PINGS.fetch_add(1, Ordering::Relaxed);
                                 send(&p, node, sw, net_leg, ping(nrp_net));
                                 send(&p, node, me, Leg::Exact(p.p), Body::PingTimeout);
@@ -794,6 +886,7 @@ fn dcn(node: usize, p: Params, sw: ThreadId, peer: ThreadId) {
                             if (nrp_net == NET_A && over_a) || (nrp_net == NET_B && over_b) {
                                 ping_pending = true;
                                 takeover_ping = false;
+                                owed += 2;
                                 send(&p, node, sw, net_leg, ping(nrp_net));
                                 send(&p, node, me, Leg::Exact(p.p), Body::PingTimeout);
                             }
@@ -804,7 +897,7 @@ fn dcn(node: usize, p: Params, sw: ThreadId, peer: ThreadId) {
                 }
                 // Next runMe (sent after the ping timer: firing order). The
                 // run is bounded by this count: after its last round a DCN
-                // arms nothing and only reacts to what is still in flight.
+                // arms nothing and only waits for what it is still owed.
                 if k + 1 < p.rounds {
                     send(&p, node, me, Leg::Exact(p.h), Body::Tick { k: k + 1 });
                 }
@@ -887,8 +980,20 @@ fn dcn(node: usize, p: Params, sw: ThreadId, peer: ThreadId) {
                 }
                 traceforge::assert(role != Role::Primary);
             }
+            // HARNESS: DCN2's termination message, settled above.
+            Body::Finished if node == DCN1 => {}
             m => panic!("DCN{node}: unexpected {m:?} from actor {from}"),
         }
+    }
+    // HARNESS: the termination messages, plain sends (lossy like every
+    // send) and the only messages that are neither protocol nor the probe.
+    // DCN2 tells DCN1, after any Promoted on their channel, that it decides
+    // nothing more; DCN1, having read that and everything it is owed itself,
+    // tells SW to leave (see Termination).
+    if node == DCN2 {
+        traceforge::send_msg(peer, Msg { from: node, body: Body::Finished });
+    } else {
+        traceforge::send_msg(sw, Msg { from: node, body: Body::Stop });
     }
 }
 
@@ -930,8 +1035,9 @@ fn promote(
 // SW: switches A1 (initial NRP) and B1 (second candidate)
 // =====================================================================
 
-/// The switch pair, a daemon: one blocking receive loop for ever. It knows no
-/// thread id: every packet carries the address it needs.
+/// The switch pair: one blocking receive loop, left on DCN1's Stop (see
+/// Termination). It knows no thread id: every packet carries the address it
+/// needs.
 fn switch(p: Params) {
     // Lease memory per NRP switch (LeasingNRPFD.rebeca Switch statevars).
     let mut primary: [Option<usize>; 2] = [Some(DCN1), None];
@@ -958,6 +1064,8 @@ fn switch(p: Params) {
                 send(&p, SW, to, Leg::Far, Body::NewNrp { net, to });
             }
             Body::NewNrpBack { net } => primary[net] = Some(from),
+            // HARNESS: DCN1's termination message.
+            Body::Stop => break,
             m => panic!("SW: unexpected {m:?} from actor {from}"),
         }
     }
@@ -999,15 +1107,17 @@ fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
     reset_counts();
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
-        // Three daemons and nothing else: `main` spawns and returns, joins
-        // nobody and sends nothing. The run ends when no actor can move
-        // (the DCNs arm no timer after their R-th round).
-        let sw = thread::spawn_daemon(move || switch(p)).thread().id();
-        thread::spawn_daemon(move || {
+        // Three threads and nothing else, none a daemon: `main` spawns and
+        // returns, joins nobody and sends nothing. Each thread leaves its
+        // loop on its own bound (see Termination), so a run in which no
+        // message is lost ends with all three terminated, and a thread waits
+        // for ever only for a message that was lost.
+        let sw = thread::spawn(move || switch(p)).thread().id();
+        thread::spawn(move || {
             // DCN1 spawns DCN2: each needs the other's id (heartbeats go to
             // DCN2, the probe to DCN1) and no message may carry them.
             let dcn1 = thread::current().id();
-            let dcn2 = thread::spawn_daemon(move || dcn(DCN2, p, sw, dcn1)).thread().id();
+            let dcn2 = thread::spawn(move || dcn(DCN2, p, sw, dcn1)).thread().id();
             dcn(DCN1, p, sw, dcn2)
         });
     });
@@ -1102,8 +1212,9 @@ fn warn_if_vacuous(label: &str, p: &Params, stats: &Stats, c: Counts) {
         return;
     }
     // A violating execution ends at its assertion and is filed under
-    // `block`; nothing else blocks here (every actor is a daemon). No
-    // complete execution and no violation is an empty run, not a hold.
+    // `block`, like every execution in which a thread waits for a lost
+    // message. No complete execution and no violation is an empty run, not
+    // a hold.
     if stats.execs == 0 {
         println!(
             "WARNING ({label}): 0 complete executions (blocked={}) and no violation: this run \

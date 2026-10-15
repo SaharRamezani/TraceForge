@@ -1,0 +1,28 @@
+1815 cells; 5044 finished runs, 14 DNF
+   ('abp', 'FLIP (Must violates, Mustard holds)') 102
+   ('abp', 'both hold') 138
+   ('abp', 'both violate') 93
+   ('abp', 'pending') 42
+   ('brp', 'FLIP (Must violates, Mustard holds)') 86
+   ('brp', 'both violate') 48
+   ('brp', 'pending') 14
+   ('lease', 'FLIP (Must violates, Mustard holds)') 315
+   ('lease', 'both violate') 341
+   ('lease', 'pending') 16
+   ('lease_f', 'both hold') 66
+   ('lease_f', 'pending') 2
+   ('nisshi', 'FLIP (Must violates, Mustard holds)') 39
+   ('nisshi', 'both hold') 11
+   ('nisshi', 'both violate') 12
+   ('nisshi', 'pending') 15
+   ('nrp', 'both hold') 26
+   ('nrp', 'both violate') 11
+   ('nrp', 'pending') 6
+   ('retail', 'both violate') 47
+   ('retail', 'pending') 2
+   ('swim', 'both violate') 286
+   ('swim', 'pending') 12
+   ('yarn', 'FLIP (Must violates, Mustard holds)') 2
+   ('yarn', 'both hold') 8
+   ('yarn', 'both violate') 32
+   ('yarn', 'pending') 43

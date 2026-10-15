@@ -43,12 +43,27 @@
 //! inc + 1) is exercised for real from round 2 on.
 //!
 //! There is no bootstrap or release message. The bystanders and the
-//! target are spawned first, as daemon actors, and the prober last, so
-//! it captures their ids at spawn; the target learns the prober's id
-//! from the `from` field of the Ping and Suspect it receives (the
-//! 3PC `Prepare { coord }` idiom), and the bystanders filter by
-//! message-kind tag, not by sender. The run ends when the prober has
-//! resolved all R periods.
+//! target are spawned first and the prober last, so it captures their
+//! ids at spawn; the target learns the prober's id from the `from`
+//! field of the Ping and Suspect it receives (the 3PC `Prepare {
+//! coord }` idiom), and the bystanders filter by message-kind tag, not
+//! by sender.
+//!
+//! No thread is a daemon: every thread ends in a run in which no
+//! message is lost or expires. The prober ends after its R periods.
+//! The target and the bystanders cannot be bounded by a count (a
+//! Suspect is sent only when a probe times out), so one HARNESS
+//! message ends each of them: after its last period the prober sends a
+//! Stop to the target, waits for the target to end (a join, not a
+//! message), sends a Stop to the first bystander, waits for it, and so
+//! on. The Stops come from the prober, so FIFO delivers each one after
+//! every Suspect the prober sent to that bystander, and a member leaves
+//! its loop on reading it. The Stop is lossy like every send: a lost
+//! Stop leaves its reader blocked, the prober blocked at the join, and
+//! the later Stops unsent, so a run that ends blocked without a failed
+//! assertion is a run in which a message was lost or expired. A
+//! prober that fails its assertion sends no Stop (the run is a
+//! violation).
 //!
 //! ## Deviations from the paper (deliberate, defect-first model)
 //!
@@ -257,6 +272,10 @@ fn suspect_tag(round: u32) -> u32 {
     round * TAG_KINDS + 3
 }
 
+/// HARNESS: tag of the Stop; kind 0, so that a bystander's idle wait
+/// matches it (the target's untagged wait matches any tag).
+const STOP_TAG: u32 = 0;
+
 /// Member-to-member protocol traffic.
 #[derive(Clone, Debug, PartialEq)]
 enum MMsg {
@@ -266,6 +285,8 @@ enum MMsg {
     Ack,
     Suspect { inc: u64, round: u32, from: ThreadId },
     Alive { inc: u64 },
+    /// HARNESS: end of run, sent by the prober to each reactor in turn.
+    Stop,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -323,7 +344,15 @@ impl Bounds {
 // Prober (member 0): drives the R protocol periods
 // =====================================================================
 
-fn prober(b: Bounds, rounds: u32, target: ThreadId, bystanders: Vec<ThreadId>) {
+fn prober(
+    b: Bounds,
+    rounds: u32,
+    target: ThreadId,
+    bystanders: Vec<ThreadId>,
+    // HARNESS: join handles of the target, then of the bystanders in
+    // spawn order (the order in which the Stops go out).
+    reactors: Vec<thread::JoinHandle<()>>,
+) {
     let me = thread::current_id();
 
     // The prober's current belief of the target's incarnation; rises
@@ -398,6 +427,26 @@ fn prober(b: Bounds, rounds: u32, target: ThreadId, bystanders: Vec<ThreadId>) {
             }
         }
     }
+
+    // HARNESS: end of run. After its last period and its last
+    // refutation wait the prober sends one Stop to each reactor, the
+    // target first. It joins a reactor before it sends the next Stop,
+    // so a reactor whose Stop was lost keeps the prober blocked and
+    // the later Stops are never sent: the fates of the Stops are
+    // dependent and the executions grow by one per reactor, not by a
+    // factor of two. The Stop comes from the prober, so FIFO orders it
+    // after the Suspects it sent to the same bystander.
+    let mut previous: Option<thread::JoinHandle<()>> = None;
+    for (member, handle) in std::iter::once(target)
+        .chain(bystanders.iter().copied())
+        .zip(reactors)
+    {
+        if let Some(p) = previous.take() {
+            let _ = p.join();
+        }
+        traceforge::send_tagged_msg(member, STOP_TAG, MMsg::Stop);
+        previous = Some(handle);
+    }
 }
 
 // =====================================================================
@@ -440,8 +489,10 @@ fn target(bystanders: Vec<ThreadId>) {
                     }
                 }
             }
+            // HARNESS: end of run.
+            MMsg::Stop => return,
             // Unreachable: only the prober sends to the target, and it
-            // sends only Ping and Suspect.
+            // sends only Ping, Suspect and Stop.
             m => panic!("target: unexpected {m:?}"),
         }
     }
@@ -457,7 +508,8 @@ fn bystander(b: Bounds) {
         // bystanders nothing in a healthy period). Only the prober's
         // Suspect carries the suspect kind of tag (the target's Alive
         // does not), and FIFO from the prober delivers Suspects in
-        // period order.
+        // period order. HARNESS: the Stop (kind 0 too) comes from the
+        // prober after its last Suspect, so FIFO delivers it last.
         match traceforge::recv_tagged_msg_block_timed::<_, MMsg>(move |_s, tag| {
             tag.is_some_and(|t| t % TAG_KINDS == 0)
         }) {
@@ -488,7 +540,10 @@ fn bystander(b: Bounds) {
                     return;
                 }
             }
-            // Unreachable: the prober sends bystanders only Suspect.
+            // HARNESS: end of run.
+            MMsg::Stop => return,
+            // Unreachable: the prober sends bystanders only Suspect and
+            // Stop.
             m => panic!("bystander: unexpected {m:?}"),
         }
     }
@@ -544,16 +599,23 @@ fn run(mode: Mode, nodes: u32, b: Bounds, rounds: u32, dot_out: Option<&str>, ke
     TARGET_CRASHED.store(false, Ordering::Relaxed);
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
-        // Reactive members are daemons, spawned before the prober so it
-        // captures their ids; no bootstrap or release message exists.
-        let by_ids: Vec<ThreadId> = (0..nodes.saturating_sub(2))
-            .map(|_| thread::spawn_daemon(move || bystander(b)).thread().id())
-            .collect();
-        let t_id = {
+        // Members are spawned before the prober so it captures their
+        // ids; no bootstrap or release message exists. No daemons: the
+        // prober also gets the join handles, target first (HARNESS).
+        let mut by_ids: Vec<ThreadId> = Vec::new();
+        let mut reactors = Vec::new();
+        for _ in 0..nodes.saturating_sub(2) {
+            let h = thread::spawn(move || bystander(b));
+            by_ids.push(h.thread().id());
+            reactors.push(h);
+        }
+        let t_handle = {
             let bys = by_ids.clone();
-            thread::spawn_daemon(move || target(bys)).thread().id()
+            thread::spawn(move || target(bys))
         };
-        let p = thread::spawn(move || prober(b, rounds, t_id, by_ids));
+        let t_id = t_handle.thread().id();
+        reactors.insert(0, t_handle);
+        let p = thread::spawn(move || prober(b, rounds, t_id, by_ids, reactors));
         let _ = p.join();
     });
     (stats, start.elapsed())

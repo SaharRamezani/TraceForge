@@ -92,7 +92,7 @@
 //! Threads (default 5 besides main). Main spawns the inventory, then the
 //! order services (each gets the inventory's id through its spawn
 //! closure), then the customers (each gets the services' ids), and joins
-//! the customers only:
+//! the customers only. No thread is a daemon:
 //!
 //!   Customer c (x C)        ordinary thread. Listing 4.2: R orders, one
 //!                           at a time; each order picks a product in
@@ -100,23 +100,36 @@
 //!                           ?(0,1) and ?(1,2)), then waits for the Reply
 //!                           on its own topic. It ends after its R-th
 //!                           Reply (or at a deadline, see Properties).
-//!   OrderService k (x N)    daemon thread, never ends. Listing 4.3 (v1)
-//!                           or 4.4 (v2): getMessage is a blocking
-//!                           receive for the next Order; while an order
-//!                           is open it reads ONLY from the inventory
-//!                           (and its own shipping message), so queued
-//!                           orders wait, exactly like the Kafka consumer
-//!                           that asks for the next message only after
-//!                           answering.
-//!   Inventory (x 1)         daemon thread, never ends. Listing 2.3 (v1)
-//!                           or 4.4 (v2); stock[p] = S.
+//!   OrderService k (x N)    ordinary thread. Listing 4.3 (v1) or 4.4
+//!                           (v2): getMessage is a blocking receive for
+//!                           the next Order; while an order is open it
+//!                           reads ONLY from the inventory (and its own
+//!                           shipping message), so queued orders wait,
+//!                           exactly like the Kafka consumer that asks
+//!                           for the next message only after answering.
+//!                           It ends after the orders it is owed.
+//!   Inventory (x 1)         ordinary thread. Listing 2.3 (v1) or 4.4
+//!                           (v2); stock[p] = S. It ends after the
+//!                           Checks and Confirms it is owed.
 //!
-//! A daemon may wait for ever without making an execution blocked, so
-//! the reactive actors need nobody to tell them that the run is over.
-//! The bound of the run is local: each customer counts its own R orders.
-//! An execution is complete when every customer has ended, and blocked
-//! when a customer waits for ever (or when the stock assertion has
-//! stopped the inventory).
+//! The bound of every thread is the count of messages that a run in which
+//! no message is lost delivers to it, so a thread that ends blocked is
+//! waiting for a message that was lost or expired. A customer ends after
+//! its R Replies. The inventory is owed one Check per order (C x R in all)
+//! and, in v1 and direct, one Confirm per approved order; how many orders
+//! are approved depends on the stock, so it keeps the approvals whose
+//! Confirm it has not handled yet, and ends when no Check is due and no
+//! approval is waiting for its Confirm. An order service is owed the
+//! orders of its customers: R for each customer c with c mod N = k under
+//! `--assign fixed` (or with one service). A Kafka service serves them
+//! one after the other; the direct service ends once it has read all of
+//! them and answered every one it has read. Under `--assign any` with
+//! two or more services the customer's own nondeterministic choice
+//! decides how many orders a service gets, which the service cannot
+//! know, so there main sends each service a HARNESS Terminate after
+//! joining the customers (see No harness). Without a failed assertion, an
+//! execution is complete when every thread has ended, and blocked when a
+//! thread waits for a message that was lost or expired.
 //!
 //! Message flow of one order (v1; v2 skips Confirm/Confirmed and takes
 //! the items inside Check):
@@ -224,8 +237,20 @@
 //!
 //! The file contains the protocol and nothing else: every message is an
 //! order, a stock request or an answer of the listings, and no code
-//! filters executions. Until 2026-10-13 it carried three pieces of
-//! verification harness:
+//! filters executions. The one exception is the Terminate that main sends
+//! to each service under `--assign any` with two or more services, whose
+//! order count no service can know (see the bound of the run): it is
+//! marked HARNESS in the code, is a plain lossy send, and filters
+//! nothing. In baseline mode it only adds blocked executions (the run in
+//! which it is lost). In timed mode a join does not advance main's
+//! clock, so it is sent at instant 0, arrives by U, and a service that
+//! has done work starts its last wait later than that: unless sd covers
+//! the gap it expires unread, which adds more blocked executions, and
+//! with L > 0 and a small sd no timeline lets a busy service read it, so
+//! the cell reports no complete execution (the 0-executions WARNING).
+//! Verdicts are not affected: a violating execution never reaches the
+//! send. Until 2026-10-13 the file carried three pieces of verification
+//! harness:
 //!
 //!   * Init messages (OsMsg::Init, CustMsg::Init), by which main told
 //!     every thread the ids it needed. Ids now travel through the spawn
@@ -236,9 +261,9 @@
 //!     the inventory, so that the reactive threads terminated and main
 //!     could join them. A lost Done left a service waiting for ever, and
 //!     the execution blocked although no shopper was waiting for
-//!     anything. The services and the inventory are now daemon threads
-//!     that serve for ever, and the run is bounded by each customer's own
-//!     count of R orders.
+//!     anything. The services and the inventory now end on the count of
+//!     messages that a run without a lost message delivers to them (see
+//!     the bound of the run), so only a lost message leaves one blocked.
 //!   * The timeout validation read (assume_reply_was_late). After its
 //!     deadline the customer made a BLOCKING read of the very Reply it
 //!     had been waiting for, so that a timeout counted only if that
@@ -277,15 +302,15 @@
 //!   Deadlock freedom (paper: "no deadlock"): without a deadline every
 //!       receive is blocking, as in the listings. A shopper whose Order,
 //!       Reply or any message in between is lost waits for ever, and the
-//!       execution ends blocked (the services and the inventory are
-//!       daemons, their waiting never counts). So blocked > 0 without a
-//!       deadline and without a violation is a deadlock: the binary
-//!       prints a DEADLOCK line and exits 3 (distinct from a hold's 0 and
-//!       a violation's 101), by the same rule in both modes. The paper's
-//!       claim is about Rebeca mailboxes, which lose nothing. Under
-//!       semantics that may lose any message, shoppers and services that
-//!       wait without a timeout cannot be deadlock free, and the DEADLOCK
-//!       verdict says exactly that.
+//!       execution ends blocked (so does the service or the inventory
+//!       that waits for the same lost message: no thread is a daemon).
+//!       So blocked > 0 without a deadline and without a violation is a
+//!       deadlock: the binary prints a DEADLOCK line and exits 3
+//!       (distinct from a hold's 0 and a violation's 101), by the same
+//!       rule in both modes. The paper's claim is about Rebeca mailboxes,
+//!       which lose nothing. Under semantics that may lose any message,
+//!       shoppers and services that wait without a timeout cannot be
+//!       deadlock free, and the DEADLOCK verdict says exactly that.
 //!
 //! ## Evidence counters and vacuity warnings
 //!
@@ -681,6 +706,12 @@ enum OsMsg {
     /// The folded arrangeDelivery / shippingIsScheduled round trip,
     /// self-addressed (see deviations).
     ShippingScheduled { customer: ThreadId },
+    /// HARNESS: not a message of the listings. Main sends one to each
+    /// service once every customer has ended, and only under `--assign
+    /// any` with two or more services, where no service knows how many
+    /// orders it is owed (see `service_quota`). The service leaves its
+    /// loop on reading it.
+    Terminate,
 }
 
 /// Everything the inventory receives.
@@ -806,6 +837,21 @@ fn shipping_round_trip(b: Bounds) -> (u64, u64) {
     (2 * b.l, 2 * b.u + b.sd)
 }
 
+/// Orders that a run without a lost message delivers to service `k`, and
+/// so the bound of its loop. Customer c uses service c mod N under
+/// `--assign fixed`, and every order goes to the one service when N = 1:
+/// R orders for each customer assigned to it. Under `--assign any` with
+/// two or more services the customer's own nondeterministic choice
+/// decides the count, which no service can know: None, and the service
+/// ends on the HARNESS Terminate that main sends it (see `run`).
+fn service_quota(s: Setup, k: usize) -> Option<usize> {
+    if s.assign == Assign::Any && s.order_services > 1 {
+        return None;
+    }
+    let customers = (0..s.customers).filter(|c| c % s.order_services == k).count();
+    Some(customers * s.rounds as usize)
+}
+
 // =====================================================================
 // Customer (Listings 2.1 and 4.2): an ordinary thread. It places R
 // orders, one at a time, and ends; main joins the customers only.
@@ -857,21 +903,25 @@ fn customer(index: usize, services: Vec<ThreadId>, s: Setup, b: Bounds) {
 }
 
 // =====================================================================
-// Order service, Kafka variants (Listings 4.3 and 4.4): a daemon. It
-// serves one order at a time, for ever. Its three inner waits (Status,
+// Order service, Kafka variants (Listings 4.3 and 4.4): an ordinary
+// thread. It serves one order at a time and ends after the `quota`
+// orders it is owed (service_quota). Its three inner waits (Status,
 // Confirmed, its own ShippingScheduled) are the listing's: they have no
 // timeout, so a service whose awaited message is lost stays in that
-// order for good and answers nobody any more.
+// order for good, blocked, and answers nobody any more.
 // =====================================================================
 
 fn read_inventory_reply(inv: ThreadId) -> OsMsg {
     traceforge::recv_tagged_msg_block_timed::<_, OsMsg>(move |snd, _| snd == inv)
 }
 
-fn kafka_order_service(inv: ThreadId, variant: Variant, b: Bounds) {
+fn kafka_order_service(inv: ThreadId, variant: Variant, b: Bounds, quota: Option<usize>) {
     let me = thread::current().id();
+    let mut served = 0usize;
 
-    loop {
+    // `quota` is None only under `--assign any` with two or more
+    // services: the loop then ends on the HARNESS Terminate below.
+    while quota.map_or(true, |q| served < q) {
         // getMessage(ORDER_TOPIC): the next order. Only customers write
         // to the order topic.
         match traceforge::recv_tagged_msg_block_timed::<_, OsMsg>(move |snd, _| {
@@ -909,7 +959,10 @@ fn kafka_order_service(inv: ThreadId, variant: Variant, b: Bounds) {
                 // getMessage(ORDER_TOPIC) at the top of the loop.
                 traceforge::send_msg(customer, CustMsg::Reply { success: available });
                 IN_FLIGHT_ORDERS.fetch_sub(1, Ordering::Relaxed);
+                served += 1;
             }
+            // HARNESS: termination message (see OsMsg::Terminate).
+            OsMsg::Terminate => break,
             // Unreachable: customers send only Orders.
             m => panic!("service: unexpected {m:?}"),
         }
@@ -917,19 +970,30 @@ fn kafka_order_service(inv: ThreadId, variant: Variant, b: Bounds) {
 }
 
 // =====================================================================
-// Order service, no broker (Listing 2.2): a daemon. It reacts to each
-// message as it arrives, for ever, and may have several orders open at
-// once.
+// Order service, no broker (Listing 2.2): an ordinary thread. It reacts
+// to each message as it arrives, may have several orders open at once,
+// and ends when it has read the `quota` orders it is owed
+// (service_quota) and answered every one of them.
 // =====================================================================
 
-fn direct_order_service(inv: ThreadId, b: Bounds) {
+fn direct_order_service(inv: ThreadId, b: Bounds, quota: Option<usize>) {
     let me = thread::current().id();
+    // Orders read so far, and orders read and not yet answered with a
+    // Reply (this service's own share of IN_FLIGHT_ORDERS).
+    let mut read = 0usize;
+    let mut open = 0usize;
 
-    loop {
+    // A lost Status, Confirmed or ShippingScheduled leaves its order open
+    // for good, so the thread stays blocked. `quota` is None only under
+    // `--assign any` with two or more services: the loop then ends on the
+    // HARNESS Terminate below.
+    while quota.map_or(true, |q| read < q) || open > 0 {
         match traceforge::recv_msg_block_timed::<OsMsg>() {
             OsMsg::Order { customer, product, qty } => {
                 // placeOrder
                 IN_FLIGHT_ORDERS.fetch_add(1, Ordering::Relaxed);
+                read += 1;
+                open += 1;
                 traceforge::send_msg(inv, InvMsg::Check { from: me, customer, product, qty });
             }
             OsMsg::Status { customer, available, product, qty } => {
@@ -939,6 +1003,7 @@ fn direct_order_service(inv: ThreadId, b: Bounds) {
                 } else {
                     traceforge::send_msg(customer, CustMsg::Reply { success: false });
                     IN_FLIGHT_ORDERS.fetch_sub(1, Ordering::Relaxed);
+                    open -= 1;
                 }
             }
             OsMsg::Confirmed { customer, .. } => {
@@ -950,13 +1015,18 @@ fn direct_order_service(inv: ThreadId, b: Bounds) {
                 // shippingIsScheduled: cu.delivered(true)
                 traceforge::send_msg(customer, CustMsg::Reply { success: true });
                 IN_FLIGHT_ORDERS.fetch_sub(1, Ordering::Relaxed);
+                open -= 1;
             }
+            // HARNESS: termination message (see OsMsg::Terminate).
+            OsMsg::Terminate => break,
         }
     }
 }
 
 // =====================================================================
-// Inventory (Listings 2.3 and 4.4): a daemon, it answers for ever.
+// Inventory (Listings 2.3 and 4.4): an ordinary thread. It answers until
+// every order has put its Check here and every approval has been taken
+// off the count by its Confirm.
 // =====================================================================
 
 /// stockLevel[product] -= qty, followed by the SafeStockLevel check.
@@ -972,13 +1042,20 @@ fn take_items(stock: &mut [i64], product: usize, qty: i64) {
 fn inventory(s: Setup) {
     let atomic = s.variant == Variant::V2;
     let mut stock = vec![s.stock; s.products];
-    // Evidence only: approvals given (Status true) whose Confirm has not
-    // been handled yet, per product. Always 0 in v2.
+    // Approvals given (Status true) whose Confirm has not been handled
+    // yet, per product. Always 0 in v2. Race evidence, and the Confirms
+    // this thread is still owed.
     let mut approved_not_taken = vec![0usize; s.products];
+    // Checks still due: every order of every customer puts one here.
+    let mut checks_due = s.customers * s.rounds as usize;
 
-    loop {
+    // Ends when no Check is due and no approval waits for its Confirm. A
+    // lost message leaves one of the two open for good, and the thread
+    // blocked.
+    while checks_due > 0 || approved_not_taken.iter().any(|&n| n > 0) {
         match traceforge::recv_msg_block_timed::<InvMsg>() {
             InvMsg::Check { from, customer, product, qty } => {
+                checks_due -= 1;
                 let others_open = IN_FLIGHT_ORDERS.load(Ordering::Relaxed) >= 2;
                 if others_open {
                     OVERLAP.fetch_add(1, Ordering::Relaxed);
@@ -1052,15 +1129,17 @@ fn run(mode: Mode, s: Setup, b: Bounds, keep_going: bool) -> (Stats, Duration) {
         IN_FLIGHT_ORDERS.store(0, Ordering::Relaxed);
         // Thread ids travel through the spawn closures: the inventory
         // first, then the services (they know the inventory), then the
-        // customers (they know the services). The inventory and the
-        // services are reactive daemons that never end; the customers
-        // end after their R orders, and main joins the customers only.
-        let inv = thread::spawn_daemon(move || inventory(s)).thread().id();
+        // customers (they know the services). No thread is a daemon: the
+        // customers end after their R orders, and the inventory and the
+        // services end on the orders they are owed (service_quota, and
+        // the inventory's own counts). Main joins the customers only.
+        let inv = thread::spawn(move || inventory(s)).thread().id();
         let mut services = Vec::new();
-        for _ in 0..s.order_services {
-            let service = thread::spawn_daemon(move || match s.variant {
-                Variant::Direct => direct_order_service(inv, b),
-                v => kafka_order_service(inv, v, b),
+        for k in 0..s.order_services {
+            let quota = service_quota(s, k);
+            let service = thread::spawn(move || match s.variant {
+                Variant::Direct => direct_order_service(inv, b, quota),
+                v => kafka_order_service(inv, v, b, quota),
             });
             services.push(service.thread().id());
         }
@@ -1071,6 +1150,17 @@ fn run(mode: Mode, s: Setup, b: Bounds, keep_going: bool) -> (Stats, Duration) {
         }
         for h in customers {
             let _ = h.join();
+        }
+        // HARNESS: a service without a quota (--assign any, two or more
+        // services) cannot know that the run is over, so main, after its
+        // last obligation (the joins above), tells each one. A plain
+        // send, lossy like every send: a service whose Terminate is lost
+        // stays blocked. Main's clock is still 0 here (a join does not
+        // advance it), see No harness in the header.
+        if service_quota(s, 0).is_none() {
+            for &service in &services {
+                traceforge::send_msg(service, OsMsg::Terminate);
+            }
         }
     });
     (stats, start.elapsed())

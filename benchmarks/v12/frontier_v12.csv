@@ -1,0 +1,152 @@
+family,net,L,U,sd,config,must_exec,must_viol,must_time_s,must_cores,mustard_exec,mustard_viol,mustard_time_s,mustard_cores,verdict,label
+lease,A,0,1,0,"C=4,R=2, p=11,997 (b-1)",99628848,37607328,14628.28,1,11122128,0,14242.91,1,"FLIP (Must violates, Mustard holds)","Lease C=4 R=2 net=A[0,1] sd=0 TTL=12000 PAUSE=11997"
+lease,A,0,1,0,"C=4,R=2, p=11,998 (b)",99628848,37607328,14628.28,1,11787624,634752,15075.34,1,both violate,"Lease C=4 R=2 net=A[0,1] sd=0 TTL=12000 PAUSE=11998"
+lease,A,0,1,0,"C=2,R=5, TTL 60,s, p=59,998 (b)",11337388,1111508,1763.03,1,2049066,92368,3017.41,1,both violate,"Lease C=2 R=5 net=A[0,1] sd=0 TTL=60000 PAUSE=59998"
+lease,A,0,1,1,"C=3,R=3, p=11,996 (b-1)",49206872,11603400,7626.69,1,5737272,0,7999.6,1,"FLIP (Must violates, Mustard holds)","Lease C=3 R=3 net=A[0,1] sd=1 TTL=12000 PAUSE=11996"
+lease,A,0,1,1,"C=3,R=3, p=11,997 (b)",49206872,11603400,7626.69,1,6068016,330744,8521.84,1,both violate,"Lease C=3 R=3 net=A[0,1] sd=1 TTL=12000 PAUSE=11997"
+lease,A,0,1,1,"C=2,R=3, TTL 60,s, p=59,996 (b-1)",34972,3428,3.8,1,13562,0,8.63,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=A[0,1] sd=1 TTL=60000 PAUSE=59996"
+lease,A,0,1,1,"C=2,R=3, TTL 60,s, p=59,997 (b)",34972,3428,3.8,1,14202,640,9.09,1,both violate,"Lease C=2 R=3 net=A[0,1] sd=1 TTL=60000 PAUSE=59997"
+lease,B,0,65,0,"C=2,R=3, p=11,869 (b-1)",34972,3428,3.77,1,13562,0,8.7,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=B[0,65] sd=0 TTL=12000 PAUSE=11869"
+lease,B,0,65,0,"C=2,R=3, p=11,870 (b)",34972,3428,3.77,1,14202,640,9.17,1,both violate,"Lease C=2 R=3 net=B[0,65] sd=0 TTL=12000 PAUSE=11870"
+lease,B,0,65,0,"C=2,R=3, TTL 60,s, p=59,869 (b-1)",34972,3428,3.8,1,13562,0,8.53,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=B[0,65] sd=0 TTL=60000 PAUSE=59869"
+lease,B,0,65,0,"C=2,R=3, TTL 60,s, p=59,870 (b)",34972,3428,3.8,1,14202,640,8.96,1,both violate,"Lease C=2 R=3 net=B[0,65] sd=0 TTL=60000 PAUSE=59870"
+lease,B,0,65,65,"C=2,R=3, p=11,804 (b-1)",34972,3428,3.8,1,13562,0,8.66,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=B[0,65] sd=65 TTL=12000 PAUSE=11804"
+lease,B,0,65,65,"C=2,R=3, p=11,805 (b)",34972,3428,3.8,1,14202,640,9.13,1,both violate,"Lease C=2 R=3 net=B[0,65] sd=65 TTL=12000 PAUSE=11805"
+lease,B,0,65,65,"C=2,R=3, TTL 60,s, p=59,804 (b-1)",34972,3428,3.8,1,13562,0,8.75,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=B[0,65] sd=65 TTL=60000 PAUSE=59804"
+lease,B,0,65,65,"C=2,R=3, TTL 60,s, p=59,805 (b)",34972,3428,3.8,1,14202,640,9.13,1,both violate,"Lease C=2 R=3 net=B[0,65] sd=65 TTL=60000 PAUSE=59805"
+lease,Bp,14,65,0,"C=2,R=3, p=11,897 (b-1)",34972,3428,3.77,1,13562,0,10.14,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=Bp[14,65] sd=0 TTL=12000 PAUSE=11897"
+lease,Bp,14,65,0,"C=2,R=3, p=11,898 (b)",34972,3428,3.77,1,14202,640,10.62,1,both violate,"Lease C=2 R=3 net=Bp[14,65] sd=0 TTL=12000 PAUSE=11898"
+lease,Bp,14,65,0,"C=2,R=3, TTL 60,s, p=59,897 (b-1)",34972,3428,3.8,1,13562,0,10.12,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=Bp[14,65] sd=0 TTL=60000 PAUSE=59897"
+lease,Bp,14,65,0,"C=2,R=3, TTL 60,s, p=59,898 (b)",34972,3428,3.8,1,14202,640,10.75,1,both violate,"Lease C=2 R=3 net=Bp[14,65] sd=0 TTL=60000 PAUSE=59898"
+lease,Bp,14,65,65,"C=2,R=3, p=11,832 (b-1)",34972,3428,3.8,1,13562,0,10.21,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=Bp[14,65] sd=65 TTL=12000 PAUSE=11832"
+lease,Bp,14,65,65,"C=2,R=3, p=11,833 (b)",34972,3428,3.8,1,14202,640,10.78,1,both violate,"Lease C=2 R=3 net=Bp[14,65] sd=65 TTL=12000 PAUSE=11833"
+lease,Bp,14,65,65,"C=2,R=3, TTL 60,s, p=59,832 (b-1)",34972,3428,3.8,1,13562,0,10.2,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=Bp[14,65] sd=65 TTL=60000 PAUSE=59832"
+lease,Bp,14,65,65,"C=2,R=3, TTL 60,s, p=59,833 (b)",34972,3428,3.8,1,14202,640,10.8,1,both violate,"Lease C=2 R=3 net=Bp[14,65] sd=65 TTL=60000 PAUSE=59833"
+lease,C,0,200,0,"C=6,R=1, p=11,599 (b-1)",85157536,51560640,11258.42,1,13504576,0,12530.32,1,"FLIP (Must violates, Mustard holds)","Lease C=6 R=1 net=C[0,200] sd=0 TTL=12000 PAUSE=11599"
+lease,C,0,200,0,"C=6,R=1, p=11,600 (b)",85157536,51560640,11258.42,1,14142136,637560,13151.6,1,both violate,"Lease C=6 R=1 net=C[0,200] sd=0 TTL=12000 PAUSE=11600"
+lease,C,0,200,0,"C=2,R=3, TTL 60,s, p=59,599 (b-1)",34972,3428,3.77,1,13562,0,8.7,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=C[0,200] sd=0 TTL=60000 PAUSE=59599"
+lease,C,0,200,0,"C=2,R=3, TTL 60,s, p=59,600 (b)",34972,3428,3.77,1,14202,640,9.08,1,both violate,"Lease C=2 R=3 net=C[0,200] sd=0 TTL=60000 PAUSE=59600"
+lease,C,0,200,200,"C=2,R=5, p=11,399 (b-1)",11337388,1111508,1763.03,1,1956698,0,2911.98,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=5 net=C[0,200] sd=200 TTL=12000 PAUSE=11399"
+lease,C,0,200,200,"C=2,R=5, p=11,400 (b)",11337388,1111508,1763.03,1,2049066,92368,3106.32,1,both violate,"Lease C=2 R=5 net=C[0,200] sd=200 TTL=12000 PAUSE=11400"
+lease,C,0,200,200,"C=2,R=3, TTL 60,s, p=59,399 (b-1)",34972,3428,3.8,1,13562,0,8.68,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=C[0,200] sd=200 TTL=60000 PAUSE=59399"
+lease,C,0,200,200,"C=2,R=3, TTL 60,s, p=59,400 (b)",34972,3428,3.8,1,14202,640,9.3,1,both violate,"Lease C=2 R=3 net=C[0,200] sd=200 TTL=60000 PAUSE=59400"
+lease,Cp,42,200,0,"C=2,R=3, p=11,683 (b-1)",34972,3428,3.77,1,13562,0,10.17,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=Cp[42,200] sd=0 TTL=12000 PAUSE=11683"
+lease,Cp,42,200,0,"C=2,R=3, p=11,684 (b)",34972,3428,3.77,1,14202,640,10.66,1,both violate,"Lease C=2 R=3 net=Cp[42,200] sd=0 TTL=12000 PAUSE=11684"
+lease,Cp,42,200,0,"C=2,R=3, TTL 60,s, p=59,683 (b-1)",34972,3428,3.77,1,13562,0,10.09,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=Cp[42,200] sd=0 TTL=60000 PAUSE=59683"
+lease,Cp,42,200,0,"C=2,R=3, TTL 60,s, p=59,684 (b)",34972,3428,3.77,1,14202,640,10.66,1,both violate,"Lease C=2 R=3 net=Cp[42,200] sd=0 TTL=60000 PAUSE=59684"
+lease,Cp,42,200,200,"C=2,R=3, p=11,483 (b-1)",34972,3428,3.8,1,13562,0,10.2,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=Cp[42,200] sd=200 TTL=12000 PAUSE=11483"
+lease,Cp,42,200,200,"C=2,R=3, p=11,484 (b)",34972,3428,3.8,1,14202,640,10.59,1,both violate,"Lease C=2 R=3 net=Cp[42,200] sd=200 TTL=12000 PAUSE=11484"
+lease,Cp,42,200,200,"C=2,R=3, TTL 60,s, p=59,483 (b-1)",34972,3428,3.8,1,13562,0,10.18,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=Cp[42,200] sd=200 TTL=60000 PAUSE=59483"
+lease,Cp,42,200,200,"C=2,R=3, TTL 60,s, p=59,484 (b)",34972,3428,3.8,1,14202,640,10.83,1,both violate,"Lease C=2 R=3 net=Cp[42,200] sd=200 TTL=60000 PAUSE=59484"
+lease,D,0,2500,0,"C=6,R=1, p=6,999 (b-1)",85157536,51560640,11258.42,1,13504576,0,12489.68,1,"FLIP (Must violates, Mustard holds)","Lease C=6 R=1 net=D[0,2500] sd=0 TTL=12000 PAUSE=6999"
+lease,D,0,2500,0,"C=6,R=1, p=7,000 (b)",85157536,51560640,11258.42,1,14142136,637560,13042.2,1,both violate,"Lease C=6 R=1 net=D[0,2500] sd=0 TTL=12000 PAUSE=7000"
+lease,D,0,2500,0,"C=2,R=3, TTL 60,s, p=54,999 (b-1)",34972,3428,3.77,1,13562,0,8.73,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=D[0,2500] sd=0 TTL=60000 PAUSE=54999"
+lease,D,0,2500,0,"C=2,R=3, TTL 60,s, p=55,000 (b)",34972,3428,3.77,1,14202,640,9.22,1,both violate,"Lease C=2 R=3 net=D[0,2500] sd=0 TTL=60000 PAUSE=55000"
+lease,D,0,2500,2500,"C=2,R=5, p=4,499 (b-1)",11337388,1111508,1763.03,1,10633430,0,14373.37,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=5 net=D[0,2500] sd=2500 TTL=12000 PAUSE=4499"
+lease,D,0,2500,2500,"C=2,R=5, p=4,500 (b)",11337388,1111508,1763.03,1,11047158,413728,15229.79,1,both violate,"Lease C=2 R=5 net=D[0,2500] sd=2500 TTL=12000 PAUSE=4500"
+lease,D,0,2500,2500,"C=2,R=3, TTL 60,s, p=52,499 (b-1)",34972,3428,3.8,1,13562,0,8.66,1,"FLIP (Must violates, Mustard holds)","Lease C=2 R=3 net=D[0,2500] sd=2500 TTL=60000 PAUSE=52499"
+lease,D,0,2500,2500,"C=2,R=3, TTL 60,s, p=52,500 (b)",34972,3428,3.8,1,14202,640,9.27,1,both violate,"Lease C=2 R=3 net=D[0,2500] sd=2500 TTL=60000 PAUSE=52500"
+lease_f,A,0,1,0,"C=2,R=5, p=11,998 (b)",94406884,0,13659.74,1,6461828,0,9471.46,1,both hold,"Lease + fencing C=2 R=5 net=A[0,1] sd=0 TTL=12000 PAUSE=11998"
+lease_f,A,0,1,0,"C=6,R=1, p=11,998 (b)",,,>21210 (DNF),,17512456,0,16207.45,1,,"Lease + fencing C=6 R=1 net=A[0,1] sd=0 TTL=12000 PAUSE=11998"
+lease_f,C,0,200,0,"C=2,R=3, p=11,599 (b-1)",104884,0,11.01,1,13562,0,8.89,1,both hold,"Lease + fencing C=2 R=3 net=C[0,200] sd=0 TTL=12000 PAUSE=11599"
+lease_f,C,0,200,0,"C=2,R=3, p=11,600 (b)",104884,0,11.01,1,25220,0,16.64,1,both hold,"Lease + fencing C=2 R=3 net=C[0,200] sd=0 TTL=12000 PAUSE=11600"
+lease_f,D,0,2500,0,"C=2,R=5, p=7,000 (b)",94406884,0,13659.74,1,6461828,0,1363.95,7,both hold,"Lease + fencing C=2 R=5 net=D[0,2500] sd=0 TTL=12000 PAUSE=7000"
+swim,lan,0,1,0,"N=11,R=1, lan (500, 4,000)",37939862,37290312,5552.58,1,23320437,22769302,12599.97,1,both violate,"SWIM N=11 R=1 timers=lan(Wp=500,Ws=4000) net=A[0,1] sd=0"
+swim,local,0,2500,0,"N=11,R=1, local (200, 3,000)",37939862,37290312,5552.58,1,40840025,40013328,16640.52,1,both violate,"SWIM N=11 R=1 timers=local(Wp=200,Ws=3000) net=D[0,2500] sd=0"
+swim,wan,0,200,0,"N=11,R=1, wan (3,000, 30,000)",37939862,37290312,5552.58,1,23320437,22769302,13205.99,1,both violate,"SWIM N=11 R=1 timers=wan(Wp=3000,Ws=30000) net=C[0,200] sd=0"
+nisshi,A,0,1,0,"T=2,R=5, W=30,000, B=100",58985415,1977470,11068.24,1,29348,0,27.97,1,"FLIP (Must violates, Mustard holds)",nisshi T=2 R=5 L=0 U=1 sd=0 W=30000 B=100 net=A (both)
+nisshi,A,0,1,0,"T=2,R=10, W=30,000, B=100",,,queued/running,,17537560,0,4842.81,16,,nisshi T=2 R=10 L=0 U=1 sd=0 W=30000 B=100 net=A (both)
+nisshi,C,0,200,0,"T=2,R=5, W=30,000, B=100",58985415,1977470,11068.24,1,29348,0,27.92,1,"FLIP (Must violates, Mustard holds)",nisshi T=2 R=5 L=0 U=200 sd=0 W=30000 B=100 net=C (both)
+nisshi,D,0,2500,0,"T=2,R=5, W=30,000, B=100",58985415,1977470,11068.24,1,29348,0,28.36,1,"FLIP (Must violates, Mustard holds)",nisshi T=2 R=5 L=0 U=2500 sd=0 W=30000 B=100 net=D (both)
+nisshi,E,0,90000,0,"T=16,R=2, W=30,000, B=100",3289304,168880,1144.63,1,3289304,168880,13491.32,1,both violate,nisshi T=16 R=2 L=0 U=90000 sd=0 W=30000 B=100 net=E (both)
+nisshi,E,0,90000,0,"T=6,R=3, W=30,000, B=100 fix",16611387,0,3907.3,1,8777115,0,14365.19,1,both hold,nisshi T=6 R=3 L=0 U=90000 sd=0 W=30000 B=100 fix=epoch-bump net=E (both)
+abp,A,0,1,0,"K=4,R=2,W=1,000",6315296,0,366.11,1,8002,0,2.27,1,both hold,"ABP-file abp K=4 R=2 W=1000 net=A[0,1] sd=0"
+abp,A,0,1,0,"K=5,R=2,W=200",264784815,0,17163.24,1,56022,0,22.19,1,both hold,"ABP-file abp K=5 R=2 W=200 net=A[0,1] sd=0"
+abp,A,0,1,0,"K=2,R=10,W=200",,,queued/running,,12574722,0,12645.79,1,,"ABP-file abp K=2 R=10 W=200 net=A[0,1] sd=0"
+abp,A,0,1,0,"K=5,R=1,W=3,000",53627,0,2.66,1,970,0,0.22,1,both hold,"ABP-file abp K=5 R=1 W=3000 net=A[0,1] sd=0"
+abp,B,0,65,0,"K=5,R=1,W=1,000",53627,0,2.66,1,970,0,0.22,1,both hold,"ABP-file abp K=5 R=1 W=1000 net=B[0,65] sd=0"
+abp,B,0,65,0,"K=5,R=1,W=200",53627,0,2.7,1,970,0,0.23,1,both hold,"ABP-file abp K=5 R=1 W=200 net=B[0,65] sd=0"
+abp,B,0,65,0,"K=5,R=1,W=3,000",53627,0,2.7,1,970,0,0.23,1,both hold,"ABP-file abp K=5 R=1 W=3000 net=B[0,65] sd=0"
+abp,C,0,200,0,"K=4,R=2,W=1,000",6315296,0,363.75,1,8002,0,2.29,1,both hold,"ABP-file abp K=4 R=2 W=1000 net=C[0,200] sd=0"
+abp,C,0,200,0,"K=8,R=1,W=200",17268883,0,1260.48,1,17268883,0,9720.57,1,both hold,"ABP-file abp K=8 R=1 W=200 net=C[0,200] sd=0"
+abp,C,0,200,0,"K=5,R=1,W=3,000",53627,0,2.66,1,970,0,0.23,1,both hold,"ABP-file abp K=5 R=1 W=3000 net=C[0,200] sd=0"
+abp,D,0,2500,0,"K=3,R=3,W=1,000",20391072,0,1109.1,1,20184036,0,10282.58,1,both hold,"ABP-file abp K=3 R=3 W=1000 net=D[0,2500] sd=0"
+abp,D,0,2500,0,"K=4,R=2,W=200",6315296,0,366.11,1,6315296,0,2889.8,1,both hold,"ABP-file abp K=4 R=2 W=200 net=D[0,2500] sd=0"
+abp,D,0,2500,0,"K=5,R=1,W=3,000",53627,0,2.7,1,42242,0,14.57,1,both hold,"ABP-file abp K=5 R=1 W=3000 net=D[0,2500] sd=0"
+abp,E,0,90000,0,"K=5,R=1,W=1,000",53627,0,2.7,1,53627,0,15.88,1,both hold,"ABP-file abp K=5 R=1 W=1000 net=E[0,90000] sd=0"
+abp,E,0,90000,0,"K=5,R=1,W=200",53627,0,2.66,1,53627,0,15.78,1,both hold,"ABP-file abp K=5 R=1 W=200 net=E[0,90000] sd=0"
+abp,E,0,90000,0,"K=5,R=1,W=3,000",53627,0,2.66,1,53627,0,15.87,1,both hold,"ABP-file abp K=5 R=1 W=3000 net=E[0,90000] sd=0"
+par,A,0,1,0,"K=7,R=1,W=1,000",3959709,318906,257.85,1,8746,0,3.32,1,"FLIP (Must violates, Mustard holds)","ABP-file par K=7 R=1 W=1000 net=A[0,1] sd=0"
+par,A,0,1,0,"K=5,R=2,W=2",69529579,3109929,4378.7,1,1955414,60702,840.15,1,both violate,"ABP-file par K=5 R=2 W=2 net=A[0,1] sd=0"
+par,A,0,1,0,"K=4,R=3,W=200",308419431,6150740,19415.84,1,159106,0,67.45,1,"FLIP (Must violates, Mustard holds)","ABP-file par K=4 R=3 W=200 net=A[0,1] sd=0"
+par,A,0,1,0,"K=2,R=10,W=200",,,queued/running,,12574722,0,11962.01,1,,"ABP-file par K=2 R=10 W=200 net=A[0,1] sd=0"
+par,A,0,1,0,"K=5,R=2,W=3",69529579,3109929,4378.7,1,56022,0,20.54,1,"FLIP (Must violates, Mustard holds)","ABP-file par K=5 R=2 W=3 net=A[0,1] sd=0"
+par,A,0,1,0,"K=5,R=1,W=3,000",63077,3910,3.07,1,970,0,0.24,1,"FLIP (Must violates, Mustard holds)","ABP-file par K=5 R=1 W=3000 net=A[0,1] sd=0"
+par,A,0,1,1,"K=5,R=2,W=4",69529579,3109929,4378.7,1,56022,0,21.41,1,"FLIP (Must violates, Mustard holds)","ABP-file par K=5 R=2 W=4 net=A[0,1] sd=1"
+par,B,0,65,0,"K=5,R=1,W=1,000",63077,3910,3.07,1,970,0,0.23,1,"FLIP (Must violates, Mustard holds)","ABP-file par K=5 R=1 W=1000 net=B[0,65] sd=0"
+par,B,0,65,0,"K=5,R=2,W=130",69529579,3109929,4378.7,1,1955414,60702,812.94,1,both violate,"ABP-file par K=5 R=2 W=130 net=B[0,65] sd=0"
+par,B,0,65,0,"K=5,R=2,W=131",69529579,3109929,4378.7,1,56022,0,20.22,1,"FLIP (Must violates, Mustard holds)","ABP-file par K=5 R=2 W=131 net=B[0,65] sd=0"
+par,B,0,65,65,"K=5,R=2,W=195",69529579,3109929,4378.7,1,1955414,60702,817.49,1,both violate,"ABP-file par K=5 R=2 W=195 net=B[0,65] sd=65"
+par,B,0,65,65,"K=5,R=2,W=196",69529579,3109929,4378.7,1,56022,0,21.18,1,"FLIP (Must violates, Mustard holds)","ABP-file par K=5 R=2 W=196 net=B[0,65] sd=65"
+par,B,0,65,0,"K=5,R=1,W=200",63077,3910,3.01,1,970,0,0.23,1,"FLIP (Must violates, Mustard holds)","ABP-file par K=5 R=1 W=200 net=B[0,65] sd=0"
+par,B,0,65,0,"K=5,R=1,W=3,000",63077,3910,3.01,1,970,0,0.23,1,"FLIP (Must violates, Mustard holds)","ABP-file par K=5 R=1 W=3000 net=B[0,65] sd=0"
+par,C,0,200,0,"K=4,R=3,W=1,000",308419431,6150740,19415.84,1,159106,0,67.37,1,"FLIP (Must violates, Mustard holds)","ABP-file par K=4 R=3 W=1000 net=C[0,200] sd=0"
+par,C,0,200,0,"K=2,R=8,W=1,000",,,queued/running,,784386,0,492.56,1,,"ABP-file par K=2 R=8 W=1000 net=C[0,200] sd=0"
+par,C,0,200,0,"K=4,R=3,W=200",308419431,6150740,19415.84,1,17218356,379944,8863.49,1,both violate,"ABP-file par K=4 R=3 W=200 net=C[0,200] sd=0"
+par,C,0,200,0,"K=5,R=1,W=3,000",63077,3910,3.07,1,970,0,0.23,1,"FLIP (Must violates, Mustard holds)","ABP-file par K=5 R=1 W=3000 net=C[0,200] sd=0"
+par,C,0,200,0,"K=6,R=1,W=400",496447,35874,27.05,1,230836,16999,93.23,1,both violate,"ABP-file par K=6 R=1 W=400 net=C[0,200] sd=0"
+par,C,0,200,0,"K=6,R=1,W=401",496447,35874,27.05,1,2914,0,0.85,1,"FLIP (Must violates, Mustard holds)","ABP-file par K=6 R=1 W=401 net=C[0,200] sd=0"
+par,C,0,200,200,"K=6,R=1,W=600",496447,35874,27.05,1,230836,16999,92.98,1,both violate,"ABP-file par K=6 R=1 W=600 net=C[0,200] sd=200"
+par,C,0,200,200,"K=6,R=1,W=601",496447,35874,27.05,1,2914,0,0.88,1,"FLIP (Must violates, Mustard holds)","ABP-file par K=6 R=1 W=601 net=C[0,200] sd=200"
+par,D,0,2500,0,"K=8,R=1,W=1,000",31925127,2789814,604.65,16,31925127,2789814,5608.62,16,both violate,"ABP-file par K=8 R=1 W=1000 net=D[0,2500] sd=0"
+par,D,0,2500,0,"K=7,R=1,W=200",3959709,318906,257.85,1,3959709,318906,2151.34,1,both violate,"ABP-file par K=7 R=1 W=200 net=D[0,2500] sd=0"
+par,D,0,2500,0,"K=5,R=1,W=3,000",63077,3910,3.01,1,35352,2410,11.92,1,both violate,"ABP-file par K=5 R=1 W=3000 net=D[0,2500] sd=0"
+par,D,0,2500,0,"K=6,R=1,W=5,000",496447,35874,27.05,1,230836,16999,93.1,1,both violate,"ABP-file par K=6 R=1 W=5000 net=D[0,2500] sd=0"
+par,D,0,2500,0,"K=6,R=1,W=5,001",496447,35874,27.05,1,2914,0,0.85,1,"FLIP (Must violates, Mustard holds)","ABP-file par K=6 R=1 W=5001 net=D[0,2500] sd=0"
+par,E,0,90000,0,"K=5,R=1,W=1,000",63077,3910,3.01,1,63077,3910,20.49,1,both violate,"ABP-file par K=5 R=1 W=1000 net=E[0,90000] sd=0"
+par,E,0,90000,0,"K=5,R=1,W=200",63077,3910,3.07,1,63077,3910,20.43,1,both violate,"ABP-file par K=5 R=1 W=200 net=E[0,90000] sd=0"
+par,E,0,90000,0,"K=5,R=1,W=3,000",63077,3910,3.07,1,63077,3910,20.39,1,both violate,"ABP-file par K=5 R=1 W=3000 net=E[0,90000] sd=0"
+brp,A,0.5,1,0,"n=3,mathitMAX=2, T_1=1,000, mathitTR=4,003, (2)",3311730,92574,182.05,1,7968,0,4.19,1,"FLIP (Must violates, Mustard holds)",BRP F=1 n=3 MAX=2 TD=1 T1=1000 TR=4003 SYNC=4003 net=A (p2)
+brp,A,0.5,1,0,"n=3,mathitMAX=2, T_1=1,000, mathitTR=4,003, (4)",17761263,6908822,1270.9,1,12191,2094,8.36,1,both violate,BRP F=1 n=3 MAX=2 TD=1 T1=1000 TR=4003 SYNC=4003 net=A (p4)
+brp,A,0.5,1,0,"n=6,mathitMAX=1, T_1=200, mathitTR=403, (2)",1260206952,39940668,8171.58,16,398145,0,23.52,16,"FLIP (Must violates, Mustard holds)",BRP F=1 n=6 MAX=1 TD=1 T1=200 TR=403 SYNC=403 net=A (p2)
+brp,A,0.5,1,0,"n=2,mathitMAX=9, T_1=200, mathitTR=3,603, (2)",,,queued/running,,8899846,0,14342.06,1,,BRP F=1 n=2 MAX=9 TD=1 T1=200 TR=3603 SYNC=3603 net=A (p2)
+brp,B,0.5,65,0,"n=3,mathitMAX=2, T_1=1,000, mathitTR=4,195, (2)",3311730,92574,182.05,1,7968,0,4.17,1,"FLIP (Must violates, Mustard holds)",BRP F=1 n=3 MAX=2 TD=65 T1=1000 TR=4195 SYNC=4195 net=B (p2)
+brp,B,0.5,65,0,"n=3,mathitMAX=2, T_1=1,000, mathitTR=4,195, (4)",17761263,6908822,1270.9,1,12191,2094,8.51,1,both violate,BRP F=1 n=3 MAX=2 TD=65 T1=1000 TR=4195 SYNC=4195 net=B (p4)
+brp,B,0.5,65,0,"n=4,mathitMAX=2, T_1=200, mathitTR=995, (2)",588910898,14427662,5790.83,8,198164,0,22.02,8,"FLIP (Must violates, Mustard holds)",BRP F=1 n=4 MAX=2 TD=65 T1=200 TR=995 SYNC=995 net=B (p2)
+brp,C,0.5,200,0,"n=6,mathitMAX=1, T_1=1,000, mathitTR=2,600, (2)",1260206952,39940668,8171.58,16,660121,0,41.02,16,"FLIP (Must violates, Mustard holds)",BRP F=1 n=6 MAX=1 TD=200 T1=1000 TR=2600 SYNC=2600 net=C (p2)
+brp,C,0.5,200,0,"n=2,mathitMAX=1, T_1=1,000, mathitTR=2,600, (2)",,,>11285 (DNF),,3244777,0,3310.05,1,,BRP F=3 n=2 MAX=1 TD=200 T1=1000 TR=2600 SYNC=2600 net=C (p2)
+brp,C,0.5,200,0,"n=3,mathitMAX=2, T_1=200, mathitTR=1,400, (2)",3311730,92574,182.05,1,931860,0,481.64,1,"FLIP (Must violates, Mustard holds)",BRP F=1 n=3 MAX=2 TD=200 T1=200 TR=1400 SYNC=1400 net=C (p2)
+brp,C,0.5,200,0,"n=3,mathitMAX=2, T_1=200, mathitTR=1,400, (4)",17761263,6908822,1270.9,1,1312615,197460,1154.29,1,both violate,BRP F=1 n=3 MAX=2 TD=200 T1=200 TR=1400 SYNC=1400 net=C (p4)
+brp,D,0.5,2500,0,"n=5,mathitMAX=1, T_1=1,000, mathitTR=9,500, (2)",29053689,959143,1965.68,1,4839952,6,3818.24,1,both violate,BRP F=1 n=5 MAX=1 TD=2500 T1=1000 TR=9500 SYNC=9500 net=D (p2)
+brp,D,0.5,2500,0,"n=3,mathitMAX=2, T_1=200, mathitTR=8,300, (2)",3311730,92574,182.05,1,942836,0,443.17,1,"FLIP (Must violates, Mustard holds)",BRP F=1 n=3 MAX=2 TD=2500 T1=200 TR=8300 SYNC=8300 net=D (p2)
+brp,D,0.5,2500,0,"n=3,mathitMAX=2, T_1=200, mathitTR=8,300, (4)",17761263,6908822,1270.9,1,1624921,517433,1089.06,1,both violate,BRP F=1 n=3 MAX=2 TD=2500 T1=200 TR=8300 SYNC=8300 net=D (p4)
+nrp,A,0,1,0,"leasing, R=4, M=3, H=1,000, P=2",279661585,0,3192.39,8,2257525,0,235.59,8,both hold,"NRP leasing R=4 M=3 H=1000 P=2 net=A[0,1] sd=0"
+nrp,A,0,1,0,"noopt, R=4, M=3, H=1,000, P=2",314788770,31083976,2827.09,14,2502926,221668,158.08,14,both violate,"NRP noopt R=4 M=3 H=1000 P=2 net=A[0,1] sd=0"
+nrp,A,0,1,0,"nrp, R=4, M=3, H=1,000, P=2",118424493,3538558,9251.29,1,1492721,33704,1289.21,1,both violate,"NRP nrp R=4 M=3 H=1000 P=2 net=A[0,1] sd=0"
+nrp,A,0,1,0,"nrp, R=5, M=3, H=1,000, P=2",,,queued/running,,125536980,4896854,10460.22,16,,"NRP nrp R=5 M=3 H=1000 P=2 net=A[0,1] sd=0"
+nrp,B,0,65,0,"leasing, R=4, M=3, H=1,000, P=130",279661585,0,3192.39,8,2257525,0,225.83,8,both hold,"NRP leasing R=4 M=3 H=1000 P=130 net=B[0,65] sd=0"
+nrp,B,0,65,0,"noopt, R=4, M=3, H=1,000, P=130",314788770,31083976,2827.09,14,2502926,221668,149.07,14,both violate,"NRP noopt R=4 M=3 H=1000 P=130 net=B[0,65] sd=0"
+nrp,B,0,65,0,"nrp, R=4, M=3, H=1,000, P=130",118424493,3538558,9251.29,1,1492721,33704,1297.9,1,both violate,"NRP nrp R=4 M=3 H=1000 P=130 net=B[0,65] sd=0"
+nrp,C,0,200,0,"leasing, R=4, M=3, H=1,000, P=400",279661585,0,3192.39,8,5384178,0,600.21,8,both hold,"NRP leasing R=4 M=3 H=1000 P=400 net=C[0,200] sd=0"
+nrp,C,0,200,0,"noopt, R=4, M=3, H=1,000, P=400",314788770,31083976,2827.09,14,5849688,419466,469.59,14,both violate,"NRP noopt R=4 M=3 H=1000 P=400 net=C[0,200] sd=0"
+nrp,C,0,200,0,"nrp, R=4, M=3, H=1,000, P=400",118424493,3538558,9251.29,1,3918481,64314,3312.5,1,both violate,"NRP nrp R=4 M=3 H=1000 P=400 net=C[0,200] sd=0"
+nrp,D,0,2500,0,"leasing, R=4, M=3, H=10,000, P=5,000",279661585,0,3192.39,8,6019470,0,662.25,8,both hold,"NRP leasing R=4 M=3 H=10000 P=5000 net=D[0,2500] sd=0"
+nrp,D,0,2500,0,"noopt, R=4, M=3, H=10,000, P=5,000",314788770,31083976,2827.09,14,6484980,419466,504.53,14,both violate,"NRP noopt R=4 M=3 H=10000 P=5000 net=D[0,2500] sd=0"
+nrp,D,0,2500,0,"nrp, R=4, M=3, H=10,000, P=5,000",118424493,3538558,9251.29,1,4243153,64314,3669.55,1,both violate,"NRP nrp R=4 M=3 H=10000 P=5000 net=D[0,2500] sd=0"
+retail,A,0,1,0,"C=2,N=2,R=5, S=20, D=29,000",15012496,14754448,2262.64,1,10253688,9995640,10869.59,1,both violate,"Shop v2 C=2 N=2 R=5 S=20 D=29000 net=A[0,1] sd=0"
+retail,B,0,65,0,"C=3,N=3,R=2, S=20, D=29,000",1564672,1558912,211.8,1,861328,855568,560.68,1,both violate,"Shop v2 C=3 N=3 R=2 S=20 D=29000 net=B[0,65] sd=0"
+retail,C,0,200,0,"C=2,N=2,R=4, S=20, D=29,000",1038352,1020432,140.65,1,709432,691512,582.35,1,both violate,"Shop v2 C=2 N=2 R=4 S=20 D=29000 net=C[0,200] sd=0"
+retail,D,0,2500,0,"C=2,N=2,R=5, S=20, D=29,000",15012496,14754448,345.1,7,10253688,9995640,1514.96,7,both violate,"Shop v2 C=2 N=2 R=5 S=20 D=29000 net=D[0,2500] sd=0"
+retail,E,0,90000,0,"C=3,N=3,R=2, S=20, D=29,000",1564672,1558912,207.06,1,1564672,1558912,858.23,1,both violate,"Shop v2 C=3 N=3 R=2 S=20 D=29000 net=E[0,90000] sd=0"
+yarn,A-C,0,0,0,"K=2,H=10, late-report",160091241,496450,2507.55,8,29515,0,3.77,8,"FLIP (Must violates, Mustard holds)",YARN K=2 QS=3 DD=8 U=0 H=10 late-report net=A-C
+yarn,A-C,0,0,0,"K=3,H=7, late-report",,,queued/running,,341885,0,321.44,1,,YARN K=3 QS=4 DD=8 U=0 H=7 late-report net=A-C
+yarn,A-C,0,0,0,"K=2,H=10, miss",159156296,223993,17050.48,1,28363,732,24.85,1,both violate,YARN K=2 QS=3 DD=8 U=0 H=10 miss net=A-C
+yarn,A-C,0,0,0,"K=4,H=6, miss",,,queued/running,,14731889,0,17536.87,1,,YARN K=4 QS=5 DD=8 U=0 H=6 miss net=A-C
+yarn,A-C,0,0,0,"K=1,H=24, preempt",58047984,1286129,7389.03,1,6391,385,10.75,1,both violate,YARN K=1 QS=2 DD=7 U=0 H=24 preempt net=A-C
+yarn,A-C,0,0,0,"K=1,H=48, preempt",,,queued/running,,1072159,66997,7466.08,1,,YARN K=1 QS=2 DD=7 U=0 H=48 preempt net=A-C
+yarn,D,0,3,0,"K=2,H=10, late-report",160091241,496450,2507.55,8,328753,20328,124.65,8,both violate,YARN K=2 QS=3 DD=8 U=3 H=10 late-report net=D
+yarn,D,0,3,0,"K=3,H=7, late-report",,,queued/running,,2991911,0,2761.59,1,,YARN K=3 QS=4 DD=8 U=3 H=7 late-report net=D
+yarn,D,0,3,0,"K=2,H=10, miss",159156296,223993,17050.48,1,231212,11041,196.44,1,both violate,YARN K=2 QS=3 DD=8 U=3 H=10 miss net=D
+yarn,D,0,3,0,"K=3,H=8, miss",,,queued/running,,14988378,187269,16114.36,1,,YARN K=3 QS=4 DD=8 U=3 H=8 miss net=D
+yarn,D,0,3,0,"K=1,H=24, preempt",58047984,1286129,7389.03,1,188170,13491,275.69,1,both violate,YARN K=1 QS=2 DD=7 U=3 H=24 preempt net=D
+yarn,D,0,3,0,"K=1,H=32, preempt",,,queued/running,,4853843,349235,11353.64,1,,YARN K=1 QS=2 DD=7 U=3 H=32 preempt net=D

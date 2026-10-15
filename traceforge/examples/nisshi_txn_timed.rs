@@ -74,6 +74,83 @@
 //! the retry budget R bounds how many timeouts are explored. Other
 //! requests wait without a timeout, which only removes behaviours.
 //!
+//! ## Threads and termination
+//!
+//! No thread is a daemon: an execution is complete only when the producer,
+//! every connection and the storage have ended. The producer ends by
+//! itself, after its T transactions or at a fatal reply. The connections
+//! and the storage are reactors that serve a number of messages that no
+//! count fixes: how many requests a connection relays, and the storage
+//! serves, depends on how many EndTxn timeouts the producer takes (0 to R),
+//! and the delays alone decide that even when nothing is lost. So the
+//! producer, the one thread that knows its work is over, ends them with
+//! HARNESS messages (not the protocol's), sent at the end of `producer`:
+//!
+//!   * a Stop to each connection, in order, joining the connection before
+//!     it writes the next. The Stop travels the producer's own link, so FIFO
+//!     delivers it after every request the producer wrote there, and the
+//!     connection leaves its loop on reading it;
+//!   * then a Stop { owed } to the storage, owed being the number of
+//!     requests the producer wrote, which a run that loses nothing delivers.
+//!     The storage leaves its loop when it has read the Stop and served that
+//!     many requests, so a request still in flight when the producer ends is
+//!     served as it was before. (A Stop without the count could be read
+//!     ahead of such a request: FIFO orders the messages of one sender only,
+//!     and the storage has one sender per connection. It would end with the
+//!     request unread.)
+//!
+//! These are the Close and the Done { total } that the producer sent until
+//! 2026-10-14, when the actors became daemons and the messages went. What is
+//! new is the order: the Stops to the connections are chained by joins, so
+//! that their fates are dependent, and the storage's comes last.
+//!
+//! Both are lossy like every send and carry no verdict. A lost Stop leaves
+//! its connection blocked, the producer blocked at the join and the later
+//! Stops unsent; a request that was lost, or expired unread, leaves the
+//! storage waiting for it. So an execution that ends blocked without a
+//! failed assertion is one in which a message was lost or expired. A
+//! violation parks the storage: the producer then waits for ever for a
+//! reply and sends no Stop.
+//!
+//! What this adds. Each execution is an execution of the daemon version
+//! (the file of 2026-10-14, where the storage and the connections were
+//! daemons) followed by the harness, which adds endings, not behaviours. An
+//! execution in which the producer reaches the end of its work is explored
+//! R + 3 times where the daemon version explored it once: once for every
+//! place where a Stop can be lost (R + 1 connections, then the storage) and
+//! once with every Stop delivered. Only that last one can be filed under
+//! execs, and only if the storage served every request: the daemon version
+//! filed an execution in which a request was lost or expired under execs
+//! too, because nothing waited for the request, and this one files it under
+//! blocked. An execution in which the producer blocks, the violating ones
+//! among them, is explored once, as before. When the storage reads its Stop
+//! after every request, which in timed mode is certain if U < W + 5L (a
+//! request abandoned at s is in by s + U, and the Stop reaches the storage
+//! at least W + 5L after s: the timeout, two round trips, one more hop; at
+//! equality the two can arrive together), the count is exact:
+//!
+//!   explored = blocked + (R + 3) * execs of the daemon version.
+//!
+//! In baseline mode, and in timed mode with a larger U, the storage can
+//! also read its Stop before a request still to be served (an abandoned
+//! EndTxn, say), and every such reading is an execution of its own: the
+//! sum above is then a lower bound. (With W < 2L every wait times out, so
+//! the timeouts all fall in the first transaction, three more round trips
+//! follow for each later one, and the bound is U < W + 5L + 6L(T - 1): the
+//! timed rows below are exact for that reason.) The counters that sum over
+//! explored executions (timeouts, completed_txns, ...) move with the number
+//! of executions.
+//!
+//! execs / blocked / violating, --property stray --keep-going, daemons
+//! (2026-10-14) then no daemons:
+//!
+//!   T R L U W B   mode       daemons                 no daemons
+//!   2 1 1 5 1 0   timed          8 /    115 / 0           6 /    141 / 0
+//!   2 2 1 5 1 0   timed         72 /    967 / 0          44 /  1,283 / 0
+//!   2 3 1 8 1 0   timed      1,352 / 16,207 / 448       800 / 23,519 / 448
+//!   2 1 1 5 1 0   baseline      21 /    175 / 4          21 /    242 / 4
+//!   2 2 1 5 1 0   baseline     421 /  2,469 / 102       433 /  4,297 / 102
+//!
 //! ## Properties (checked at the storage, which sees every effect)
 //!
 //! Each request carries a GHOST field, the index of the client transaction
@@ -99,14 +176,18 @@
 //!
 //! ## Blocked executions
 //!
-//! With sd = 0 a request that reaches the storage while it is busy with
-//! another connection's request may expire unread; the storage then waits
-//! forever and the execution ends blocked (the `blocked=` count). This only
-//! drops executions, never adds one: every processed request is processed in
-//! arrival order, so the violations found and the boundaries measured are
-//! those of the full model. Raising --sd does not remove blocked executions
-//! (L=1 U=8 W=1: sd 0/2/10 give blocked 6/7/8) and leaves the violations
-//! unchanged (stray 1, dirty 2 at all three).
+//! Every send is lossy, so most explored executions lose a message, and a
+//! run ends blocked (the `blocked=` count) when a thread waits for ever for
+//! one: the producer for a reply, the storage for a request it is owed, a
+//! connection (and the producer at its join) for a Stop. A thread parked at
+//! a failed assertion is blocked too: those are the violating executions,
+//! all of them with the producer waiting for a reply the parked storage
+//! never sends. A blocked execution only drops behaviours, never adds one:
+//! every request that is processed is processed in arrival order, so the
+//! violations found and the boundaries measured are those of the full
+//! model. Raising --sd does not remove blocked executions (T=2 R=1 L=1 U=8
+//! W=1, timed: sd 0/2/10 give blocked 153/161/161) and leaves the violations
+//! unchanged (violating 6 at all three).
 //!
 //! ## CLI (absolute integer time units)
 //!
@@ -140,6 +221,8 @@ static COMPLETED_TXNS: AtomicUsize = AtomicUsize::new(0);
 
 const PARTITION: u32 = 0;
 const TAG_CONN_REQ: u32 = 1;
+/// HARNESS: tag of the producer's Stop to a connection.
+const TAG_CONN_STOP: u32 = 2;
 const TAG_RESP_BASE: u32 = 1000;
 
 fn resp_tag(corr: u32) -> u32 {
@@ -176,11 +259,16 @@ struct Envelope {
 #[derive(Clone, Debug, PartialEq)]
 enum ConnMsg {
     Req(Envelope),
+    /// HARNESS: end of run, written by the producer after its last request.
+    Stop,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 enum StorageMsg {
     Req(Envelope),
+    /// HARNESS: end of run, from the producer. `owed` is the number of
+    /// requests the producer wrote, which a run that loses nothing delivers.
+    Stop { owed: u32 },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -227,6 +315,8 @@ struct Client {
     conns: Vec<ThreadId>,
     conn: usize,
     corr: u32,
+    /// Requests written so far (HARNESS: what the storage is owed).
+    sent: u32,
 }
 
 impl Client {
@@ -234,6 +324,7 @@ impl Client {
     fn send(&mut self, req: Req) -> u32 {
         let corr = self.corr;
         self.corr += 1;
+        self.sent += 1;
         let env = Envelope { corr, reply_to: self.me, req };
         traceforge::send_tagged_msg_timed(
             self.conns[self.conn],
@@ -266,8 +357,14 @@ impl Client {
     }
 }
 
-fn producer(p: Params, storage: ThreadId, conns: Vec<ThreadId>) {
-    let mut c = Client { me: thread::current().id(), storage, conns, conn: 0, corr: 0 };
+fn producer(
+    p: Params,
+    storage: ThreadId,
+    conns: Vec<ThreadId>,
+    // HARNESS: join handles of the connections, in the order of `conns`.
+    handles: Vec<thread::JoinHandle<()>>,
+) {
+    let mut c = Client { me: thread::current().id(), storage, conns, conn: 0, corr: 0, sent: 0 };
     let mut retries_left = p.retries;
 
     'run: {
@@ -341,6 +438,20 @@ fn producer(p: Params, storage: ThreadId, conns: Vec<ThreadId>) {
         }
     }
 
+    // HARNESS: end of run, not the protocol's (see "Threads and
+    // termination"). The producer's work is over, and nothing else can end
+    // the connections and the storage. A Stop goes to each connection in
+    // turn, and the producer joins the connection before it writes the next
+    // one, so that a lost Stop leaves its connection blocked, the producer
+    // blocked at the join and the later Stops unsent. The Stop comes from
+    // the producer, so FIFO delivers it after every request it wrote to
+    // that connection. The storage gets its Stop last, with the number of
+    // requests it is owed.
+    for (conn, handle) in c.conns.iter().copied().zip(handles) {
+        traceforge::send_tagged_msg_timed(conn, TAG_CONN_STOP, ConnMsg::Stop, 0, 0);
+        let _ = handle.join();
+    }
+    traceforge::send_msg(c.storage, StorageMsg::Stop { owed: c.sent });
 }
 
 // =====================================================================
@@ -348,10 +459,13 @@ fn producer(p: Params, storage: ThreadId, conns: Vec<ThreadId>) {
 // =====================================================================
 
 fn connection(storage: ThreadId) {
-    // A reactive daemon: it relays until the run ends.
+    // A reactor: it relays whatever the producer writes to it, which no
+    // count bounds, and leaves on the producer's Stop.
     loop {
         match traceforge::recv_msg_block_timed::<ConnMsg>() {
             ConnMsg::Req(env) => traceforge::send_msg(storage, StorageMsg::Req(env)),
+            // HARNESS: end of run, read after every request written here.
+            ConnMsg::Stop => break,
         }
     }
 }
@@ -653,14 +767,23 @@ impl Db {
 fn storage(p: Params) {
     let fix = p.fix;
     let mut db = Db { check_stray: p.check_stray, check_dirty: p.check_dirty, ..Db::default() };
-    // A reactive daemon: the run ends when no client can move.
-    loop {
+    // A reactor: it serves every request, in arrival order. How many there
+    // are depends on the timeouts the producer takes, so the producer tells
+    // it (HARNESS) once its work is over, and the storage leaves when it has
+    // read that and served as many requests as it is owed: a request still
+    // in flight when the producer ends is served as before.
+    let mut served: u32 = 0;
+    let mut owed: Option<u32> = None;
+    while owed != Some(served) {
         match traceforge::recv_msg_block_timed::<StorageMsg>() {
             StorageMsg::Req(env) => {
+                served += 1;
                 let resp = db.handle(&env.req, fix);
                 db.check_visibility();
                 traceforge::send_tagged_msg(env.reply_to, resp_tag(env.corr), resp);
             }
+            // HARNESS: end of run.
+            StorageMsg::Stop { owed: n } => owed = Some(n),
         }
     }
 }
@@ -701,15 +824,14 @@ fn run(mode: Mode, p: Params, keep_going: bool, verbose: usize) -> (Stats, Durat
     let cfg = build_config(mode, p, keep_going, verbose);
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
-        // The storage and the connections are reactive daemons (nothing
-        // releases them); only the producer is joined. Until 2026-10-14 the
-        // producer sent the storage a Done { total } and every connection a
-        // Close, lossy sends outside the protocol.
-        let storage_tid = thread::spawn_daemon(move || storage(p)).thread().id();
-        let conn_ids: Vec<ThreadId> = (0..=p.retries)
-            .map(|_| thread::spawn_daemon(move || connection(storage_tid)).thread().id())
-            .collect();
-        let producer_h = thread::spawn(move || producer(p, storage_tid, conn_ids));
+        // No daemons. The producer ends by itself; it also gets the join
+        // handles of the connections, to end them (HARNESS, see "Threads and
+        // termination"), and the storage ends on the producer's Stop.
+        let storage_tid = thread::spawn(move || storage(p)).thread().id();
+        let conns: Vec<thread::JoinHandle<()>> =
+            (0..=p.retries).map(|_| thread::spawn(move || connection(storage_tid))).collect();
+        let conn_ids: Vec<ThreadId> = conns.iter().map(|h| h.thread().id()).collect();
+        let producer_h = thread::spawn(move || producer(p, storage_tid, conn_ids, conns));
         let _ = producer_h.join();
     });
     (stats, start.elapsed())

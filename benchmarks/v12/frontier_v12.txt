@@ -1,0 +1,220 @@
+
+=== abp
+ A/W1000: 18 cells, 18 both, 0 Mustard-only
+   BOTH   ABP-file abp K=4 R=2 W=1000 net=A[0,1] sd=0                      Must    6,315,296/         0/    366s | Mustard       8,002/        0/    2.3s both c1
+   FLIP   ABP-file par K=7 R=1 W=1000 net=A[0,1] sd=0                      Must    3,959,709/   318,906/    258s | Mustard       8,746/        0/    3.3s FLIP c1
+ A/W200: 82 cells, 60 both, 20 Mustard-only
+   BOTH   ABP-file par K=4 R=3 W=200 net=A[0,1] sd=0                       Must  308,419,431/ 6,150,740/   5.39h | Mustard     159,106/        0/     67s FLIP c1
+   FLIP   ABP-file par K=4 R=3 W=200 net=A[0,1] sd=0                       Must  308,419,431/ 6,150,740/   5.39h | Mustard     159,106/        0/     67s FLIP c1
+   MONLY  ABP-file abp K=2 R=10 W=200 net=A[0,1] sd=0                      Must            -/         -/queued/runni | Mustard  12,574,722/        0/   3.51h  c1
+ A/W3000: 10 cells, 10 both, 0 Mustard-only
+   BOTH   ABP-file par K=5 R=1 W=3000 net=A[0,1] sd=0                      Must       63,077/     3,910/    3.1s | Mustard         970/        0/    0.2s FLIP c1
+   FLIP   ABP-file par K=5 R=1 W=3000 net=A[0,1] sd=0                      Must       63,077/     3,910/    3.1s | Mustard         970/        0/    0.2s FLIP c1
+ A/Wb: 6 cells, 5 both, 0 Mustard-only
+   BOTH   ABP-file par K=5 R=2 W=2 net=A[0,1] sd=0                         Must   69,529,579/ 3,109,929/   1.22h | Mustard   1,955,414/   60,702/    840s both c1
+   FLIP   ABP-file par K=5 R=2 W=3 net=A[0,1] sd=0                         Must   69,529,579/ 3,109,929/   1.22h | Mustard      56,022/        0/     21s FLIP c1
+ A/Wsd: 2 cells, 2 both, 0 Mustard-only
+   BOTH   ABP-file par K=5 R=2 W=3 net=A[0,1] sd=1                         Must   69,529,579/ 3,109,929/   1.22h | Mustard   1,955,414/   60,702/    806s both c1
+   FLIP   ABP-file par K=5 R=2 W=4 net=A[0,1] sd=1                         Must   69,529,579/ 3,109,929/   1.22h | Mustard      56,022/        0/     21s FLIP c1
+ B/W1000: 10 cells, 10 both, 0 Mustard-only
+   BOTH   ABP-file par K=5 R=1 W=1000 net=B[0,65] sd=0                     Must       63,077/     3,910/    3.1s | Mustard         970/        0/    0.2s FLIP c1
+   FLIP   ABP-file par K=5 R=1 W=1000 net=B[0,65] sd=0                     Must       63,077/     3,910/    3.1s | Mustard         970/        0/    0.2s FLIP c1
+ B/W200: 10 cells, 10 both, 0 Mustard-only
+   BOTH   ABP-file par K=5 R=1 W=200 net=B[0,65] sd=0                      Must       63,077/     3,910/    3.0s | Mustard         970/        0/    0.2s FLIP c1
+   FLIP   ABP-file par K=5 R=1 W=200 net=B[0,65] sd=0                      Must       63,077/     3,910/    3.0s | Mustard         970/        0/    0.2s FLIP c1
+ B/W3000: 10 cells, 10 both, 0 Mustard-only
+   BOTH   ABP-file par K=5 R=1 W=3000 net=B[0,65] sd=0                     Must       63,077/     3,910/    3.0s | Mustard         970/        0/    0.2s FLIP c1
+   FLIP   ABP-file par K=5 R=1 W=3000 net=B[0,65] sd=0                     Must       63,077/     3,910/    3.0s | Mustard         970/        0/    0.2s FLIP c1
+ B/Wb: 4 cells, 4 both, 0 Mustard-only
+   BOTH   ABP-file par K=5 R=2 W=130 net=B[0,65] sd=0                      Must   69,529,579/ 3,109,929/   1.22h | Mustard   1,955,414/   60,702/    813s both c1
+   FLIP   ABP-file par K=5 R=2 W=131 net=B[0,65] sd=0                      Must   69,529,579/ 3,109,929/   1.22h | Mustard      56,022/        0/     20s FLIP c1
+ B/Wsd: 2 cells, 2 both, 0 Mustard-only
+   BOTH   ABP-file par K=5 R=2 W=195 net=B[0,65] sd=65                     Must   69,529,579/ 3,109,929/   1.22h | Mustard   1,955,414/   60,702/    817s both c1
+   FLIP   ABP-file par K=5 R=2 W=196 net=B[0,65] sd=65                     Must   69,529,579/ 3,109,929/   1.22h | Mustard      56,022/        0/     21s FLIP c1
+ C/W1000: 38 cells, 36 both, 2 Mustard-only
+   BOTH   ABP-file par K=4 R=3 W=1000 net=C[0,200] sd=0                    Must  308,419,431/ 6,150,740/   5.39h | Mustard     159,106/        0/     67s FLIP c1
+   FLIP   ABP-file par K=4 R=3 W=1000 net=C[0,200] sd=0                    Must  308,419,431/ 6,150,740/   5.39h | Mustard     159,106/        0/     67s FLIP c1
+   MONLY  ABP-file par K=2 R=8 W=1000 net=C[0,200] sd=0                    Must            -/         -/queued/runni | Mustard     784,386/        0/    493s  c1
+ C/W200: 46 cells, 41 both, 1 Mustard-only
+   BOTH   ABP-file par K=4 R=3 W=200 net=C[0,200] sd=0                     Must  308,419,431/ 6,150,740/   5.39h | Mustard  17,218,356/  379,944/   2.46h both c1
+   MONLY  ABP-file par K=2 R=8 W=200 net=C[0,200] sd=0                     Must            -/         -/queued/runni | Mustard   9,208,708/    2,289/   1.51h  c1
+ C/W3000: 10 cells, 10 both, 0 Mustard-only
+   BOTH   ABP-file par K=5 R=1 W=3000 net=C[0,200] sd=0                    Must       63,077/     3,910/    3.1s | Mustard         970/        0/    0.2s FLIP c1
+   FLIP   ABP-file par K=5 R=1 W=3000 net=C[0,200] sd=0                    Must       63,077/     3,910/    3.1s | Mustard         970/        0/    0.2s FLIP c1
+ C/Wb: 4 cells, 4 both, 0 Mustard-only
+   BOTH   ABP-file par K=6 R=1 W=400 net=C[0,200] sd=0                     Must      496,447/    35,874/     27s | Mustard     230,836/   16,999/     93s both c1
+   FLIP   ABP-file par K=6 R=1 W=401 net=C[0,200] sd=0                     Must      496,447/    35,874/     27s | Mustard       2,914/        0/    0.8s FLIP c1
+ D/W1000: 63 cells, 51 both, 0 Mustard-only
+   BOTH   ABP-file abp K=3 R=3 W=1000 net=D[0,2500] sd=0                   Must   20,391,072/         0/   1109s | Mustard  20,184,036/        0/   2.86h both c1
+ D/W200: 18 cells, 18 both, 0 Mustard-only
+   BOTH   ABP-file abp K=4 R=2 W=200 net=D[0,2500] sd=0                    Must    6,315,296/         0/    366s | Mustard   6,315,296/        0/   2890s both c1
+ D/W3000: 10 cells, 10 both, 0 Mustard-only
+   BOTH   ABP-file abp K=5 R=1 W=3000 net=D[0,2500] sd=0                   Must       53,627/         0/    2.7s | Mustard      42,242/        0/     15s both c1
+ D/Wb: 2 cells, 2 both, 0 Mustard-only
+   BOTH   ABP-file par K=6 R=1 W=5000 net=D[0,2500] sd=0                   Must      496,447/    35,874/     27s | Mustard     230,836/   16,999/     93s both c1
+   FLIP   ABP-file par K=6 R=1 W=5001 net=D[0,2500] sd=0                   Must      496,447/    35,874/     27s | Mustard       2,914/        0/    0.8s FLIP c1
+ E/W1000: 10 cells, 10 both, 0 Mustard-only
+   BOTH   ABP-file par K=5 R=1 W=1000 net=E[0,90000] sd=0                  Must       63,077/     3,910/    3.0s | Mustard      63,077/    3,910/     20s both c1
+ E/W200: 10 cells, 10 both, 0 Mustard-only
+   BOTH   ABP-file par K=5 R=1 W=200 net=E[0,90000] sd=0                   Must       63,077/     3,910/    3.1s | Mustard      63,077/    3,910/     20s both c1
+ E/W3000: 10 cells, 10 both, 0 Mustard-only
+   BOTH   ABP-file par K=5 R=1 W=3000 net=E[0,90000] sd=0                  Must       63,077/     3,910/    3.1s | Mustard      63,077/    3,910/     20s both c1
+
+=== brp
+ A/T1=1000: 10 cells, 10 both, 0 Mustard-only
+   BOTH   BRP F=1 n=3 MAX=2 TD=1 T1=1000 TR=4003 SYNC=4003 net=A (p4)      Must   17,761,263/ 6,908,822/   1271s | Mustard      12,191/    2,094/    8.4s both c1
+   FLIP   BRP F=1 n=3 MAX=2 TD=1 T1=1000 TR=4003 SYNC=4003 net=A (p2)      Must    3,311,730/    92,574/    182s | Mustard       7,968/        0/    4.2s FLIP c1
+ A/T1=200: 35 cells, 28 both, 7 Mustard-only
+   BOTH   BRP F=1 n=6 MAX=1 TD=1 T1=200 TR=403 SYNC=403 net=A (p2)         Must 1,260,206,952/39,940,668/   2.27h | Mustard     398,145/        0/     24s FLIP c16
+   FLIP   BRP F=1 n=6 MAX=1 TD=1 T1=200 TR=403 SYNC=403 net=A (p2)         Must 1,260,206,952/39,940,668/   2.27h | Mustard     398,145/        0/     24s FLIP c16
+   MONLY  BRP F=1 n=2 MAX=9 TD=1 T1=200 TR=3603 SYNC=3603 net=A (p2)       Must            -/         -/queued/runni | Mustard   8,899,846/        0/   3.98h  c1
+ B/T1=1000: 10 cells, 10 both, 0 Mustard-only
+   BOTH   BRP F=1 n=3 MAX=2 TD=65 T1=1000 TR=4195 SYNC=4195 net=B (p4)     Must   17,761,263/ 6,908,822/   1271s | Mustard      12,191/    2,094/    8.5s both c1
+   FLIP   BRP F=1 n=3 MAX=2 TD=65 T1=1000 TR=4195 SYNC=4195 net=B (p2)     Must    3,311,730/    92,574/    182s | Mustard       7,968/        0/    4.2s FLIP c1
+ B/T1=200: 14 cells, 14 both, 0 Mustard-only
+   BOTH   BRP F=1 n=4 MAX=2 TD=65 T1=200 TR=995 SYNC=995 net=B (p2)        Must  588,910,898/14,427,662/   1.61h | Mustard     198,164/        0/     22s FLIP c8
+   FLIP   BRP F=1 n=4 MAX=2 TD=65 T1=200 TR=995 SYNC=995 net=B (p2)        Must  588,910,898/14,427,662/   1.61h | Mustard     198,164/        0/     22s FLIP c8
+ C/T1=1000: 32 cells, 28 both, 4 Mustard-only
+   BOTH   BRP F=1 n=6 MAX=1 TD=200 T1=1000 TR=2600 SYNC=2600 net=C (p2)    Must 1,260,206,952/39,940,668/   2.27h | Mustard     660,121/        0/     41s FLIP c16
+   FLIP   BRP F=1 n=6 MAX=1 TD=200 T1=1000 TR=2600 SYNC=2600 net=C (p2)    Must 1,260,206,952/39,940,668/   2.27h | Mustard     660,121/        0/     41s FLIP c16
+   MONLY  BRP F=3 n=2 MAX=1 TD=200 T1=1000 TR=2600 SYNC=2600 net=C (p2)    Must            -/         -/>11285 (DNF) | Mustard   3,244,777/        0/   3310s  c1
+ C/T1=200: 10 cells, 10 both, 0 Mustard-only
+   BOTH   BRP F=1 n=3 MAX=2 TD=200 T1=200 TR=1400 SYNC=1400 net=C (p4)     Must   17,761,263/ 6,908,822/   1271s | Mustard   1,312,615/  197,460/   1154s both c1
+   FLIP   BRP F=1 n=3 MAX=2 TD=200 T1=200 TR=1400 SYNC=1400 net=C (p2)     Must    3,311,730/    92,574/    182s | Mustard     931,860/        0/    482s FLIP c1
+ D/T1=1000: 27 cells, 24 both, 0 Mustard-only
+   BOTH   BRP F=1 n=5 MAX=1 TD=2500 T1=1000 TR=9500 SYNC=9500 net=D (p2)   Must   29,053,689/   959,143/   1966s | Mustard   4,839,952/        6/   1.06h both c1
+   FLIP   BRP F=1 n=2 MAX=5 TD=2500 T1=1000 TR=17500 SYNC=17500 net=D (p2) Must  206,967,587/ 1,446,477/   1674s | Mustard  25,088,242/        0/   3224s FLIP c16
+ D/T1=200: 10 cells, 10 both, 0 Mustard-only
+   BOTH   BRP F=1 n=3 MAX=2 TD=2500 T1=200 TR=8300 SYNC=8300 net=D (p4)    Must   17,761,263/ 6,908,822/   1271s | Mustard   1,624,921/  517,433/   1089s both c1
+   FLIP   BRP F=1 n=3 MAX=2 TD=2500 T1=200 TR=8300 SYNC=8300 net=D (p2)    Must    3,311,730/    92,574/    182s | Mustard     942,836/        0/    443s FLIP c1
+
+=== lease
+ A: 142 cells, 135 both, 6 Mustard-only
+   BOTH   Lease C=4 R=2 net=A[0,1] sd=0 TTL=12000 PAUSE=11998              Must   99,628,848/37,607,328/   4.06h | Mustard  11,787,624/  634,752/   4.19h both c1
+   FLIP   Lease C=4 R=2 net=A[0,1] sd=0 TTL=12000 PAUSE=11997              Must   99,628,848/37,607,328/   4.06h | Mustard  11,122,128/        0/   3.96h FLIP c1
+   MONLY  Lease C=2 R=11 net=A[0,1] sd=0 TTL=12000 PAUSE=13000             Must            -/         -/queued/runni | Mustard         224/       16/    0.1s  c1
+ A-sd: 8 cells, 8 both, 0 Mustard-only
+   BOTH   Lease C=3 R=3 net=A[0,1] sd=1 TTL=12000 PAUSE=11997              Must   49,206,872/11,603,400/   2.12h | Mustard   6,068,016/  330,744/   2.37h both c1
+   FLIP   Lease C=3 R=3 net=A[0,1] sd=1 TTL=12000 PAUSE=11996              Must   49,206,872/11,603,400/   2.12h | Mustard   5,737,272/        0/   2.22h FLIP c1
+ B: 80 cells, 80 both, 0 Mustard-only
+   BOTH   Lease C=2 R=3 net=B[0,65] sd=0 TTL=12000 PAUSE=11870             Must       34,972/     3,428/    3.8s | Mustard      14,202/      640/    9.2s both c1
+   FLIP   Lease C=2 R=3 net=B[0,65] sd=0 TTL=60000 PAUSE=200               Must       34,972/     3,428/    3.8s | Mustard       5,728/        0/    3.7s FLIP c1
+ B-sd: 4 cells, 4 both, 0 Mustard-only
+   BOTH   Lease C=2 R=3 net=B[0,65] sd=65 TTL=12000 PAUSE=11805            Must       34,972/     3,428/    3.8s | Mustard      14,202/      640/    9.1s both c1
+   FLIP   Lease C=2 R=3 net=B[0,65] sd=65 TTL=12000 PAUSE=11804            Must       34,972/     3,428/    3.8s | Mustard      13,562/        0/    8.7s FLIP c1
+ Bp: 80 cells, 80 both, 0 Mustard-only
+   BOTH   Lease C=2 R=3 net=Bp[14,65] sd=0 TTL=60000 PAUSE=59898           Must       34,972/     3,428/    3.8s | Mustard      14,202/      640/     11s both c1
+   FLIP   Lease C=2 R=3 net=Bp[14,65] sd=0 TTL=60000 PAUSE=200             Must       34,972/     3,428/    3.8s | Mustard       5,728/        0/    4.5s FLIP c1
+ Bp-sd: 4 cells, 4 both, 0 Mustard-only
+   BOTH   Lease C=2 R=3 net=Bp[14,65] sd=65 TTL=60000 PAUSE=59833          Must       34,972/     3,428/    3.8s | Mustard      14,202/      640/     11s both c1
+   FLIP   Lease C=2 R=3 net=Bp[14,65] sd=65 TTL=12000 PAUSE=11832          Must       34,972/     3,428/    3.8s | Mustard      13,562/        0/     10s FLIP c1
+ C: 118 cells, 114 both, 0 Mustard-only
+   BOTH   Lease C=6 R=1 net=C[0,200] sd=0 TTL=12000 PAUSE=11600            Must   85,157,536/51,560,640/   3.13h | Mustard  14,142,136/  637,560/   3.65h both c1
+   FLIP   Lease C=6 R=1 net=C[0,200] sd=0 TTL=12000 PAUSE=11599            Must   85,157,536/51,560,640/   3.13h | Mustard  13,504,576/        0/   3.48h FLIP c1
+ C-sd: 6 cells, 6 both, 0 Mustard-only
+   BOTH   Lease C=2 R=5 net=C[0,200] sd=200 TTL=12000 PAUSE=11400          Must   11,337,388/ 1,111,508/   1763s | Mustard   2,049,066/   92,368/   3106s both c1
+   FLIP   Lease C=2 R=5 net=C[0,200] sd=200 TTL=12000 PAUSE=11399          Must   11,337,388/ 1,111,508/   1763s | Mustard   1,956,698/        0/   2912s FLIP c1
+ Cp: 80 cells, 80 both, 0 Mustard-only
+   BOTH   Lease C=2 R=3 net=Cp[42,200] sd=0 TTL=12000 PAUSE=11684          Must       34,972/     3,428/    3.8s | Mustard      14,202/      640/     11s both c1
+   FLIP   Lease C=2 R=3 net=Cp[42,200] sd=0 TTL=12000 PAUSE=11683          Must       34,972/     3,428/    3.8s | Mustard      13,562/        0/     10s FLIP c1
+ Cp-sd: 4 cells, 4 both, 0 Mustard-only
+   BOTH   Lease C=2 R=3 net=Cp[42,200] sd=200 TTL=60000 PAUSE=59484        Must       34,972/     3,428/    3.8s | Mustard      14,202/      640/     11s both c1
+   FLIP   Lease C=2 R=3 net=Cp[42,200] sd=200 TTL=12000 PAUSE=11483        Must       34,972/     3,428/    3.8s | Mustard      13,562/        0/     10s FLIP c1
+ D: 124 cells, 119 both, 0 Mustard-only
+   BOTH   Lease C=6 R=1 net=D[0,2500] sd=0 TTL=12000 PAUSE=7000            Must   85,157,536/51,560,640/   3.13h | Mustard  14,142,136/  637,560/   3.62h both c1
+   FLIP   Lease C=6 R=1 net=D[0,2500] sd=0 TTL=12000 PAUSE=6999            Must   85,157,536/51,560,640/   3.13h | Mustard  13,504,576/        0/   3.47h FLIP c1
+ D-sd: 6 cells, 6 both, 0 Mustard-only
+   BOTH   Lease C=2 R=5 net=D[0,2500] sd=2500 TTL=12000 PAUSE=4500         Must   11,337,388/ 1,111,508/   1763s | Mustard  11,047,158/  413,728/   4.23h both c1
+   FLIP   Lease C=2 R=5 net=D[0,2500] sd=2500 TTL=12000 PAUSE=4499         Must   11,337,388/ 1,111,508/   1763s | Mustard  10,633,430/        0/   3.99h FLIP c1
+ E: 16 cells, 16 both, 0 Mustard-only
+   BOTH   Lease C=2 R=3 net=E[0,90000] sd=90000 TTL=60000 PAUSE=200        Must       34,972/     3,428/    3.8s | Mustard      37,556/    3,580/     22s both c1
+
+=== lease_f
+ A: 28 cells, 27 both, 1 Mustard-only
+   BOTH   Lease + fencing C=2 R=5 net=A[0,1] sd=0 TTL=12000 PAUSE=11998    Must   94,406,884/         0/   3.79h | Mustard   6,461,828/        0/   2.63h both c1
+   MONLY  Lease + fencing C=6 R=1 net=A[0,1] sd=0 TTL=12000 PAUSE=11998    Must            -/         -/>21210 (DNF) | Mustard  17,512,456/        0/   4.50h  c1
+ C: 12 cells, 12 both, 0 Mustard-only
+   BOTH   Lease + fencing C=2 R=3 net=C[0,200] sd=0 TTL=12000 PAUSE=11600  Must      104,884/         0/     11s | Mustard      25,220/        0/     17s both c1
+ D: 28 cells, 27 both, 0 Mustard-only
+   BOTH   Lease + fencing C=2 R=5 net=D[0,2500] sd=0 TTL=12000 PAUSE=7000  Must   94,406,884/         0/   3.79h | Mustard   6,461,828/        0/   1364s both c7
+
+=== nisshi
+ A: 19 cells, 13 both, 5 Mustard-only
+   BOTH   nisshi T=2 R=5 L=0 U=1 sd=0 W=30000 B=100 net=A (both)           Must   58,985,415/ 1,977,470/   3.07h | Mustard      29,348/        0/     28s FLIP c1
+   FLIP   nisshi T=2 R=5 L=0 U=1 sd=0 W=30000 B=100 net=A (both)           Must   58,985,415/ 1,977,470/   3.07h | Mustard      29,348/        0/     28s FLIP c1
+   MONLY  nisshi T=2 R=10 L=0 U=1 sd=0 W=30000 B=100 net=A (both)          Must            -/         -/queued/runni | Mustard  17,537,560/        0/   1.35h  c16
+ C: 16 cells, 13 both, 3 Mustard-only
+   BOTH   nisshi T=2 R=5 L=0 U=200 sd=0 W=30000 B=100 net=C (both)         Must   58,985,415/ 1,977,470/   3.07h | Mustard      29,348/        0/     28s FLIP c1
+   FLIP   nisshi T=2 R=5 L=0 U=200 sd=0 W=30000 B=100 net=C (both)         Must   58,985,415/ 1,977,470/   3.07h | Mustard      29,348/        0/     28s FLIP c1
+   MONLY  nisshi T=8 R=4 L=0 U=200 sd=0 W=30000 B=100 net=C (both)         Must            -/         -/>13478 (DNF) | Mustard     759,286/        0/   1530s  c1
+ D: 16 cells, 13 both, 3 Mustard-only
+   BOTH   nisshi T=2 R=5 L=0 U=2500 sd=0 W=30000 B=100 net=D (both)        Must   58,985,415/ 1,977,470/   3.07h | Mustard      29,348/        0/     28s FLIP c1
+   FLIP   nisshi T=2 R=5 L=0 U=2500 sd=0 W=30000 B=100 net=D (both)        Must   58,985,415/ 1,977,470/   3.07h | Mustard      29,348/        0/     28s FLIP c1
+   MONLY  nisshi T=8 R=4 L=0 U=2500 sd=0 W=30000 B=100 net=D (both)        Must            -/         -/>13478 (DNF) | Mustard     759,286/        0/   1530s  c1
+ E: 14 cells, 12 both, 0 Mustard-only
+   BOTH   nisshi T=16 R=2 L=0 U=90000 sd=0 W=30000 B=100 net=E (both)      Must    3,289,304/   168,880/   1145s | Mustard   3,289,304/  168,880/   3.75h both c1
+ E/fix: 12 cells, 11 both, 1 Mustard-only
+   BOTH   nisshi T=6 R=3 L=0 U=90000 sd=0 W=30000 B=100 fix=epoch-bump net Must   16,611,387/         0/   1.09h | Mustard   8,777,115/        0/   3.99h both c1
+   MONLY  nisshi T=2 R=5 L=0 U=90000 sd=0 W=30000 B=100 fix=epoch-bump net Must            -/         -/>21475 (DNF) | Mustard  13,288,105/        0/   4.04h  c1
+
+=== nrp
+ A: 13 cells, 10 both, 1 Mustard-only
+   BOTH   NRP nrp R=4 M=3 H=1000 P=2 net=A[0,1] sd=0                       Must  118,424,493/ 3,538,558/   2.57h | Mustard   1,492,721/   33,704/   1296s both c1
+   MONLY  NRP nrp R=5 M=3 H=1000 P=2 net=A[0,1] sd=0                       Must            -/         -/queued/runni | Mustard 125,536,980/4,896,854/   2.91h  c16
+ B: 6 cells, 6 both, 0 Mustard-only
+   BOTH   NRP nrp R=4 M=3 H=1000 P=130 net=B[0,65] sd=0                    Must  118,424,493/ 3,538,558/   2.57h | Mustard   1,492,721/   33,704/   1298s both c1
+ C: 12 cells, 9 both, 0 Mustard-only
+   BOTH   NRP nrp R=4 M=3 H=1000 P=400 net=C[0,200] sd=0                   Must  118,424,493/ 3,538,558/   2.57h | Mustard   3,918,481/   64,314/   3312s both c1
+ D: 12 cells, 12 both, 0 Mustard-only
+   BOTH   NRP nrp R=4 M=3 H=10000 P=5000 net=D[0,2500] sd=0                Must  118,424,493/ 3,538,558/   2.57h | Mustard   4,243,153/   64,314/   1.03h both c1
+
+=== retail
+ A: 15 cells, 14 both, 0 Mustard-only
+   BOTH   Shop v2 C=2 N=2 R=5 S=20 D=29000 net=A[0,1] sd=0                 Must   15,012,496/14,754,448/   2263s | Mustard  10,253,688/9,995,640/   3.02h both c1
+ B: 6 cells, 6 both, 0 Mustard-only
+   BOTH   Shop v2 C=3 N=3 R=2 S=20 D=29000 net=B[0,65] sd=0                Must    1,564,672/ 1,558,912/    212s | Mustard     861,328/  855,568/    561s both c1
+ C: 7 cells, 7 both, 0 Mustard-only
+   BOTH   Shop v2 C=2 N=2 R=4 S=20 D=29000 net=C[0,200] sd=0               Must    1,038,352/ 1,020,432/    141s | Mustard     709,432/  691,512/    582s both c1
+ D: 15 cells, 14 both, 0 Mustard-only
+   BOTH   Shop v2 C=2 N=2 R=5 S=20 D=29000 net=D[0,2500] sd=0              Must   15,012,496/14,754,448/    345s | Mustard  10,253,688/9,995,640/   1515s both c7
+ E: 6 cells, 6 both, 0 Mustard-only
+   BOTH   Shop v2 C=3 N=3 R=2 S=20 D=29000 net=E[0,90000] sd=0             Must    1,564,672/ 1,558,912/    207s | Mustard   1,564,672/1,558,912/    858s both c1
+
+=== swim
+ lan/A: 38 cells, 38 both, 0 Mustard-only
+   BOTH   SWIM N=11 R=1 timers=lan(Wp=500,Ws=4000) net=A[0,1] sd=0         Must   37,939,862/37,290,312/   1.54h | Mustard  23,320,437/22,769,302/   3.50h both c1
+ lan/B: 12 cells, 12 both, 0 Mustard-only
+   BOTH   SWIM N=4 R=2 timers=lan(Wp=500,Ws=4000) net=B[0,65] sd=65        Must       27,436/    24,300/    2.0s | Mustard      10,588/    8,904/    2.7s both c1
+ lan/C: 12 cells, 12 both, 0 Mustard-only
+   BOTH   SWIM N=4 R=2 timers=lan(Wp=500,Ws=4000) net=C[0,200] sd=200      Must       27,436/    24,300/    2.1s | Mustard      23,437/   19,779/    6.7s both c1
+ lan/D: 12 cells, 12 both, 0 Mustard-only
+   BOTH   SWIM N=4 R=2 timers=lan(Wp=500,Ws=4000) net=D[0,2500] sd=0       Must       27,436/    24,300/    2.0s | Mustard      34,873/   28,875/    8.3s both c1
+ lan/E: 12 cells, 12 both, 0 Mustard-only
+   BOTH   SWIM N=4 R=2 timers=lan(Wp=500,Ws=4000) net=E[0,90000] sd=0      Must       27,436/    24,300/    2.0s | Mustard      34,873/   28,875/    8.3s both c1
+ local/A: 12 cells, 12 both, 0 Mustard-only
+   BOTH   SWIM N=4 R=2 timers=local(Wp=200,Ws=3000) net=A[0,1] sd=1        Must       27,436/    24,300/    2.0s | Mustard      10,588/    8,904/    2.7s both c1
+ local/B: 12 cells, 12 both, 0 Mustard-only
+   BOTH   SWIM N=4 R=2 timers=local(Wp=200,Ws=3000) net=B[0,65] sd=65      Must       27,436/    24,300/    2.1s | Mustard      10,588/    8,904/    2.8s both c1
+ local/C: 38 cells, 34 both, 0 Mustard-only
+   BOTH   SWIM N=6 R=2 timers=local(Wp=200,Ws=3000) net=C[0,200] sd=0      Must   14,228,178/13,870,962/   1572s | Mustard  12,234,531/11,797,935/   1.66h both c1
+ local/D: 38 cells, 35 both, 0 Mustard-only
+   BOTH   SWIM N=11 R=1 timers=local(Wp=200,Ws=3000) net=D[0,2500] sd=0    Must   37,939,862/37,290,312/   1.54h | Mustard  40,840,025/40,013,328/   4.62h both c1
+ wan/A: 12 cells, 12 both, 0 Mustard-only
+   BOTH   SWIM N=4 R=2 timers=wan(Wp=3000,Ws=30000) net=A[0,1] sd=0        Must       27,436/    24,300/    2.1s | Mustard      10,588/    8,904/    2.8s both c1
+ wan/B: 12 cells, 12 both, 0 Mustard-only
+   BOTH   SWIM N=4 R=2 timers=wan(Wp=3000,Ws=30000) net=B[0,65] sd=65      Must       27,436/    24,300/    2.0s | Mustard      10,588/    8,904/    2.7s both c1
+ wan/C: 38 cells, 37 both, 0 Mustard-only
+   BOTH   SWIM N=11 R=1 timers=wan(Wp=3000,Ws=30000) net=C[0,200] sd=0     Must   37,939,862/37,290,312/   1.54h | Mustard  23,320,437/22,769,302/   3.67h both c1
+ wan/D: 38 cells, 34 both, 0 Mustard-only
+   BOTH   SWIM N=6 R=2 timers=wan(Wp=3000,Ws=30000) net=D[0,2500] sd=0     Must   14,228,178/13,870,962/   1572s | Mustard  12,234,531/11,797,935/   1.67h both c1
+ wan/E: 12 cells, 12 both, 0 Mustard-only
+   BOTH   SWIM N=4 R=2 timers=wan(Wp=3000,Ws=30000) net=E[0,90000] sd=9000 Must       27,436/    24,300/    2.1s | Mustard      34,873/   28,875/    8.6s both c1
+
+=== yarn
+ A-C: 48 cells, 21 both, 27 Mustard-only
+   BOTH   YARN K=2 QS=3 DD=8 U=0 H=10 miss net=A-C                         Must  159,156,296/   223,993/   4.74h | Mustard      28,363/      732/     23s both c1
+   FLIP   YARN K=2 QS=3 DD=8 U=0 H=10 late-report net=A-C                  Must  160,091,241/   496,450/   2508s | Mustard      29,515/        0/    3.8s FLIP c8
+   MONLY  YARN K=4 QS=5 DD=8 U=0 H=6 miss net=A-C                          Must            -/         -/queued/runni | Mustard  14,731,889/        0/   4.87h  c1
+ D: 37 cells, 21 both, 16 Mustard-only
+   BOTH   YARN K=2 QS=3 DD=8 U=3 H=10 miss net=D                           Must  159,156,296/   223,993/   4.74h | Mustard     231,212/   11,041/    187s both c1
+   MONLY  YARN K=3 QS=4 DD=8 U=3 H=8 miss net=D                            Must            -/         -/queued/runni | Mustard  14,988,378/  187,269/   4.48h  c1

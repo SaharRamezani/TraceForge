@@ -180,9 +180,19 @@
 //! use the Admin's own channel, and the CLI guard below keeps them in
 //! send order.
 //!
-//! There is no release message: the scientist, the rescue team and the
-//! timer threads are daemon reactors (until 2026-10-14 the Admin sent each
-//! a Done once it had finished, four lossy sends outside the protocol).
+//! No thread is a daemon, and the protocol has no release message. The
+//! Admin and the sensors end by counts. The scientist, the rescue team and
+//! (with `--timers separate`) the two timer threads handle one message per
+//! mission, and which missions start depends on the path, so no fixed
+//! count ends them; the harness ends them with a chain of Stops: once the
+//! Admin has left its loop it sends one Stop to the scientist, which
+//! forwards it to the rescue team, which forwards it to the ScientistAck
+//! timer, which forwards it to the Rescue timer; each returns after
+//! forwarding. The Admin has read everything it needs by then, so no
+//! reactor ends before a message that matters. Every Stop is a plain send,
+//! lossy like all others: a lost Stop leaves the rest of the chain waiting
+//! and that run counts as blocked. An Admin parked at a failed assertion
+//! sends none.
 //!
 //! ## Deviations from the paper (deliberate)
 //!
@@ -322,7 +332,7 @@
 //! and the rescue always arrives. It is now reported like any other.
 //! There is no drain, no early cut and no condition: the Admin handles
 //! messages until it has seen the R-th sensor check and the two mission
-//! timers of every mission it started, then releases the other actors
+//! timers of every mission it started, then sends the Stop (see above)
 //! and ends. A reading, Ack or RescueReach that is lost is simply never
 //! read. The `--readings random-relevant` reduction went with the drain:
 //! its argument assumed that every reading is read at its arrival
@@ -548,11 +558,16 @@ enum AdminMsg {
 #[derive(Clone, Debug, PartialEq)]
 enum SciMsg {
     AbortPlan { round: u32, admin: ThreadId },
+    /// HARNESS: not protocol. Head of the termination chain, sent by the
+    /// Admin once it has left its loop (see the doc header).
+    Stop,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 enum RescueMsg {
     Go { round: u32, admin: ThreadId },
+    /// HARNESS: not protocol. Termination chain, forwarded by the scientist.
+    Stop,
 }
 
 /// Admin -> timer thread (`--timers separate` only). A timer thread is the
@@ -561,6 +576,9 @@ enum RescueMsg {
 #[derive(Clone, Debug, PartialEq)]
 enum TimerMsg {
     Arm { round: u32, admin: ThreadId },
+    /// HARNESS: not protocol. Termination chain, forwarded by the rescue
+    /// team to the ScientistAck timer and by that timer to the Rescue timer.
+    Stop,
 }
 
 /// How the Admin's two mission timers reach it.
@@ -720,12 +738,19 @@ fn sensor(p: Params, index: u32, admin: ThreadId) {
 // Scientist: purely reactive, always answers (Rebeca abortPlan)
 // =====================================================================
 
-fn scientist() {
+fn scientist(next: ThreadId) {
     loop {
         match traceforge::recv_msg_block_timed::<SciMsg>() {
             // admin.ack() after(netDelay)
             SciMsg::AbortPlan { round, admin } => {
                 traceforge::send_msg(admin, AdminMsg::Ack { round })
+            }
+            // HARNESS: not protocol. Pass the Stop on to the rescue team,
+            // then end. The Stop cannot overtake an AbortPlan: both travel
+            // on the Admin's channel, in send order.
+            SciMsg::Stop => {
+                traceforge::send_msg(next, RescueMsg::Stop);
+                return;
             }
         }
     }
@@ -735,7 +760,7 @@ fn scientist() {
 // Rescue: purely reactive, always gets there (Rebeca go)
 // =====================================================================
 
-fn rescue(obstacle: u64) {
+fn rescue(obstacle: u64, next: Option<ThreadId>) {
     loop {
         match traceforge::recv_msg_block_timed::<RescueMsg>() {
             RescueMsg::Go { round, admin } => {
@@ -747,6 +772,17 @@ fn rescue(obstacle: u64) {
                 // message deadline is not modeled (doc header).
                 traceforge::send_msg(admin, AdminMsg::RescueReach { round });
             }
+            // HARNESS: not protocol. Pass the Stop on to the ScientistAck
+            // timer (only with --timers separate), then end. It comes from
+            // the scientist, so without a clock it can be read ahead of a
+            // Go still in flight; the Admin has ended and no longer needs
+            // that Go's answer.
+            RescueMsg::Stop => {
+                if let Some(next) = next {
+                    traceforge::send_msg(next, TimerMsg::Stop);
+                }
+                return;
+            }
         }
     }
 }
@@ -756,7 +792,7 @@ fn rescue(obstacle: u64) {
 // one message kind, forwarded with exact transit d
 // =====================================================================
 
-fn timer(kind: TimerKind, delay: u64) {
+fn timer(kind: TimerKind, delay: u64, next: Option<ThreadId>) {
     loop {
         match traceforge::recv_msg_block_timed::<TimerMsg>() {
             // The Arm arrives with exact transit 0 and, at sd = 0, is read at
@@ -768,6 +804,15 @@ fn timer(kind: TimerKind, delay: u64) {
                     TimerKind::Rescue => AdminMsg::CheckRescue { round },
                 };
                 traceforge::send_msg_timed(admin, m, delay, delay);
+            }
+            // HARNESS: not protocol. Pass the Stop on to the Rescue timer
+            // (the ScientistAck timer only; the Rescue timer ends the
+            // chain), then end.
+            TimerMsg::Stop => {
+                if let Some(next) = next {
+                    traceforge::send_msg(next, TimerMsg::Stop);
+                }
+                return;
             }
         }
     }
@@ -944,6 +989,11 @@ fn admin(p: Params, scientist: ThreadId, rescue: ThreadId, timers: Option<(Threa
 
     // Bounded run over: publish the tallies.
     t.publish();
+
+    // HARNESS: not protocol. Start the termination chain with one Stop to
+    // the scientist; the reactors forward it (doc header). A thread parked
+    // at a failed assertion never gets here.
+    traceforge::send_msg(scientist, SciMsg::Stop);
 }
 
 // =====================================================================
@@ -990,22 +1040,30 @@ fn run(mode: Mode, p: Params, keep_going: bool) -> (Stats, Duration) {
     reset_counters();
     let start = Instant::now();
     let stats = traceforge::verify(cfg, move || {
-        // The scientist, the rescue team and the timer threads are
-        // reactive daemons: nothing releases them, the run ends when no
-        // actor can move. The Admin and the sensors are joined.
-        let sci_id = thread::spawn_daemon(scientist).thread().id();
-        let res_id = thread::spawn_daemon(move || rescue(p.obstacle)).thread().id();
+        // No daemons: every thread ends. The Admin and the sensors are
+        // joined.
+        // HARNESS: the Stop chain (doc header) runs scientist, rescue team,
+        // ScientistAck timer, Rescue timer, so the tail is spawned first and
+        // each reactor is given the id of its successor.
         let timer_ids = match p.timers {
             Timers::SelfChannel => None,
-            Timers::Separate => Some((
-                thread::spawn_daemon(move || timer(TimerKind::ScientistAck, p.ack_deadline))
-                    .thread()
-                    .id(),
-                thread::spawn_daemon(move || timer(TimerKind::Rescue, p.rescue_deadline))
-                    .thread()
-                    .id(),
-            )),
+            Timers::Separate => {
+                let rescue_timer =
+                    thread::spawn(move || timer(TimerKind::Rescue, p.rescue_deadline, None))
+                        .thread()
+                        .id();
+                let ack_timer = thread::spawn(move || {
+                    timer(TimerKind::ScientistAck, p.ack_deadline, Some(rescue_timer))
+                })
+                .thread()
+                .id();
+                Some((ack_timer, rescue_timer))
+            }
         };
+        let res_id = thread::spawn(move || rescue(p.obstacle, timer_ids.map(|(ack, _)| ack)))
+            .thread()
+            .id();
+        let sci_id = thread::spawn(move || scientist(res_id)).thread().id();
         let adm = thread::spawn(move || admin(p, sci_id, res_id, timer_ids));
         let adm_id = adm.thread().id();
         let mut sensors = Vec::new();
